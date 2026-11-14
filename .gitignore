@@ -3,8 +3,9 @@
 .env.*
 !.env.example
 
-# Claude Code local settings
+# Claude Code local settings and subagent worktrees
 .claude/settings.local.json
+.claude/worktrees/
 
 # Dependencies and build output
 node_modules/
