@@ -126,6 +126,7 @@ for (const { tag, coin, resolution, span } of cases) {
     pools,
     migratedPoolAddress: launch?.migratedPoolAddress,
     migratedAt: launch?.migratedAt ?? m,
+    truncated,
   });
   if (!pick) throw new Error(`no graduation pool for ${coin.symbol}`);
   const start = pick.pool?.createdAt ?? m;

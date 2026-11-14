@@ -46,6 +46,12 @@ export interface GraduationPick {
   pool: PoolInfo | null;
   /** Pool creation minus migration time, in seconds, when both are known. */
   deltaToMigrationSec: number | null;
+  /**
+   * True when the pick was made by closest creation time from a pairs list that
+   * hit Codex's 250-pair cap, so the real graduation pool may be missing. Treat
+   * the pick as unverified. Always false for a migrated pool address.
+   */
+  truncated: boolean;
 }
 
 /**
@@ -64,6 +70,8 @@ export function pickGraduationPool(args: {
   pools: readonly PoolInfo[];
   migratedPoolAddress: string | null | undefined;
   migratedAt: number | null | undefined;
+  /** `PoolsResult.truncated` of the list passed in. */
+  truncated?: boolean;
 }): GraduationPick | null {
   const { pools, migratedPoolAddress, migratedAt } = args;
   const migrationTime = migratedAt ?? null;
@@ -77,6 +85,7 @@ export function pickGraduationPool(args: {
       source: 'migrated_pool_address',
       pool,
       deltaToMigrationSec: deltaOf(pool),
+      truncated: false,
     };
   }
 
@@ -94,6 +103,7 @@ export function pickGraduationPool(args: {
     source: 'closest_to_migration',
     pool,
     deltaToMigrationSec: deltaOf(pool),
+    truncated: args.truncated ?? false,
   };
 }
 

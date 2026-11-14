@@ -17,8 +17,8 @@
  * cost is the documented flat cost used, marked as estimated.
  */
 import type { Bar } from '../../metrics/types.js';
-import { UnitBudget } from '../budget.js';
-import { postJson, type FetchLike, type PostJsonOptions } from '../http.js';
+import { UnitBudget, type SpendEntry } from '../budget.js';
+import { HttpError, postJson, type FetchLike, type PostJsonOptions } from '../http.js';
 import type { RateLimiter } from '../ratelimit.js';
 import { barsFromColumns, planBarRequests, sortAndDedupeBars } from './bars.js';
 import { pairIdFor, type PoolInfo, type PoolsResult } from './pools.js';
@@ -44,11 +44,15 @@ import type { z } from 'zod';
 export const CODEX_PROVIDER = 'codex';
 export const DEFAULT_ENDPOINT = 'https://graph.codex.io/graphql';
 
-/** Documented flat cost of a bars, token or pairs request, in compute units. */
+/** Cost of a bars or token request, in compute units (measured: 4.0000 and 4.0044). */
 export const FLAT_UNITS = 4;
-/** filterTokens: base cost plus about this much per token returned. */
+/** Both filterTokens and the pairs listing grow by about this much per result (measured). */
+export const UNITS_PER_RESULT = 0.0048;
+/** filterTokens: base cost plus UNITS_PER_RESULT per token returned. */
 export const FILTER_BASE_UNITS = 5;
-export const FILTER_UNITS_PER_TOKEN = 0.004;
+export const FILTER_UNITS_PER_TOKEN = UNITS_PER_RESULT;
+/** Pairs listing: base cost plus UNITS_PER_RESULT per pair returned. */
+export const PAIRS_BASE_UNITS = 4;
 
 export class CodexGraphQLError extends Error {
   readonly messages: string[];
@@ -322,16 +326,20 @@ export class CodexClient {
 
   /**
    * Every pool Codex lists for a token, oldest first. Codex caps the answer at
-   * 250 pairs; when that many come back `truncated` is true and older or
-   * smaller pools may be missing.
+   * 250 pairs; when that many come back `truncated` is true and pools may be
+   * missing, so a graduation pool chosen from this list by creation time is
+   * unverified (see `pickGraduationPool`'s `truncated` field).
    */
   async getPools(mint: string): Promise<PoolsResult> {
     const data = await this.call({
       operation: 'pairs',
       query: pairsQuery(mint),
       schema: pairsDataSchema,
-      estimateBefore: FLAT_UNITS,
-      estimateAfter: () => FLAT_UNITS,
+      // Before the call assume a full 250-pair answer; after it, the count returned.
+      estimateBefore: PAIRS_BASE_UNITS + UNITS_PER_RESULT * PAIRS_LIMIT,
+      estimateAfter: (d) =>
+        PAIRS_BASE_UNITS +
+        UNITS_PER_RESULT * (d.listPairsWithMetadataForToken?.results?.length ?? 0),
       detail: mint,
     });
     const results = data?.listPairsWithMetadataForToken?.results ?? [];
@@ -394,55 +402,64 @@ export class CodexClient {
       return null;
     }
 
-    this.budget.assertCanSpend(CODEX_PROVIDER, spec.estimateBefore);
+    // Held until the request settles, so concurrent calls cannot overshoot the ceiling.
+    const reservation = this.budget.reserve(CODEX_PROVIDER, spec.estimateBefore);
+    let attempts = 1;
+    // Cost recorded if the call fails: every attempt is assumed to have been charged.
+    const failed = (): SpendEntry[] =>
+      Array.from({ length: attempts }, () => ({ units: spec.estimateBefore, estimated: true }));
 
-    const base: FetchLike = this.fetchImpl ?? ((url, init) => fetch(url, init));
-    const limiter = this.limiter;
-    const limited: FetchLike = limiter ? (url, init) => limiter.run(() => base(url, init)) : base;
-
-    let response;
     try {
-      response = await postJson(
-        this.endpoint,
-        { query: spec.query },
-        { ...this.httpOptions, fetch: limited, headers: { Authorization: this.apiKey } },
-      );
+      const base: FetchLike = this.fetchImpl ?? ((url, init) => fetch(url, init));
+      const limiter = this.limiter;
+      const limited: FetchLike = limiter ? (url, init) => limiter.run(() => base(url, init)) : base;
+
+      let response;
+      try {
+        response = await postJson(
+          this.endpoint,
+          { query: spec.query },
+          { ...this.httpOptions, fetch: limited, headers: { Authorization: this.apiKey } },
+        );
+      } catch (err) {
+        if (err instanceof HttpError) attempts = err.attempts;
+        throw err;
+      }
+      attempts = response.attempts;
+
+      let json: unknown;
+      try {
+        json = JSON.parse(response.body);
+      } catch {
+        throw new CodexResponseError(spec.operation, ['response was not JSON']);
+      }
+      const envelope = graphqlEnvelopeSchema.safeParse(json);
+      if (!envelope.success)
+        throw new CodexResponseError(spec.operation, issueList(envelope.error));
+      if (envelope.data.errors && envelope.data.errors.length > 0) {
+        throw new CodexGraphQLError(
+          envelope.data.errors.map((e) => e.message),
+          envelope.data.errors.map((e) => String(e.extensions?.['code'] ?? '')).filter(Boolean),
+        );
+      }
+      const parsed = spec.schema.safeParse(envelope.data.data);
+      if (!parsed.success) throw new CodexResponseError(spec.operation, issueList(parsed.error));
+
+      const data = parsed.data as z.infer<S>;
+      const reported = reportedUnits(data);
+      // Earlier attempts (429 or 5xx) are assumed charged at the estimate; the last one at its reported cost.
+      const earlier = failed().slice(0, attempts - 1);
+      this.budget.settle(reservation, [
+        ...earlier,
+        reported !== null
+          ? { units: reported, estimated: false }
+          : { units: spec.estimateAfter(data), estimated: true },
+      ]);
+      return data;
     } catch (err) {
-      // The request may have been made even though it failed; count it with no known cost.
-      this.budget.record(CODEX_PROVIDER, 0, false);
+      this.budget.settle(reservation, failed());
       throw err;
     }
-
-    let json: unknown;
-    try {
-      json = JSON.parse(response.body);
-    } catch {
-      this.budget.record(CODEX_PROVIDER, 0, false);
-      throw new CodexResponseError(spec.operation, ['response was not JSON']);
-    }
-    const envelope = graphqlEnvelopeSchema.safeParse(json);
-    if (!envelope.success) {
-      this.budget.record(CODEX_PROVIDER, 0, false);
-      throw new CodexResponseError(spec.operation, issueList(envelope.error));
-    }
-    if (envelope.data.errors && envelope.data.errors.length > 0) {
-      this.budget.record(CODEX_PROVIDER, 0, false);
-      throw new CodexGraphQLError(
-        envelope.data.errors.map((e) => e.message),
-        envelope.data.errors.map((e) => String(e.extensions?.['code'] ?? '')).filter(Boolean),
-      );
-    }
-
-    const parsed = spec.schema.safeParse(envelope.data.data);
-    if (!parsed.success) {
-      this.budget.record(CODEX_PROVIDER, spec.estimateBefore, true);
-      throw new CodexResponseError(spec.operation, issueList(parsed.error));
-    }
-    const data = parsed.data as z.infer<S>;
-    const reported = reportedUnits(data);
-    if (reported !== null) this.budget.record(CODEX_PROVIDER, reported, false);
-    else this.budget.record(CODEX_PROVIDER, spec.estimateAfter(data), true);
-    return data;
   }
 }
 

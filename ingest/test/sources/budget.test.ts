@@ -12,6 +12,7 @@ describe('UnitBudget', () => {
       units: 9.2,
       estimatedUnits: 0,
       estimatedRequests: 0,
+      reservedUnits: 0,
       ceiling: 100,
       remaining: 90.8,
     });
@@ -33,26 +34,53 @@ describe('UnitBudget', () => {
 
   it('stops before the call that would pass the ceiling', () => {
     const b = new UnitBudget({ ceilingUnits: 10 });
-    b.assertCanSpend('codex', 4);
-    b.record('codex', 4, false);
-    b.assertCanSpend('codex', 4);
-    b.record('codex', 4, false);
+    b.settle(b.reserve('codex', 4), [{ units: 4, estimated: false }]);
+    b.settle(b.reserve('codex', 4), [{ units: 4, estimated: false }]);
     // 8 spent + 4 estimated = 12 > 10
-    expect(() => b.assertCanSpend('codex', 4)).toThrow(BudgetExceededError);
+    expect(() => b.reserve('codex', 4)).toThrow(BudgetExceededError);
     // An estimate that lands exactly on the ceiling is allowed.
-    expect(() => b.assertCanSpend('codex', 2)).not.toThrow();
+    expect(() => b.reserve('codex', 2)).not.toThrow();
+  });
+
+  it('counts reservations held by calls in flight', () => {
+    const b = new UnitBudget({ ceilingUnits: 10 });
+    const r1 = b.reserve('codex', 4);
+    b.reserve('codex', 4);
+    expect(b.summary('codex')).toMatchObject({ reservedUnits: 8, units: 0, remaining: 2 });
+    expect(() => b.reserve('codex', 4)).toThrow(BudgetExceededError);
+    // Settling releases the hold and records the real figure.
+    b.settle(r1, [{ units: 1, estimated: false }]);
+    expect(b.summary('codex')).toMatchObject({ reservedUnits: 4, units: 1, requests: 1 });
+    expect(() => b.reserve('codex', 4)).not.toThrow();
+  });
+
+  it('settles once, and records one request per entry', () => {
+    const b = new UnitBudget();
+    const r = b.reserve('codex', 4);
+    b.settle(r, [
+      { units: 4, estimated: true },
+      { units: 4, estimated: true },
+      { units: 4.2, estimated: false },
+    ]);
+    b.settle(r, [{ units: 100, estimated: false }]);
+    expect(b.summary('codex')).toMatchObject({
+      requests: 3,
+      units: 12.2,
+      estimatedRequests: 2,
+      reservedUnits: 0,
+    });
   });
 
   it('never throws without a ceiling', () => {
     const b = new UnitBudget();
     b.record('codex', 1e9, false);
-    expect(() => b.assertCanSpend('codex', 1e9)).not.toThrow();
+    expect(() => b.reserve('codex', 1e9)).not.toThrow();
   });
 
   it('keeps ceilings per provider', () => {
     const b = new UnitBudget({ ceilingUnits: 5 });
     b.record('a', 5, false);
-    expect(() => b.assertCanSpend('a', 1)).toThrow(BudgetExceededError);
-    expect(() => b.assertCanSpend('b', 5)).not.toThrow();
+    expect(() => b.reserve('a', 1)).toThrow(BudgetExceededError);
+    expect(() => b.reserve('b', 5)).not.toThrow();
   });
 });

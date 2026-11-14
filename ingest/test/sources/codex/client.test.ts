@@ -167,6 +167,20 @@ describe('fixtures parse into typed results', () => {
     const r = await client.getPools(MINT);
     expect(r.pools).toHaveLength(250);
     expect(r.truncated).toBe(true);
+    const pick = pickGraduationPool({
+      pools: r.pools,
+      migratedPoolAddress: null,
+      migratedAt: 1000,
+      truncated: r.truncated,
+    });
+    expect(pick).toMatchObject({ source: 'closest_to_migration', truncated: true });
+    const withAddress = pickGraduationPool({
+      pools: r.pools,
+      migratedPoolAddress: 'P3',
+      migratedAt: 1000,
+      truncated: true,
+    });
+    expect(withAddress?.truncated).toBe(false);
   });
 
   it('bars through the client: 1-minute 2026 fixture', async () => {
@@ -405,7 +419,7 @@ describe('cost metering', () => {
       estimatedRequests: 1,
     });
 
-    // filterTokens: 5 units plus 0.004 per token returned.
+    // filterTokens: 5 units plus 0.0048 per token returned.
     const body = JSON.parse(loadFixtureText('filter-tokens-2026'));
     delete body.data.usageData;
     const n = body.data.filterTokens.results.length;
@@ -413,7 +427,7 @@ describe('cost metering', () => {
     await collect(b.client.discoverGraduated({ from: 1, to: 2 }));
     const s = b.budget.summary('codex');
     expect(s.estimatedRequests).toBe(1);
-    expect(s.units).toBeCloseTo(5 + 0.004 * n, 9);
+    expect(s.units).toBeCloseTo(5 + 0.0048 * n, 9);
   });
 
   it('sums mixed measured and estimated requests', async () => {
@@ -437,6 +451,79 @@ describe('cost metering', () => {
     await expect(call()).rejects.toBeInstanceOf(BudgetExceededError);
     expect(f.requests).toHaveLength(2);
     expect(budget.summary('codex')).toMatchObject({ requests: 2, units: 8, remaining: 2 });
+  });
+
+  it('holds the ceiling under 50 concurrent calls: exactly 10 fetches, 40 throw', async () => {
+    const empty = { getBars: { t: [], o: [], h: [], l: [], c: [] } };
+    const budget = new UnitBudget({ ceilingUnits: 40 }); // 10 calls at 4 units
+    const pending: Array<() => void> = [];
+    // Each fetch stays pending until released below.
+    const f2 = fakeFetch(() => ({ body: gqlBody(empty, '4000000') }));
+    const wired = new CodexClient({
+      apiKey: KEY,
+      fetch: (url, init) =>
+        new Promise((resolve) => {
+          pending.push(() => resolve(f2.fetch(url, init)));
+        }),
+      budget,
+      http: { sleep: async () => {} },
+    });
+    const calls = Array.from({ length: 50 }, () =>
+      wired.getPoolBars({ pairAddress: POOL, resolution: '1', from: 0, to: 60 }),
+    );
+    const settled = Promise.allSettled(calls);
+    // Let every call reach its fetch (or its budget rejection) before any response arrives.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(pending).toHaveLength(10);
+    expect(budget.summary('codex').reservedUnits).toBe(40);
+    pending.forEach((release) => release());
+    const results = await settled;
+    expect(f2.requests).toHaveLength(10);
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(10);
+    const rejected = results.filter((r) => r.status === 'rejected');
+    expect(rejected).toHaveLength(40);
+    expect(
+      rejected.every((r) => (r as PromiseRejectedResult).reason instanceof BudgetExceededError),
+    ).toBe(true);
+    expect(budget.summary('codex')).toMatchObject({ requests: 10, units: 40, reservedUnits: 0 });
+  });
+});
+
+describe('failed calls are charged conservatively', () => {
+  const cases: Array<[string, Parameters<typeof fakeFetch>[0], number]> = [
+    ['HTTP 400', [{ status: 400 }], 1],
+    ['HTTP 500 until retries run out (3 attempts)', [{ status: 500 }], 3],
+    ['non-JSON body', [{ body: 'nope' }], 1],
+    ['bad envelope', [{ body: '[]' }], 1],
+    ['GraphQL errors', [{ body: JSON.stringify({ errors: [{ message: 'x' }] }) }], 1],
+    [
+      'schema mismatch',
+      [{ body: gqlBody({ getBars: { t: [1], o: ['a'], h: [1], l: [1], c: [1] } }, '4000000') }],
+      1,
+    ],
+    ['network error until retries run out', [{ throws: new Error('down') }], 3],
+  ];
+  for (const [name, answer, attempts] of cases) {
+    it(`${name}: records ${attempts} estimated request(s) at the estimate`, async () => {
+      const { client, budget, f } = make(answer);
+      await expect(
+        client.getPoolBars({ pairAddress: POOL, resolution: '1', from: 0, to: 60 }),
+      ).rejects.toThrow();
+      expect(f.requests).toHaveLength(attempts);
+      expect(budget.summary('codex')).toMatchObject({
+        requests: attempts,
+        units: 4 * attempts,
+        estimatedUnits: 4 * attempts,
+        estimatedRequests: attempts,
+        reservedUnits: 0,
+      });
+    });
+  }
+
+  it('a pairs failure is charged the full 250-pair estimate', async () => {
+    const { client, budget } = make([{ status: 400 }]);
+    await expect(client.getPools(MINT)).rejects.toThrow();
+    expect(budget.summary('codex').units).toBeCloseTo(4 + 0.0048 * 250, 9);
   });
 });
 
@@ -470,12 +557,13 @@ describe('dry run', () => {
 
     const plan = client.plan();
     expect(plan.byOperation['token']).toEqual({ requests: 1, units: 4 });
-    expect(plan.byOperation['pairs']).toEqual({ requests: 1, units: 4 });
+    expect(plan.byOperation['pairs']?.requests).toBe(1);
+    expect(plan.byOperation['pairs']?.units).toBeCloseTo(4 + 0.0048 * 250, 9);
     expect(plan.byOperation['bars']).toEqual({ requests: 8, units: 32 });
     expect(plan.byOperation['filterTokens']?.requests).toBe(3);
-    expect(plan.byOperation['filterTokens']?.units).toBeCloseTo(3 * (5 + 0.004 * 200), 9);
+    expect(plan.byOperation['filterTokens']?.units).toBeCloseTo(3 * (5 + 0.0048 * 200), 9);
     expect(plan.totalRequests).toBe(1 + 1 + 8 + 3);
-    expect(plan.totalUnits).toBeCloseTo(4 + 4 + 32 + 3 * 5.8, 9);
+    expect(plan.totalUnits).toBeCloseTo(4 + 5.2 + 32 + 3 * 5.96, 9);
     expect(plan.lowerBoundOperations).toEqual(['filterTokens']);
     expect(plan.calls).toHaveLength(plan.totalRequests);
   });
@@ -514,7 +602,7 @@ describe('errors', () => {
     await expect(notJson.client.getPools(MINT)).rejects.toBeInstanceOf(CodexResponseError);
   });
 
-  it('retries a 429 through the client and still meters one request', async () => {
+  it('retries a 429 through the client and meters both attempts', async () => {
     const { client, f, budget, clock } = make([
       { status: 429, headers: { 'retry-after': '2' } },
       { body: loadFixtureText('token-2026') },
@@ -522,7 +610,11 @@ describe('errors', () => {
     await client.getLaunchInfo(MINT);
     expect(f.requests).toHaveLength(2);
     expect(clock.sleeps).toEqual([2000]);
-    expect(budget.summary('codex').requests).toBe(1);
+    // Both HTTP attempts count; the failed one at the estimate (4), the good one as reported.
+    const sp = budget.summary('codex');
+    expect(sp.requests).toBe(2);
+    expect(sp.units).toBeCloseTo(4 + microOf('token-2026'), 9);
+    expect(sp.estimatedRequests).toBe(1);
   });
 
   it('sends the key only in the Authorization header and never leaks it in errors', async () => {

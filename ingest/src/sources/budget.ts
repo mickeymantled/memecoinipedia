@@ -1,10 +1,12 @@
 /**
  * Per-provider request and unit accounting with an optional ceiling.
  *
- * Usage: before a call, `assertCanSpend(provider, estimatedUnits)`; after the
- * call, `record(provider, units, estimated)`. The check uses units already
- * recorded plus the estimate for the next call, so a run stops before the call
- * that would pass the ceiling.
+ * Usage: before a call, `reserve(provider, estimatedUnits)`; after the call,
+ * `settle(reservation, entries)`. `reserve` checks recorded units plus units
+ * already reserved by calls in flight plus this estimate, so a run stops before
+ * the call that would pass the ceiling even when many calls run concurrently.
+ * `settle` releases the reservation and records what was actually spent, one
+ * entry per HTTP request made (retries included).
  */
 
 export class BudgetExceededError extends Error {
@@ -34,8 +36,10 @@ export interface ProviderSummary {
   estimatedUnits: number;
   /** Requests whose cost was estimated. */
   estimatedRequests: number;
+  /** Units held by calls in flight, not yet settled. */
+  reservedUnits: number;
   ceiling: number | null;
-  /** Units left under the ceiling, or null when there is no ceiling. */
+  /** Units left under the ceiling after recorded and reserved units, or null with no ceiling. */
   remaining: number | null;
 }
 
@@ -44,7 +48,20 @@ export interface UnitBudgetOptions {
   ceilingUnits?: number;
 }
 
+/** One HTTP request's cost: `estimated` is true when the figure is not a reported one. */
+export interface SpendEntry {
+  units: number;
+  estimated: boolean;
+}
+
+export interface Reservation {
+  readonly provider: string;
+  readonly units: number;
+  settled: boolean;
+}
+
 interface Counters {
+  reserved: number;
   requests: number;
   units: number;
   estimatedUnits: number;
@@ -62,19 +79,33 @@ export class UnitBudget {
   private get(provider: string): Counters {
     let c = this.counters.get(provider);
     if (!c) {
-      c = { requests: 0, units: 0, estimatedUnits: 0, estimatedRequests: 0 };
+      c = { reserved: 0, requests: 0, units: 0, estimatedUnits: 0, estimatedRequests: 0 };
       this.counters.set(provider, c);
     }
     return c;
   }
 
-  /** Throws `BudgetExceededError` when recorded units plus the estimate would pass the ceiling. */
-  assertCanSpend(provider: string, estimatedUnits: number): void {
-    if (this.ceiling === null) return;
-    const spent = this.get(provider).units;
-    if (spent + estimatedUnits > this.ceiling + 1e-9) {
-      throw new BudgetExceededError(provider, spent, estimatedUnits, this.ceiling);
+  /**
+   * Throws `BudgetExceededError` when recorded plus reserved units plus the
+   * estimate would pass the ceiling. Otherwise holds the estimate until
+   * `settle`. Without a ceiling it still tracks the reservation.
+   */
+  reserve(provider: string, estimatedUnits: number): Reservation {
+    const c = this.get(provider);
+    if (this.ceiling !== null && c.units + c.reserved + estimatedUnits > this.ceiling + 1e-9) {
+      throw new BudgetExceededError(provider, c.units + c.reserved, estimatedUnits, this.ceiling);
     }
+    c.reserved += estimatedUnits;
+    return { provider, units: estimatedUnits, settled: false };
+  }
+
+  /** Releases the reservation (once) and records one request per entry. */
+  settle(reservation: Reservation, entries: readonly SpendEntry[]): void {
+    if (reservation.settled) return;
+    reservation.settled = true;
+    const c = this.get(reservation.provider);
+    c.reserved = Math.max(0, c.reserved - reservation.units);
+    for (const e of entries) this.record(reservation.provider, e.units, e.estimated);
   }
 
   record(provider: string, units: number, estimated: boolean): void {
@@ -94,8 +125,9 @@ export class UnitBudget {
       units: c.units,
       estimatedUnits: c.estimatedUnits,
       estimatedRequests: c.estimatedRequests,
+      reservedUnits: c.reserved,
       ceiling: this.ceiling,
-      remaining: this.ceiling === null ? null : Math.max(0, this.ceiling - c.units),
+      remaining: this.ceiling === null ? null : Math.max(0, this.ceiling - c.units - c.reserved),
     };
   }
 

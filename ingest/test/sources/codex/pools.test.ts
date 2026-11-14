@@ -49,6 +49,7 @@ describe('pickGraduationPool', () => {
       source: 'migrated_pool_address',
       pool: null,
       deltaToMigrationSec: null,
+      truncated: false,
     });
   });
 
