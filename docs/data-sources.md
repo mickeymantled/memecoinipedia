@@ -182,6 +182,17 @@ Gaps:
 - **Token-2022 coins** were not positively identified in the test set.
 - **Terms.** Codex's terms of service (updated 2026-10-29) are generic site terms with no data licence. Section 8 bars copying or reusing content "for commercial purposes or for personal gain" without written permission, and nothing addresses storing API data or displaying derived statistics. Written confirmation from hello@codex.io is needed before the full backfill.
 
+### What building the client added (2026-11-14)
+
+Found against the live API while writing the Codex.io client (task A2a), with 14 requests costing about 49 compute units.
+
+- **Prices are USD.** For the same pool and minute, Codex.io and GeckoTerminal agree within 0.2% on open and close.
+- **Bars.** A request for exactly 1,500 buckets works and 1,501 is rejected. 48 hours of 1-minute bars is 2 requests; a year of hourly bars is 6.
+- **Costs are not quite flat.** A bars request costs exactly 4 units. A token lookup costs 4.0044. The pool listing costs 4 plus about 0.0048 per pool returned, so 5.2 for a full page of 250. `filterTokens` costs 5 plus about 0.0048 per token. The client records the cost each response reports and falls back to these figures only when a response reports none.
+- **Discovery paging.** `filterTokens` returns at most 200 rows per request, and `limit` plus `offset` cannot pass 10,000. The `count` it returns is the size of the page, not a total. Discovery therefore walks the calendar in windows and restarts inside a window that is still full at 10,000 rows.
+- **The pool listing is capped at 250 and big coins exceed it.** CHILLGUY's list is full of dust pools on other venues. Its graduation pool was still in the list, but for a large coin with no migrated pool address (most coins before March 2025) the pick is made from a truncated list and is not guaranteed. The client marks such picks as unverified. The fix is to take the graduation pool for those coins from Dune.
+- **Some pool creation dates are wrong.** The Raydium pool for CHILLGUY is dated 12 seconds after migration, as expected, but other pools on the same token carry 2026 dates. Creation time is only trusted for choosing the graduation pool.
+
 ### Where the other probes stand
 
 - **Probe 1 (Dune)** is still needed: for the target-set count, for discovery before April 2024, and as the independent ATH cross-check. Codex cannot cheaply tell us which graduates peaked at $100k, because its ATH fields are unreliable and checking every graduate's bars would use about a month of quota.
