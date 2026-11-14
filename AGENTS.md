@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Memecoinedpedia: a search engine and encyclopedia of past memecoins.
+Memecoinipedia: a search engine and encyclopedia of past memecoins.
 Claude Code is the lead. It assigns work through GitHub issues and
 reviews every PR.
 
@@ -14,9 +14,17 @@ coding agent that owns /web. They are different things.
 | /web, /scripts, /.github        | Codex  | codex       |
 | /research/narratives            | Grok   | grok        |
 | /research/evals                 | Muse   | muse        |
+| PLAN.md, /docs, /probes,        | Claude | claude      |
+|   /.claude, root config files   | (lead) |             |
 
 No agent edits outside its lane. If you need a change in another
 lane, open a new issue with that owner's label.
+
+Root config files are package.json, pnpm-workspace.yaml,
+tsconfig.base.json, eslint.config.js, the Prettier files,
+docker-compose.yml, .env.example, .gitignore and README.md.
+Exception: pnpm-lock.yaml may be changed by any agent whose own
+package.json changes.
 
 ## Workflow
 1. Pick up an open issue with your label.
