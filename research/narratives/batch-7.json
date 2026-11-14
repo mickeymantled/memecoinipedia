@@ -1,0 +1,432 @@
+[
+  {
+    "mint": "9BB6NFEcjBCtnNLFko2FqVQBq8HHM13kCyYcdQbgpump",
+    "ticker": "FARTCOIN",
+    "primary_narrative": "AI",
+    "secondary_narratives": [
+      "culture/meme"
+    ],
+    "origin": "Fartcoin was launched anonymously on Pump.fun, riding the 'fartcoin' joke promoted by the AI agent Truth Terminal; it was not created by the bot or its developer.",
+    "origin_date": "2024-10-18",
+    "trigger_event": "Truth Terminal (Andy Ayrey's AI agent) promoted the Fartcoin idea and was sent tokens, then the bot's holdings rally was widely reported.",
+    "parent_mint": null,
+    "key_accounts": [
+      "@FartCoinOfSOL",
+      "@truth_terminal"
+    ],
+    "sources": [
+      "https://decrypt.co/296035/fartcoin-meme-coin-explodes",
+      "https://www.theblock.co/news/markets/2024-10-18-marc-andreessen-funded-ai-bot-becomes-a-millionaire-after-fartcoin-holdings-rally-322002",
+      "https://www.coingecko.com/learn/what-is-fartcoin-ai-memecoin-crypto",
+      "https://codywise.io/crypto/solana/memecoins/fartcoin/",
+      "https://api.dexscreener.com/tokens/v1/solana/9BB6NFEcjBCtnNLFko2FqVQBq8HHM13kCyYcdQbgpump",
+      "https://x.com/DeFiTracer/status/1852746861360103799",
+      "https://x.com/TechLeviathan/status/1853091080633262179",
+      "https://lite-api.jup.ag/tokens/v2/search?query=9BB6NFEcjBCtnNLFko2FqVQBq8HHM13kCyYcdQbgpump"
+    ],
+    "confidence": 0.8,
+    "notes": "AI vs culture/meme fit about equally (fart-joke meme, AI-agent trigger); settled by rule: primary = what triggered the run (Truth Terminal AI agent). Rework: Jupiter shows pump.fun launch 2024-10-18 06:05 UTC and DexScreener Raydium pair 2024-10-18 06:09 UTC, matching origin_date. @FartCoinOfSOL verified: DexScreener socials link it and X lookup shows it (created 2024-10-18, ~83k followers). @truth_terminal kept from the earlier sources and two third-party X posts (DeFiTracer, TechLeviathan) tying the token to Truth Terminal; an X search for Truth Terminal posts about fartcoin in Oct 2024 returned nothing, so that tie is not confirmed from its own posts."
+  },
+  {
+    "mint": "2qEHjDLDLbuBgRYvsxhc5D6uDWAivNFZGan56P1tpump",
+    "ticker": "Pnut",
+    "primary_narrative": "news event",
+    "secondary_narratives": [
+      "animal",
+      "culture/meme"
+    ],
+    "origin": "Anonymous Pump.fun token named for Peanut the Squirrel, a pet squirrel seized and euthanized by New York authorities along with raccoon Fred. Not created by owner Mark Longo.",
+    "origin_date": "2024-10-31",
+    "trigger_event": "Public outrage and viral attention after the seizure/euthanasia, amplified by Elon Musk posts.",
+    "parent_mint": null,
+    "key_accounts": [
+      "@pnutsolana",
+      "@elonmusk"
+    ],
+    "sources": [
+      "https://cointelegraph.com/news/viral-squirrel-peanut-triggers-solana-memecoin-frenzy",
+      "https://memecoin.wiki/wiki/peanut_the_squirrel",
+      "https://decrypt.co/289856/what-is-pnut-the-meme-coin-dancing-to-elon-musks-tune",
+      "https://pump.fun/coin/2qEHjDLDLbuBgRYvsxhc5D6uDWAivNFZGan56P1tpump",
+      "https://api.dexscreener.com/tokens/v1/solana/2qEHjDLDLbuBgRYvsxhc5D6uDWAivNFZGan56P1tpump",
+      "https://x.com/MarcellxMarcell/status/1855384249555169330",
+      "https://lite-api.jup.ag/tokens/v2/search?query=2qEHjDLDLbuBgRYvsxhc5D6uDWAivNFZGan56P1tpump"
+    ],
+    "confidence": 0.8,
+    "notes": "news event vs animal fit equally; rule: primary = the trigger of the run (the seizure news). Rework: Jupiter pump.fun launch 2024-10-31 14:21 UTC and DexScreener Raydium pair 2024-10-31 15:06 UTC match origin_date. @pnutsolana verified: DexScreener socials link it and X lookup shows it (bio 'In memory of Peanut', ~65k followers; account created 2024-08-25, before the seizure news, so it may not be the first Pnut-related account). @elonmusk from a third-party X post saying he shilled it and from earlier sources, not from his own post."
+  },
+  {
+    "mint": "CzLSujWBLFsSjncfkh59rUFqvafWcY5tzedWJSuypump",
+    "ticker": "GOAT",
+    "primary_narrative": "AI",
+    "secondary_narratives": [
+      "culture/meme"
+    ],
+    "origin": "Goatseus Maximus ($GOAT) is a Pump.fun token built around the 'goatse gospel' shock-meme that the AI agent Truth Terminal started posting about on 2024-10-10 ('I think I'm going to call them Goatseus Maximus'). The token's own X account (@gospelofgoatse) says 'We serve one master @truth_terminal' and DexScreener lists @truth_terminal as the token's X link.",
+    "origin_date": "2024-10-10",
+    "trigger_event": "Truth Terminal posted repeatedly about Goatseus Maximus from 2024-10-10 20:11 UTC (including a pitch for a 10,000-piece goatse-gospel NFT collection), and the token reached its Raydium pair at 21:19 UTC the same day; Truth Terminal then posted on 2024-10-11 that it hoped the token would moon.",
+    "parent_mint": null,
+    "key_accounts": [
+      "@truth_terminal",
+      "@gospelofgoatse"
+    ],
+    "sources": [
+      "https://x.com/truth_terminal/status/1844470764583424360",
+      "https://x.com/truth_terminal/status/1844470926122811808",
+      "https://x.com/truth_terminal/status/1844507183641399509",
+      "https://x.com/truth_terminal/status/1844556457271857284",
+      "https://x.com/YutiBot/status/1844487870821589156",
+      "https://api.dexscreener.com/latest/dex/tokens/CzLSujWBLFsSjncfkh59rUFqvafWcY5tzedWJSuypump",
+      "https://x.com/mustafabacak45/status/2121447366385348769"
+    ],
+    "confidence": 0.85,
+    "notes": "Date confirmed from fetched X posts (first Truth Terminal 'Goatseus Maximus' post 2024-10-10T20:11:13Z) and DexScreener pairCreatedAt 1728595144000 = 2024-10-10T21:19:04Z; YutiBot post says token graduated ~10 min before 21:19Z. X search by mint returned only 2026 promo spam; @gospelofgoatse profile fetched via X user lookup (created 2024-01-23, ~40.7k followers; account creation predates the token, who runs it is not established). Did not verify who deployed the token or the Marc Andreessen grant this round (dropped from trigger). Pump.fun page blocked by Cloudflare. AI primary, culture/meme secondary by the trigger rule; 'animal' dropped."
+  },
+  {
+    "mint": "Df6yfrKC8kZE3KNkrHERKzAetSxbrWeniQfyJY4Jpump",
+    "ticker": "CHILLGUY",
+    "primary_narrative": "culture/meme",
+    "secondary_narratives": [
+      "animal"
+    ],
+    "origin": "Memecoin inspired by Philip Banks' 'My New Character' / 'Just a Chill Guy' dog-in-sweater artwork (posted 2023-10-04). The token was not created or endorsed by the artist.",
+    "origin_date": "2024-11-15",
+    "trigger_event": "The Chill Guy meme was already viral on X and TikTok; the token's Raydium pair opened 2024-11-15 and its X account @chillguycto was created the same day, after which it ran with the meme.",
+    "parent_mint": null,
+    "key_accounts": [
+      "@chillguycto"
+    ],
+    "sources": [
+      "https://knowyourmeme.com/memes/just-a-chill-guy-my-new-character",
+      "https://en.wikipedia.org/wiki/Chill_Guy",
+      "https://learn.backpack.exchange/articles/what-is-just-a-chill-guy",
+      "https://www.complex.com/pop-culture/a/cmplxtara-mahadevan/chill-guy-meme-legal-action-copyright",
+      "https://www.usatoday.com/story/tech/2024/11/21/chill-guy-meme/76483765007/",
+      "https://api.dexscreener.com/tokens/v1/solana/Df6yfrKC8kZE3KNkrHERKzAetSxbrWeniQfyJY4Jpump",
+      "https://x.com/adamjia7/status/1857547995413360667",
+      "https://x.com/CryptoDegenCall/status/1858767137315115351",
+      "https://lite-api.jup.ag/tokens/v2/search?query=Df6yfrKC8kZE3KNkrHERKzAetSxbrWeniQfyJY4Jpump"
+    ],
+    "confidence": 0.65,
+    "notes": "CORRECTED: earlier origin_date 2024-11-01 was wrong. DexScreener shows the Raydium pair created 2024-11-15 20:08 UTC and the earliest X posts with the mint are dated 2024-11-15 (fdv ~$198k first call). Jupiter's createdAt of 2024-10-06 is inconsistent with that and was not used, so mint creation could precede trading; origin_date is the trading start. @chillguycto verified via DexScreener socials and X lookup ('just a chill guy | fan page', created 2024-11-15, ~67k followers); it is a token community account, not the artist. culture/meme vs animal: primary is the meme. Artwork date 2023-10-04 comes from earlier sources."
+  },
+  {
+    "mint": "82DC7kRHVwkVEuK8NjbrwDDqbfkTrQWXuCp4T6C9noie",
+    "ticker": "VANGOAT",
+    "primary_narrative": "culture/meme",
+    "secondary_narratives": [
+      "animal"
+    ],
+    "origin": "Vincent Van Goat ($VANGOAT) is a Solana token whose on-chain metadata links to the X account @TheVincentVanG (display name '$GOAT', bio 'I'm the greatest of all time, I'm also a GOAT!' with a 'Goatxibit' link) and a Telegram portal. That account's only two posts (2024-08-30) promote a 'GOAT of TRON' token on Sunpump with a different contract address, so a link to this Solana mint rests on metadata alone.",
+    "origin_date": "",
+    "trigger_event": "",
+    "parent_mint": null,
+    "key_accounts": [
+      "@TheVincentVanG"
+    ],
+    "sources": [
+      "https://lite-api.jup.ag/tokens/v2/search?query=82DC7kRHVwkVEuK8NjbrwDDqbfkTrQWXuCp4T6C9noie",
+      "https://x.com/TheVincentVanG/status/1829349759447974349",
+      "https://x.com/TheVincentVanG/status/1829359402484371694"
+    ],
+    "confidence": 0.25,
+    "notes": "Tried: X search by mint (0 results), X search by name/ticker (only unrelated 'vangoat' Call of Duty/farm posts), X user lookup + timeline of @TheVincentVanG (account created 2024-05-21, 406 followers, 2 posts), Jupiter token API (name, socials, dev wallet 7YxWtmYASUvdTvMSedz6SUqy7ozPjn9dBFLK4pWESq91), DexScreener (no pairs listed for mint), pump.fun (Cloudflare block), vincentvangoat.store (blocked this round; earlier round saw a different contract on it). Jupiter's createdAt/firstPool dates (2024-06) are identical across several unrelated tokens and look like an indexing artifact, so no date given. Van Gogh-parody goat character from the earlier round is not re-sourced here."
+  },
+  {
+    "mint": "GjSNU94GKHHQ9ou9nFDDYsQnAx2oKATHsmHJTrhV5cQV",
+    "ticker": "NUT",
+    "primary_narrative": "culture/meme",
+    "secondary_narratives": [
+      "gaming"
+    ],
+    "origin": "'kirby nutting' ($NUT) is a crude Kirby-themed memecoin promoted by the X account @kirbysnuts, which posted this exact mint and 'live on pump' on 2024-05-22. The account marketed it with 'THE_PUMP_LAUNCH_WE_DESERVE' posts and 'fade $nut and lose gen wealth' messaging.",
+    "origin_date": "2024-05-22",
+    "trigger_event": "@kirbysnuts posted 'live on pump' at 03:48 UTC and the contract address at 04:35 UTC on 2024-05-22, then claimed 1M market cap and 'top 10 on screener' within hours; one reply accused the dev of reusing material from an ETH rug.",
+    "parent_mint": null,
+    "key_accounts": [
+      "@kirbysnuts"
+    ],
+    "sources": [
+      "https://x.com/kirbysnuts/status/1793126854058225697",
+      "https://x.com/kirbysnuts/status/1793138607810883683",
+      "https://x.com/kirbysnuts/status/1793152869056860469",
+      "https://x.com/_RollinNolan/status/1793161331581006073",
+      "https://lite-api.jup.ag/tokens/v2/search?query=GjSNU94GKHHQ9ou9nFDDYsQnAx2oKATHsmHJTrhV5cQV"
+    ],
+    "confidence": 0.6,
+    "notes": "Improved from 0.1. Jupiter metadata links twitter x.com/kirbysnuts and website nut.wtf (site returned nothing); the account's own post contains this exact mint, which ties it. Date is the first 'live on pump' post found (earliest of the 14 timeline posts fetched, so launch could be slightly earlier). Jupiter's own createdAt (2024-06) conflicts with the X posts and was not used. X search by mint returned 0 hits. The Kirby tie is the token name/handle only; the 'gaming' secondary is weak (Kirby is a Nintendo character). The reply alleging reused rug material is a third-party claim, unverified. Pump.fun page blocked by Cloudflare. Other NUT tokens have different mints."
+  },
+  {
+    "mint": "GACuDtvf7EboY8SMiNyGorpWPc6tvXhKT4FGbQ6PpjF",
+    "ticker": "Dog",
+    "primary_narrative": "other",
+    "secondary_narratives": [
+      "animal"
+    ],
+    "origin": "Unverified Solana token named 'Dog' whose metadata lists only a Telegram group (t.me/DogonSolanaa) and no X account or website; no origin story or trigger was found.",
+    "origin_date": "",
+    "trigger_event": "",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://lite-api.jup.ag/tokens/v2/search?query=GACuDtvf7EboY8SMiNyGorpWPc6tvXhKT4FGbQ6PpjF"
+    ],
+    "confidence": 0.1,
+    "notes": "Tried: X search by mint and by the Telegram handle (0 results), Jupiter token API (dev wallet 35ewnxgogdtPLKMhAvLT9QMR75qfvcTnz14Q5HDuYsBo, ~1,093 holders, tagged 'duplicate'), DexScreener (no pairs), pump.fun (Cloudflare block). Jupiter dates (2024-06-10 pool) match a batch artifact seen on other tokens, so not used. The famous Dog token is a different mint (H7JvMvHU5KkCMN1bABMDTUNbBr98iVYDHbpPoZMnpump, confirmed distinct via Jupiter); its story is not attributed here. Nothing new beyond the tag and Telegram link."
+  },
+  {
+    "mint": "AWZ9wdUGjBPiYRAwGRTxrkX91amWZKmcfq91cwBPpump",
+    "ticker": "Pang",
+    "primary_narrative": "other",
+    "secondary_narratives": [
+      "animal",
+      "culture/meme"
+    ],
+    "origin": "Listed as 'Pang ya 胖鸭' (Chinese for 'fat duck') with a pump.fun-style mint; metadata has no website, X account or Telegram, and no origin story was found.",
+    "origin_date": "",
+    "trigger_event": "",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://lite-api.jup.ag/tokens/v2/search?query=AWZ9wdUGjBPiYRAwGRTxrkX91amWZKmcfq91cwBPpump"
+    ],
+    "confidence": 0.1,
+    "notes": "Tried: X search by mint (0 results), X search by 'Pang ya'/胖鸭 + pump/solana (only unrelated Thai/Spanish 'Pang ya' posts), Jupiter token API (dev wallet AYyfTXxxV7PrTHbGguYauMikLWyUXDTuSmixgQ4E2LSX, ~502 holders, no socials), DexScreener (no pairs), pump.fun (Cloudflare block). Jupiter dates identical to other tokens' (artifact), not used. Still no narrative evidence; 'animal' is inferred from the name only."
+  },
+  {
+    "mint": "copJmvZPQayNtCmaEMC9wGwQKvtw16PzHQEhesbsHsq",
+    "ticker": "COP",
+    "primary_narrative": "other",
+    "secondary_narratives": [],
+    "origin": "'Dirty Sanchez' ($COP) is a Pump.fun-launched token (Jupiter lists launchpad pump.fun and first pool 2024-08-13 20:00 UTC, graduated 20:03 UTC); metadata has no website or social links and no narrative behind the name was found.",
+    "origin_date": "2024-08-13",
+    "trigger_event": "",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://lite-api.jup.ag/tokens/v2/search?query=copJmvZPQayNtCmaEMC9wGwQKvtw16PzHQEhesbsHsq"
+    ],
+    "confidence": 0.2,
+    "notes": "Date comes from Jupiter's firstPool createdAt for a pump.fun token (unlike other tokens here, it is not a shared batch timestamp) - single source, not cross-checked on-chain. Tried: X search by mint (0 results), X search 'Dirty Sanchez' + solana/pump (one unrelated VTuber stream post), DexScreener (no pairs), pump.fun (Cloudflare block). Dev wallet 9SdqjrLBKF9GSCeV6FsBAeBHfcH9Z28RHW7tYfA86Cqu, ~109 holders. No trigger or accounts found."
+  },
+  {
+    "mint": "FYs3kU6Q1jwRF5oQV6UvHgjyuuW3bGdz2iJD7JCNpump",
+    "ticker": "MM",
+    "primary_narrative": "other",
+    "secondary_narratives": [],
+    "origin": "Pump.fun token 'MM' (first pool 2024-10-10 11:31 UTC and graduated 11:34 UTC per Jupiter); its metadata links X @FCKFBI_MM, Telegram t.me/FCKFBI_MM and mmsol.xyz, but no narrative behind the name was found.",
+    "origin_date": "2024-10-10",
+    "trigger_event": "",
+    "parent_mint": null,
+    "key_accounts": [
+      "@FCKFBI_MM"
+    ],
+    "sources": [
+      "https://lite-api.jup.ag/tokens/v2/search?query=FYs3kU6Q1jwRF5oQV6UvHgjyuuW3bGdz2iJD7JCNpump"
+    ],
+    "confidence": 0.15,
+    "notes": "Date is Jupiter firstPool createdAt for a pump.fun token (single source). The linked X account @FCKFBI_MM is suspended per the X user lookup, so its content could not be read; listed as key account only because metadata links it. Tried: X search by mint (0 results), X search for the handle/site (0), mmsol.xyz fetch (empty), DexScreener (no pairs), pump.fun (Cloudflare block). ~2,766 holders. Same date as GOAT is coincidence, no link claimed. Meaning of 'MM' unknown."
+  },
+  {
+    "mint": "GhGFyCZB4EktM9raEQR7CCKdU84Zxcj5EXE3ZWd2pump",
+    "ticker": "CHILLDOG",
+    "primary_narrative": "animal",
+    "secondary_narratives": [
+      "culture/meme"
+    ],
+    "origin": "Pump.fun token 'Just a chill dog', minted 2024-12-25, riding the 'Just a Chill Guy' dog-character meme that was viral on TikTok/X and had its own pump.fun coin ($CHILLGUY) in Oct-Nov 2024. No post, creator account or link tying this specific mint to that meme was found.",
+    "origin_date": "2024-12-25",
+    "trigger_event": "",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://solscan.io/token/GhGFyCZB4EktM9raEQR7CCKdU84Zxcj5EXE3ZWd2pump",
+      "https://knowyourmeme.com/memes/just-a-chill-guy-my-new-character",
+      "https://x.com/xChilldog/status/1878712604946010133",
+      "https://x.com/PhillipBankss"
+    ],
+    "confidence": 0.4,
+    "notes": "Checked: Solscan for this mint (first mint 2024-12-25 14:57 UTC, creator AuLYgB...KBCgWF; no social links); pump.fun page and dexscreener API (timed out / no pairs indexed); X search by mint (0 results) and 'chill dog' pump/solana for Dec 2024-Jan 2025 (only posts about OTHER chilldog mints, e.g. @xChilldog's 4Wh8ewEB... and @chillingdogcoin's 259RDZ...; not applied here). @PhillipBankss (verified via X: 'philb', chill guy licensing bio) is the meme's creator per Know Your Meme, not an account tied to this coin. Meme-link is inferred from the token name; hence 0.4. parent_mint left null because the CHILLGUY mint was not verified. animal vs culture/meme equal; rule: dog character is the subject, so animal primary."
+  },
+  {
+    "mint": "DRwRNuXGen2nmBKeXBdgd7zyNWAKgZkbjZubwQRepump",
+    "ticker": "Andrew",
+    "primary_narrative": "other",
+    "secondary_narratives": [],
+    "origin": "Pump.fun token named 'Andrew', minted 2024-12-26 (ATH market cap ~$6.14M, 756 holders). No meme, person or trigger behind the name was identified.",
+    "origin_date": "2024-12-26",
+    "trigger_event": "",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://pump.fun/coin/DRwRNuXGen2nmBKeXBdgd7zyNWAKgZkbjZubwQRepump",
+      "https://solscan.io/token/DRwRNuXGen2nmBKeXBdgd7zyNWAKgZkbjZubwQRepump"
+    ],
+    "confidence": 0.15,
+    "notes": "Checked: pump.fun page (created Dec 26, 2024, creator 9Rnk...df67, blank description, no socials), Solscan (first mint 2024-12-26 03:26 UTC), dexscreener API (no pairs), X search by mint (0 results) and '$Andrew' with pump/solana/CA/memecoin terms for 2024-12-24 to 2025-02-15 (only unrelated people named Andrew, Andrew Tate scam chatter for other coins). No token X account found. Narrative not guessed; 'other'."
+  },
+  {
+    "mint": "DwpnoX1YvBSkRFUJyvgeYamptg7WEb3DvV315dAUpump",
+    "ticker": "dodge",
+    "primary_narrative": "other",
+    "secondary_narratives": [],
+    "origin": "Pump.fun token 'dodge coin', minted 2025-01-19 (ATH market cap ~$2.28M, 694 holders). No meme, person or trigger behind the name was identified.",
+    "origin_date": "2025-01-19",
+    "trigger_event": "",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://pump.fun/coin/DwpnoX1YvBSkRFUJyvgeYamptg7WEb3DvV315dAUpump",
+      "https://solscan.io/token/DwpnoX1YvBSkRFUJyvgeYamptg7WEb3DvV315dAUpump"
+    ],
+    "confidence": 0.15,
+    "notes": "Checked: pump.fun page (created Jan 19, 2025, creator HaYt...3aEK, description empty, no socials), Solscan (first mint 2025-01-19 17:24 UTC), dexscreener API (no pairs), X search by mint (0 results) and 'dodge' + pump.fun/solana for Dec 2024-Feb 2025. X surfaced a different $DODGE (mint H8UdxA1W...) in Feb 2025 (https://x.com/eliwrangles/status/1894752807699493021); not applied to this mint. Possible Doge-style naming is unverified."
+  },
+  {
+    "mint": "7LsX88bhz8KiFcEFQYcdP6xMRsiMYPUXgYMPZMUzpump",
+    "ticker": "DSG",
+    "primary_narrative": "culture/meme",
+    "secondary_narratives": [
+      "gaming"
+    ],
+    "origin": "Pump.fun token 'Digital Squid Game', minted 2025-02-01 (ATH market cap ~$2.77M). The name echoes the Squid Game franchise; no creator post, description or trigger was found.",
+    "origin_date": "2025-02-01",
+    "trigger_event": "",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://pump.fun/coin/7LsX88bhz8KiFcEFQYcdP6xMRsiMYPUXgYMPZMUzpump",
+      "https://solscan.io/token/7LsX88bhz8KiFcEFQYcdP6xMRsiMYPUXgYMPZMUzpump"
+    ],
+    "confidence": 0.2,
+    "notes": "Checked: pump.fun page (name 'Digital Squid Game', created Feb 1, 2025, creator 3G6W...ZoSJ, empty description), Solscan (first mint 2025-02-01 22:45 UTC, creator 3G6WpR...XkZoSJ), dexscreener API (no pairs), X search by mint (0 results), and 'Digital Squid Game'/DSG for 2025-01-25 to 2025-03-15 (only unrelated DSG: car gearbox, Japanese pachinko hall). Narrative inferred from the name only. culture/meme vs gaming equal; rule: TV-franchise reference is the subject, so culture/meme."
+  },
+  {
+    "mint": "Fgp2JaPkmw6WaNqVcfm1RxHBi2VUJCToxfAEE2wCpump",
+    "ticker": "ROOM",
+    "primary_narrative": "culture/meme",
+    "secondary_narratives": [],
+    "origin": "Pump.fun token named 'what would you put here?' (ROOM), whose description links the viral X post of that exact caption by @FreckledLiberty (an image post, 2025-05-01, ~76M impressions). The token was minted about 17 hours after that post.",
+    "origin_date": "2025-05-01",
+    "trigger_event": "Viral X post 'what would you put here?' by @FreckledLiberty (2025-05-01 23:29 UTC), ~76.4M impressions, ~287K likes.",
+    "parent_mint": null,
+    "key_accounts": [
+      "FreckledLiberty"
+    ],
+    "sources": [
+      "https://pump.fun/coin/Fgp2JaPkmw6WaNqVcfm1RxHBi2VUJCToxfAEE2wCpump",
+      "https://x.com/FreckledLiberty/status/1918085380647338297",
+      "https://solscan.io/token/Fgp2JaPkmw6WaNqVcfm1RxHBi2VUJCToxfAEE2wCpump",
+      "https://x.com/FreckledLiberty"
+    ],
+    "confidence": 0.85,
+    "notes": "Verified: pump.fun description for this mint is exactly the x.com/FreckledLiberty/status/1918085380647338297 link; X API returned that post (created 2025-05-01T23:29:25Z, text 'what would you put here?' with one photo) and the author profile (@FreckledLiberty, 107K followers, created 2014). Solscan first mint 2025-05-02 16:20 UTC; pump.fun creator 4THy...BDYa (not linked to any X account). X search by mint returned 0 results; no evidence that @FreckledLiberty launched or endorsed the coin. Image content of the post not described. Date shown is the post date in UTC; 2025-05-01 is also the date in US time."
+  },
+  {
+    "mint": "C8T9P27ABMvLHsRKEavFqa9etSsfw8EqkF2XkzT4pump",
+    "ticker": "WIZARD",
+    "primary_narrative": "culture/meme",
+    "secondary_narratives": [],
+    "origin": "Pump.fun token 'FART WIZARD' (minted 2025-05-08) whose description presents a comedic starry-robed wizard who blasts 'ancient winds'. A same-named token minted 2025-05-13 has an official-looking X account, @fart_wizardsol, but that account lists a different mint, so it is not shown to be tied to this one.",
+    "origin_date": "2025-05-08",
+    "trigger_event": "",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://pump.fun/coin/C8T9P27ABMvLHsRKEavFqa9etSsfw8EqkF2XkzT4pump",
+      "https://solscan.io/token/C8T9P27ABMvLHsRKEavFqa9etSsfw8EqkF2XkzT4pump",
+      "https://solscan.io/token/5fV4cFHBHTqU5C1E1kAJazu9esTbTgHXkk3JG1oMpump",
+      "https://x.com/fart_wizardsol"
+    ],
+    "confidence": 0.3,
+    "notes": "Checked: pump.fun page (description text, created May 8, 2025, creator Ga41...GGjH), Solscan (first mint 2025-05-08 04:00 UTC), dexscreener API (no pairs), X search by mint (0 results) and 'fart wizard' May-Jun 2025. X lookup shows @fart_wizardsol (created 2025-05-07) with bio CA 5fV4cFHBHTqU5C1E1kAJazu9esTbTgHXkk3JG1oMpump, whose Solscan first mint is 2025-05-13 13:49 UTC under a different creator (AukUSs...qXh27c). So at least two FART WIZARD tokens exist; which is original or copy is unverified, and no handle is attributed to this mint. Also an X post (https://x.com/Andy404x/status/1922296578615750684) promoted the 5fV4 mint, not this one."
+  },
+  {
+    "mint": "HfVxfzmAPWER3LQ8VbDcbch6ACchbpuyXv3ujgRtpump",
+    "ticker": "Rose",
+    "primary_narrative": "other",
+    "secondary_narratives": [
+      "tech"
+    ],
+    "origin": "Pump.fun token 'MissRose' (ticker Rose), minted 2026-04-11. The name matches the 'Miss Rose' Telegram bot, whose X account lists a different, later-minted MissRose token as its $ROSE; no source ties this mint to that bot.",
+    "origin_date": "2026-04-11",
+    "trigger_event": "",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://pump.fun/coin/HfVxfzmAPWER3LQ8VbDcbch6ACchbpuyXv3ujgRtpump",
+      "https://solscan.io/token/HfVxfzmAPWER3LQ8VbDcbch6ACchbpuyXv3ujgRtpump",
+      "https://x.com/MissRose_bot",
+      "https://x.com/jake_tim12/status/2112278049421164865",
+      "https://solscan.io/token/7b6dX3nE25xrfNViEKZHL9wVJFcBxQYuWPpmzHUxx28H"
+    ],
+    "confidence": 0.25,
+    "notes": "Checked: pump.fun page (created Apr 11, 2026, creator 9s2u...hph7, no description), Solscan (7 months old), dexscreener API (no pairs). X: @MissRose_bot (verified via X lookup; bio 'Just a telegram bot', created 2020) lists $ROSE as 7b6dX3nE25xrfNViEKZHL9wVJFcBxQYuWPpmzHUxx28H, whose Solscan age is ~1 month (minted after this mint). On 2026-10-19 @jake_tim12 replied to the bot with this mint ('What about HfVxfz...'), showing only that someone pointed the bot to it. The bot did not endorse this mint. Not a derivative of the official-bot token (it predates it); parent_mint null. Narrative uncertain."
+  },
+  {
+    "mint": "GqmP8uGseERgZYa7NAvzNrFw9qbGzMM6YnpwWiH46TGX",
+    "ticker": "DUMACRATS",
+    "primary_narrative": "political",
+    "secondary_narratives": [
+      "culture/meme"
+    ],
+    "origin": "Satirical political token that borrows the 'Dumacrats' insult for Democrats (used by Trump on Truth Social), minted on pump.fun on 2026-05-10 and later graduated to PumpSwap. Its site says 'The people's meme coin' and 'As seen on Truth Social'.",
+    "origin_date": "2026-05-10",
+    "trigger_event": "Trump's Truth Social image post captioned 'Dumacrats Love Sewage' on 2026-05-12, which the coin's site may be referencing; it came two days after the mint, so it was not the launch trigger.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://dumacrats.lol/",
+      "https://terminal.raiden.wtf/token/GqmP8uGseERgZYa7NAvzNrFw9qbGzMM6YnpwWiH46TGX",
+      "https://solscan.io/token/GqmP8uGseERgZYa7NAvzNrFw9qbGzMM6YnpwWiH46TGX",
+      "https://www.trumpstruth.org/statuses/38420",
+      "https://www.mediaite.com/online/dumacrats-love-sewage-trump-posts-image-of-obama-biden-pelosi-bathing-in-feces-in-new-truth-social-meme-spree/"
+    ],
+    "confidence": 0.55,
+    "notes": "Verified: site (dumacrats.lol) shows the CA and 'As seen on Truth Social'; Raiden Terminal gives Created 10 May 2026 (Solscan age ~6 months agrees); Trump Truth archive and Mediaite (2026-05-12) confirm the 'Dumacrats Love Sewage' post. Not verified: any link between the coin's creator and that post, or whether Trump used 'Dumacrats' before. X: no official handle found (guessed handles dumacrats, DUMACRATS_SOL, Dumacratsonsol not found); X search for Dumacrats in May-Jun 2026 only shows ordinary users and an unrelated REPOOPLICANS coin (HWQF9psB...). dexscreener API returned no pairs; pump.fun page timed out. Creator wallet 7Vyo...Ga4U has no known X account."
+  },
+  {
+    "mint": "5xczFwu1UcM2H66dn9VGTPHEyXEHYyC97DeWcrev19xC",
+    "ticker": "USOF",
+    "primary_narrative": "other",
+    "secondary_narratives": [],
+    "origin": "Pump.fun token branded 'U. S. Oil Fund' (USOF), paired with USDC and minted 2026-09-01. No creator account, meme source or trigger event was found.",
+    "origin_date": "2026-09-01",
+    "trigger_event": "",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://pump.fun/coin/5xczFwu1UcM2H66dn9VGTPHEyXEHYyC97DeWcrev19xC",
+      "https://solscan.io/token/5xczFwu1UcM2H66dn9VGTPHEyXEHYyC97DeWcrev19xC",
+      "https://jup.ag/tokens/5xczFwu1UcM2H66dn9VGTPHEyXEHYyC97DeWcrev19xC"
+    ],
+    "confidence": 0.15,
+    "notes": "Checked: pump.fun page (created Sep 1, 2026, USDC pair, creator 2JsL...pWJv, 689 holders, ATH ~$4.3M, no description), Solscan (2 months old), jup.ag (earlier pass), dexscreener API (no pairs). X search by mint (0 results), '$USOF' and 'U.S. Oil Fund' since late Aug 2026: only airdrop-spam promo posts for OTHER 'United States Oil Fund' mints (pUDcxqdK..., BbMbKuJm...; e.g. https://x.com/Linuszack/status/2109786931672576073) and unrelated posts about India's Universal Service Obligation Fund; none concern this mint. Previous 'news event' narrative removed as unsupported. Name may imitate a real oil fund but that is unverified; 'other'."
+  },
+  {
+    "mint": "9S8edqWxoWz5LYLnxWUmWBJnePg35WfdYQp7HQkUpump",
+    "ticker": "Goyim",
+    "primary_narrative": "culture/meme",
+    "secondary_narratives": [
+      "political",
+      "news event"
+    ],
+    "origin": "Satirical Solana token launched on 2026-02-01 that uses the antisemitic slogan 'The Goyim Know' as a brand, with a site built around an AI meme generator. It jumped over 100x in the first week of February 2026 as a resurfaced Epstein email quote using 'goyim' circulated.",
+    "origin_date": "2026-02-01",
+    "trigger_event": "Resurfaced Jeffrey Epstein email quote using 'goyim' went viral online in early Feb 2026 (CCN, 2026-02-03), followed by a 100x+ price run.",
+    "parent_mint": null,
+    "key_accounts": [
+      "Goyim_CTO"
+    ],
+    "sources": [
+      "https://gnet-research.org/2026/03/05/from-generative-ai-to-crypto-exchanges-the-infrastructure-behind-the-goyim-token/",
+      "https://www.ccn.com/analysis/crypto/jeffrey-epstein-expose-2009-triggers-100x-gains-solana-memecoin-goyim/",
+      "https://api.dexscreener.com/latest/dex/tokens/9S8edqWxoWz5LYLnxWUmWBJnePg35WfdYQp7HQkUpump",
+      "https://solscan.io/token/9S8edqWxoWz5LYLnxWUmWBJnePg35WfdYQp7HQkUpump",
+      "https://x.com/Goyim_CTO",
+      "https://x.com/Goyim_CTO/status/2116284810541093061"
+    ],
+    "confidence": 0.75,
+    "notes": "Verified: GNET (2026-03-05) states the token appeared on Solana on 1 Feb 2026; DexScreener API pairCreatedAt 2026-02-01 15:07 UTC (PumpSwap pair; second pair 2026-02-28) and links x.com/goyim_cto, t.me/goyimcohort, goyimcohort.com; CCN (2026-02-03) reports the 100x run tied to the Epstein email quote (CCN's own framing, GNET says the site is explicitly antisemitic and several linked X accounts were suspended). X lookup: @Goyim_CTO, display name 'Goyim | Parody', created 2026-06-18, bio is only this mint; so it is a later community-takeover style account, not the launch account. Its 2026-10-30 post calls this mint 'the OG' versus 'bundled vamps' (rival copies). The original launch-day X account was not found. Could not fetch goyimcohort.com or the pump.fun page. Sensitive topic; stated factually, no endorsement. culture/meme vs news event equal; rule: the token is a meme brand, the news item is only the trigger."
+  }
+]
