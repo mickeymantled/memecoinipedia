@@ -22,7 +22,7 @@ The thresholds are starting values. Task A6 tunes them against the 500-coin samp
   - `liquidityUsd`: pool liquidity in USD, or null when unknown.
 - Only buckets with at least one trade have a bar. A missing minute means nobody traded.
 
-Bars may arrive unsorted. Sort each list by `t` before use. The result must not depend on the order of bars or of pools in the input.
+Bars may arrive unsorted. Sort each list by `t` before use. The result must not depend on the order of bars or of pools in the input, with one exception: when a list holds two bars with the same `t`, the later one in the input wins (section 3, rule 4). Pool addresses are unique within an input.
 
 ## 2. Parameters
 
@@ -39,17 +39,21 @@ Bars may arrive unsorted. Sort each list by `t` before use. The result must not 
 | `rugWithinSec` | 1,800 | How soon after ATH the fall must happen |
 | `rugRecoveryFraction` | 0.5 | A later recovery to this share of ATH cancels the rug |
 
-All comparisons against a parameter are inclusive: a window with exactly $1,000 of volume counts, and a market cap of exactly $100,000 is above the $100k threshold.
+All comparisons against a parameter are inclusive: a window with exactly $1,000 of volume counts, and a market cap of exactly $100,000 is above the $100k threshold. They allow a relative tolerance of 1e-12, so a value that sits exactly on a limit in decimal terms is not lost to binary rounding.
+
+`windowMinutes` must be 2 or more.
 
 ## 3. Step 1: clean the bars
 
-Apply in this order, to every resolution:
+Apply in this order, to every resolution. A bar dropped by one rule takes no part in the rules after it.
 
 1. Ignore bars with `t` greater than `asOf`.
 2. Drop a bar if any of `o`, `h`, `l`, `c` is not a finite number above zero, or `volumeUsd` is not a finite number of zero or more. Raise the flag `bad_bar`.
 3. Drop a bar if the largest of `o`, `h`, `l`, `c` times `totalSupply` is above `maxMarketCapUsd`. Raise the flag `implausible_market_cap`. The whole bar goes, not only the bad field.
 4. If a pool has two bars with the same `t` at the same resolution, keep the one that comes last in the input and raise the flag `duplicate_bar`.
-5. Drop every bar of a non-primary pool whose `liquidityUsd` is null or below `minSecondaryPoolLiquidityUsd`. No flag. Bars of primary pools are never dropped for liquidity.
+5. Drop every bar of a non-primary pool whose `liquidityUsd` is null, not a finite number, or below `minSecondaryPoolLiquidityUsd`. No flag. Bars of primary pools are never dropped for liquidity.
+
+In a bar that is kept, a `traders` or `trades` value that is not a finite number of zero or more counts as zero.
 
 What is left are the clean bars.
 
@@ -156,3 +160,5 @@ These are requirements on ingestion (task A5), listed here because the rules abo
 - A coin that spikes for exactly one minute on real volume gets an ATH below that minute's close. That is the price of rejecting single-candle wicks. The raw figure is kept as the wick, and A6 reviews the coins where the two differ most.
 - A sustained data error that stays under $20 billion and lasts two minutes with volume would pass. A6 reviews every coin whose wick is far above its ATH and every coin whose ATH is far from the cross-check source.
 - Requiring five wallets in a single minute is stricter than five across the window. Very slow, genuine markets can fail it. A6 measures how often.
+- A single point that is not strict can lower the level. On the busiest pool that is normally a true state of the pool. But a lone print from a side pool in a minute when the main pool is silent, or one bad low bar, lowers the level too. That can cut time-above short, inflate the drawdown and set the rug pattern, and the level only comes back at the next strict point. A6 counts how often one point that is not strict moves the level by more than half. The candidate fix is to let the level drop to a price only after two consecutive points at or below it.
+- Hourly and daily closes are stamped at the start of their bucket, so a level taken from one starts up to a bucket early.
