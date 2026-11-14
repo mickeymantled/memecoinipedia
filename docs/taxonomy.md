@@ -16,6 +16,10 @@ Each coin gets:
 
 Label the coin as it was at launch: its name, ticker, description, image and linked socials, plus general knowledge of what those refer to. What the coin became later does not change its label. A dog coin whose community later built a game is still `animal`.
 
+Label the **subject**, not the trigger. Ask what the coin is about, not what set off its run. A coin about a squirrel is `animal` even though a news story made it famous.
+
+A label does not need a verified origin story. A coin called "Dog" with no description and no findable history is `animal` at low confidence. `other` means the coin has no nameable subject. It does not mean "could not research".
+
 The label values are written exactly as in `AGENTS.md`: `AI`, `tech`, `animal`, `celebrity`, `political`, `news event`, `culture/meme`, `gaming`, `derivative`, `utility`, `other`.
 
 ## 2. The eleven narratives
@@ -64,6 +68,7 @@ The test: would this coin make sense if the other coin did not exist?
 - A second coin about the same squirrel, the same politician or the same news story passes the test. Both coins are about the real-world subject. Neither is a derivative of the other, however much bigger one became.
 - A copy of a coin whose subject only exists as a coin (a coin-native character or joke) fails the test. It is a `derivative` of the original.
 - A coin that reuses a generic format ("something Inu", "something coin") passes the test unless it names one specific coin. A coin that copies one coin's distinctive format, such as its exact visual joke with a different animal, is a `derivative` of that coin.
+- A **variation** on a subject that already has a coin ("X dog", "baby X", "X's wife", "X but a cat") fails the test when it launched after that coin, even when X exists outside crypto. The variation is a play on the coin's run. "Just a chill dog", launched 40 days after the Chill Guy coin, is a `derivative` of the Chill Guy coin. A second coin with the same subject, such as another Chill Guy coin, is not.
 - A port of a coin from another chain is a `derivative` of that coin.
 
 **Choosing the parent.** The parent is the one specific coin the derivative refers to. When several coins share the parent's name, the parent is the one that was largest when the derivative launched. Record the parent's contract address when it is known. When the parent is on another chain or cannot be identified with confidence, record no address and name the parent in the reason.
@@ -116,9 +121,29 @@ The flag is independent of the narrative. A flagged coin still gets its normal l
 
 Crude humour alone is not sensitive. A coin about flatulence is not flagged.
 
-## 8. Open questions for review
+## 8. Research batches
+
+Grok's files in `/research/narratives` use the schema in `AGENTS.md`. The pilot batch showed that these fields need a fixed meaning:
+
+| Field | Meaning |
+|---|---|
+| `origin` | What the coin refers to: the meme, post, person, animal or event. One or two sentences. No market caps or holder counts; the pipeline computes those. |
+| `origin_date` | The date the thing in `origin` first appeared or happened. Not the coin's launch date, which comes from the chain. Empty when the coin refers to nothing outside itself or no source gives the date. |
+| `trigger_event` | What set the coin off, with its date in the text. Empty when unknown. An event after the launch is not the trigger. |
+| `parent_mint` | Set when the coin is a derivative under section 4 and the parent's address is known. |
+| `key_accounts` | Handles written with a leading `@`: accounts tied to the coin or to its origin. |
+| `sources` | A URL for every factual claim. Leave out links that back nothing. |
+| `notes` | What was checked, what is unknown, and any case where two labels fit equally well. Describes the entry as it stands, with no revision history. |
+
+Check the exact mint. Many names are shared by several tokens, and the story of a same-name token must not be borrowed.
+
+Facts need sources. Labels do not: when research finds nothing, label from the coin's own name, ticker, description and image at low confidence (section 1).
+
+## 9. Open questions for review
 
 1. **Rule 4 and its exception.** Giving every animal mascot to `animal` matches how traders talk ("dog coins", "frog coins") but sends some pure internet memes there. The exception for humanoid characters is the least clear-cut rule in this file. Is it workable when labelling at speed?
 2. **Same-subject coins.** Hundreds of coins launch for the same news story. This file says none of them is a derivative of another. The alternative is to treat every later copy as a derivative of the first coin to succeed, which is what a trader might call them, but it cannot be decided from launch data.
 3. **`tech` against `utility`.** The line is whether the coin claims a function for itself. Many descriptions are vague about that.
 4. **Images.** Labellers see the image. Whether the classifier does is decided in task B4 on cost. If it does not, coins whose subject is only visible in the image will be a known source of disagreement.
+5. **Variations on a subject that has a coin.** Added after the pilot batch (#15). Section 4 now treats "X dog" launched after a coin about X as a derivative of that coin, even when X is a meme that exists outside crypto. This matches what traders call a beta play and it needs only names and launch dates. The alternative is to treat it as a coin about the meme, with no parent.
+6. **Subject or trigger.** Also from the pilot. Grok labelled three coins by what triggered their run (Pnut as `news event`, Fartcoin as `AI`). Section 1 now says to label the subject. Is that the reading a user of the site would expect?
