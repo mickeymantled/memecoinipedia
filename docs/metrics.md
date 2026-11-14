@@ -55,14 +55,14 @@ What is left are the clean bars.
 
 ## 4. Step 2: windows
 
-**1-minute bars.** For each clean 1-minute bar at time `t` in a pool, its window is that pool's clean 1-minute bars at `t - 120`, `t - 60` and `t`. Between one and three bars are present.
+**1-minute bars.** For each clean 1-minute bar at time `t` in a pool, its window is that pool's clean 1-minute bars in the `windowMinutes` minutes ending at `t`. With the default of 3 those are the bars at `t - 120`, `t - 60` and `t`, and between one and three of them are present.
 
-- `price`: with two or three bars, the second-highest close in the window. With three bars that is the median. With two bars it is the lower close. With one bar it is that bar's close.
+- `price`: the lower median of the closes present. With three bars that is the middle close. With two bars it is the lower close. With one bar it is that bar's close. (For an even count, the lower median is the lower of the two middle values.)
 - `volume`: the sum of `volumeUsd` over the bars present.
 - `traders`: the highest `traders` value among the bars present. Per-minute counts of distinct wallets cannot be de-duplicated across minutes, so the highest single-minute count is the only number we can prove.
 - `strict`: true when at least two bars are present, `volume` is at least `minWindowVolumeUsd`, and `traders` is at least `minWindowTraders`.
 
-The effect: a price counts as reached only if at least two 1-minute closes in a 3-minute span were at or above it, with real volume and at least five wallets in one of those minutes. One candle cannot do it. Neither can two wallets trading back and forth.
+The effect with the default window: a price counts as reached only if at least two 1-minute closes in a 3-minute span were at or above it, with real volume and at least five wallets in one of those minutes. One candle cannot do it. Neither can two wallets trading back and forth.
 
 **Hourly and daily bars.** Each clean bar is its own window: `price` is its close, `volume` its `volumeUsd`, `traders` its `traders`. `strict` is true when `volume` is at least `minWindowVolumeUsd` and `traders` is at least `minWindowTraders`.
 
