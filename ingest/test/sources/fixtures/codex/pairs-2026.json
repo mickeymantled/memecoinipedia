@@ -1,0 +1,53 @@
+{
+  "data": {
+    "listPairsWithMetadataForToken": {
+      "results": [
+        {
+          "liquidity": "2581",
+          "volume": "0",
+          "quoteToken": "token0",
+          "backingToken": {
+            "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            "symbol": "USDC"
+          },
+          "exchange": {
+            "name": "PumpSwap"
+          },
+          "pair": {
+            "address": "DGDZ7bpMogjUDeHN28ZYzF3jP6p9UzEgFhK7rxGSAS1x",
+            "createdAt": 1788220922,
+            "protocol": "PumpAmm",
+            "exchangeHash": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+            "token0": "5xczFwu1UcM2H66dn9VGTPHEyXEHYyC97DeWcrev19xC",
+            "token1": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+          }
+        },
+        {
+          "liquidity": "0",
+          "volume": "0",
+          "quoteToken": "token1",
+          "backingToken": {
+            "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            "symbol": "USDC"
+          },
+          "exchange": {
+            "name": "Pump"
+          },
+          "pair": {
+            "address": "4Hn4LjrChtqaSabmHoQoaPvyghzP9D8AjKCbyGYT76VB",
+            "createdAt": 1788220922,
+            "protocol": "Pump",
+            "exchangeHash": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+            "token0": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            "token1": "5xczFwu1UcM2H66dn9VGTPHEyXEHYyC97DeWcrev19xC"
+          }
+        }
+      ]
+    },
+    "usageData": {
+      "total": {
+        "computeUnits": "4009600"
+      }
+    }
+  }
+}
