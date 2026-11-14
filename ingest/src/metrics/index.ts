@@ -23,7 +23,14 @@ export function mergeParams(params?: Partial<MetricParams>): MetricParams {
   for (const [key, value] of Object.entries(params ?? {})) {
     if (value !== undefined) merged[key] = value;
   }
-  return merged as unknown as MetricParams;
+  const result = merged as unknown as MetricParams;
+  // Section 2: windowMinutes must be 2 or more, and a whole number of minutes.
+  if (!Number.isInteger(result.windowMinutes) || result.windowMinutes < 2) {
+    throw new RangeError(
+      `windowMinutes must be an integer of 2 or more, got ${result.windowMinutes}`,
+    );
+  }
+  return result;
 }
 
 /**

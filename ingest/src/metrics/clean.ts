@@ -27,7 +27,27 @@ export function isIlliquidSecondaryBar(
   minSecondaryPoolLiquidityUsd: number,
 ): boolean {
   if (isPrimary) return false;
-  return bar.liquidityUsd === null || !atLeast(bar.liquidityUsd, minSecondaryPoolLiquidityUsd);
+  return (
+    bar.liquidityUsd === null ||
+    !Number.isFinite(bar.liquidityUsd) ||
+    !atLeast(bar.liquidityUsd, minSecondaryPoolLiquidityUsd)
+  );
+}
+
+const isCount = (x: number): boolean => Number.isFinite(x) && x >= 0;
+
+/**
+ * Section 3, last paragraph: in a kept bar a `traders` or `trades` value that is not a
+ * finite number of zero or more counts as zero. Returns a corrected copy when needed;
+ * the input bar is never modified.
+ */
+export function normalizeCounts(bar: Bar): Bar {
+  if (isCount(bar.traders) && isCount(bar.trades)) return bar;
+  return {
+    ...bar,
+    traders: isCount(bar.traders) ? bar.traders : 0,
+    trades: isCount(bar.trades) ? bar.trades : 0,
+  };
 }
 
 export interface CleanBarsResult {
@@ -65,6 +85,7 @@ export function cleanBars(
     .filter(
       (bar) => !isIlliquidSecondaryBar(bar, isPrimary, params.minSecondaryPoolLiquidityUsd), // rule 5
     )
+    .map(normalizeCounts)
     .sort((a, b) => a.t - b.t);
   return { bars: kept, flags: [...flags] };
 }

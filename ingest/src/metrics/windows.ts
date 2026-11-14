@@ -94,17 +94,70 @@ export function dailyBarIsUsed(pools: readonly CleanPool[], bar: Bar): boolean {
   );
 }
 
-/** Section 4: every window of every pool, at every resolution. Unordered. */
-export function buildWindows(pools: readonly CleanPool[], params: WindowParams): Window[] {
+type BarPredicate = (bar: Bar) => boolean;
+
+/** Section 4: every window, given which hourly and daily bars are used. Unordered. */
+function windowsFor(
+  pools: readonly CleanPool[],
+  params: WindowParams,
+  hourlyUsed: BarPredicate,
+  dailyUsed: BarPredicate,
+): Window[] {
   const windows: Window[] = [];
   for (const pool of pools) {
     windows.push(...minuteWindows(pool.bars1m, pool, params));
     for (const bar of pool.bars1h) {
-      if (hourlyBarIsUsed(pools, bar)) windows.push(coarseWindow(bar, pool, '1h', params));
+      if (hourlyUsed(bar)) windows.push(coarseWindow(bar, pool, '1h', params));
     }
     for (const bar of pool.bars1d) {
-      if (dailyBarIsUsed(pools, bar)) windows.push(coarseWindow(bar, pool, '1d', params));
+      if (dailyUsed(bar)) windows.push(coarseWindow(bar, pool, '1d', params));
     }
   }
   return windows;
+}
+
+/** True when the ascending array holds a value in [start, end). Binary search. */
+function anyInRange(sorted: readonly number[], start: number, end: number): boolean {
+  let lo = 0;
+  let hi = sorted.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if ((sorted[mid] as number) < start) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo < sorted.length && (sorted[lo] as number) < end;
+}
+
+const sortedTimes = (pools: readonly CleanPool[], key: 'bars1m' | 'bars1h'): number[] =>
+  pools.flatMap((pool) => pool[key].map((bar) => bar.t)).sort((a, b) => a - b);
+
+/**
+ * Section 4: every window of every pool, at every resolution. Unordered. The "finer
+ * data wins" lookups are built once per call (sorted times, binary search), so the cost
+ * is n log n in the bar count. Same result as `buildWindowsByScanning`.
+ */
+export function buildWindows(pools: readonly CleanPool[], params: WindowParams): Window[] {
+  const minutes = sortedTimes(pools, 'bars1m');
+  const hours = sortedTimes(pools, 'bars1h');
+  return windowsFor(
+    pools,
+    params,
+    (bar) => !anyInRange(minutes, bar.t, bar.t + SECONDS['1h']),
+    (bar) =>
+      !anyInRange(minutes, bar.t, bar.t + SECONDS['1d']) &&
+      !anyInRange(hours, bar.t, bar.t + SECONDS['1d']),
+  );
+}
+
+/** The direct, slow reading of the rules, kept to prove `buildWindows` is equivalent. */
+export function buildWindowsByScanning(
+  pools: readonly CleanPool[],
+  params: WindowParams,
+): Window[] {
+  return windowsFor(
+    pools,
+    params,
+    (bar) => hourlyBarIsUsed(pools, bar),
+    (bar) => dailyBarIsUsed(pools, bar),
+  );
 }
