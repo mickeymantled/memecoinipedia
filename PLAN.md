@@ -1,0 +1,180 @@
+# Memecoinipedia plan
+
+Status: **approved 2026-11-14, Phase A in progress.** Last updated 2026-11-14.
+
+A search engine and encyclopedia of past memecoins. Users find comparable coins and see how high they went. Scope for this plan: every pump.fun coin from 2024 onward that reached a $100k+ all-time-high market cap. Other chains come after, and the schema is keyed by chain so they fit.
+
+Task status values: `todo`, `in progress`, `in review`, `blocked`, `on hold`, `done`. The lead updates this file after every task. Issue numbers refer to this repository's GitHub issues, which hold the live discussion for each task.
+
+## How work flows
+
+`AGENTS.md` sets the lanes and the workflow. This plan follows it.
+
+| Lane | Owner | Who does the work |
+|---|---|---|
+| `/db`, `/ingest`, `/api`, `/pipeline` | Claude | Sonnet subagents `data-ingestion`, `backend-api` and `testing`, and the Haiku subagent `repo-chores`. Definitions are in `.claude/agents/`. |
+| `/web`, `/scripts`, `/.github` | OpenAI Codex | Codex, from issues labelled `codex` |
+| `/research/narratives` | Grok | Grok, from issues labelled `grok` |
+| `/research/evals` | Muse | Muse, from issues labelled `muse` |
+| Root config, `PLAN.md`, `/docs`, `/probes`, `.claude` | Lead | The lead. `AGENTS.md` does not list these yet; see Q11. |
+
+- **Lead (Fable, in Claude Code)** owns this plan, the taxonomy, the metric rules, the API contract, every ambiguous call, and review of every pull request in every lane. The lead does not write bulk code.
+- **One issue, one branch, one pull request.** Branches are named `<agent>/<issue-number>-<slug>`. Subagents that run in parallel each work in their own git worktree. The lead reviews every pull request against its acceptance criteria. You merge.
+- **Status commits.** The lead commits status updates to this file straight to `main`. Everything else goes through a pull request.
+- **"Codex" means two things.** Codex.io is the data API we buy candles from. OpenAI Codex is the coding agent that owns `/web`. This file says "Codex.io" for the API and "OpenAI Codex" for the agent.
+- **Runtime classification** runs on the Anthropic API (Haiku with the Batch API and prompt caching, Sonnet for low-confidence re-runs), never through a Claude Code session.
+- **Cost gates.** No full backfill and no paid API job starts without a cost estimate shown to you first. Any job that spends money prints its estimate and needs an explicit confirm flag.
+
+## Decisions made
+
+Recorded in `docs/data-sources.md` section 8: source mix approved, attribution accepted, free site with no data sales, market cap is price times 1 billion supply, candles are stored, non-SOL pump.fun launches are included, and the product name is Memecoinipedia.
+
+Codex.io is the candle source. Its probe passed on 20 of 20 coins and you bought its Growth plan on 2026-11-14 ($360 a month, 3M compute units).
+
+Approved with the plan on 2026-11-14:
+
+| # | Decision | Answer |
+|---|---|---|
+| Q1 | Comparables for a coin we have never indexed | The endpoint accepts any pump.fun address and fetches its metadata on demand |
+| Q2 | Survivorship bias | Every distribution is labelled "among coins that reached $100k+". A minimal row is kept for every graduate so a real hit rate can be added later. |
+| Q3 | Status definitions | *Alive*: at least $1,000 of 24-hour volume and $5,000 of liquidity. *Dead*: below that for 7 days. *Rugged*: fell 80% or more within 30 minutes of its ATH and never recovered above half of it. Tuned on the 500-coin sample. |
+| Q4 | Sensitive content | The classifier sets a `sensitive` flag; flagged images are hidden by default |
+| Q5 | Eval split | 200 labels: 120 for tuning, 80 held back for the reported number |
+| Q7 | Git flow | Initial commit to `main` by the lead, then pull requests the lead reviews and you merge |
+| Q8 | Live freshness | Within one hour of crossing $100k |
+| Q9 | Use the paid Codex.io month | The candle stage of the backfill moves to right after A6, inside the billing month that ends about 2026-12-14, with the cost estimate shown to you first |
+
+## Decisions I need from you
+
+| # | Decision | Recommendation | Needed by |
+|---|---|---|---|
+| Q6 | **Hosting.** Where do Postgres, the web app and the worker run in production? | Your call. | Phase D |
+| Q10 | **Who labels the 200-coin eval set.** Your brief said you and I would hand-label it. `AGENTS.md` gives `/research/evals/labels.csv` to Muse. | Muse labels all 200 without seeing any classifier output, using Grok's research as evidence. You review every label where Muse's confidence is under 0.8 plus 40 picked at random, and the 120/80 split is frozen after you sign off. | B3 |
+| Q11 | **Lead-owned paths.** `AGENTS.md` lists no owner for the root config files, `PLAN.md`, `/docs`, `/probes` or `.claude`. It also spells the product "Memecoinedpedia". | Add one row to the lanes table for the lead and correct the name. I will send that as its own small pull request so you can accept or reject it. | When convenient |
+| Q12 | **Local database.** This machine has no running Docker and its Postgres has no pgvector. Phase A does not need pgvector; Phase B's embeddings do. | Install Docker Desktop, or let me run `brew install pgvector`. | B8 |
+
+## Architecture
+
+- **One language:** TypeScript for the web app, the worker and shared code.
+- **Layout:** a pnpm workspace whose packages are the lanes.
+  - `/db`: migrations, typed query access, seed data, the taxonomy values
+  - `/ingest`: data-provider clients (`src/sources`), the price metric library (`src/metrics`, pure functions), the queue worker and per-coin pipeline (`src/worker`)
+  - `/pipeline`: the Anthropic batch classification pipeline, parent-coin candidates, embeddings, the eval harness, and loaders for the research files
+  - `/api`: the search and comparables API, and its contract in `/api/README.md`
+  - `/web`: the Next.js site (OpenAI Codex)
+  - `/research/narratives`, `/research/evals`: research and labels (Grok, Muse)
+  - `/docs`, `/probes`: specifications, research and the provider probes
+- **Queue:** pg-boss, which runs on the same Postgres. The backfill is limited by provider rate limits, far below what a Postgres-backed queue handles, so a separate Redis is not worth running.
+- **Database:** Postgres with pgvector. Coins are keyed by chain plus contract address.
+- **Ingestion is a per-coin pipeline** with stages: discovered, metadata, candles, metrics, classified, embedded. Each stage records completion per coin, so any run can stop and resume, and re-running a finished stage changes nothing. The backfill and the live worker use the same pipeline.
+- **Research inputs.** Grok's batches are evidence, not ground truth: they feed Muse's labels and the taxonomy guide, and can be given to the classifier as context for the coins they cover. Muse's `labels.csv` is the eval set. Neither scales to the full backfill; the Haiku pipeline classifies everything.
+
+### How ATH is calculated
+
+This is the number the product rests on. The full rules are in `docs/metrics.md`; the implementation and the tests are written from that file by different agents. In short:
+
+- Market cap is price in USD times 1,000,000,000.
+- Prices come from pool-level bars: the bonding curve and the graduation pool always, and any other pool only while it holds at least $5,000 of liquidity. Codex.io's token-level bars and its own ATH fields are never used; the probe showed both are wrong for many coins.
+- **A price counts as reached only if at least two 1-minute closes within a 3-minute span were at or above it, at least $1,000 traded in that span, and at least one of those minutes had 5 or more distinct traders.** For a full window this is the 3-minute median close. A single-candle spike cannot set the ATH. Neither can a print on an empty pool, or two wallets trading with each other.
+- Where several pools trade in the same minute, the busiest pool's price is used, so a small side pool that drifts cannot set any metric.
+- A coin can peak long after launch; one probe coin peaked a year later. Hourly or daily bars cover the coin's whole life, and 1-minute bars are fetched for every period that could hold the peak before the ATH is final.
+- The raw maximum candle high is stored separately as `ath_wick`, so the difference is visible.
+- Any market cap above $20 billion is treated as a data error and queued for review.
+- Time above $100k, $1M, $10M and $100M, and max drawdown, come from a running price level. Thin trades can lower that level but cannot raise it. With no trades, the last level carries forward for at most 24 hours.
+- Every ATH records which pool and which minute it came from.
+
+The thresholds are starting values. Task A6 tunes them against the 500-coin sample.
+
+## Phase 0: probes and setup
+
+| ID | Task | Owner | Acceptance criteria | Status |
+|---|---|---|---|---|
+| P1 | Codex.io candle-history probe on 20 coins | data-ingestion | Per-coin table; pass or fail against "1-minute bars from the first minutes after graduation for 19 of 20"; terms quoted; under 400 requests. **Passed 20 of 20 with 201 requests.** Results in `docs/data-sources.md` section 7. | done |
+| P2 | Dune sizing query: graduates per month, how many peaked at $100k+, trades per coin | data-ingestion | Exact target-set count; credit cost of the query recorded. **Blocked on a Dune key.** | blocked |
+| P3 | DexPaprika candle-history probe, same 20 coins | data-ingestion | Same bar as P1. Run only if Codex.io's terms come back unfavourable (P7), or to test a cheaper long-term source. Needs a $99 Pro key. | on hold |
+| P4 | Birdeye candle-history probe, same 20 coins | data-ingestion | Same bar as P1; storage terms read. Same condition as P3. | on hold |
+| P5 | Choose the candle source and record why in `docs/data-sources.md` | lead | Decision backed by probe results. **Codex.io chosen**, conditional on P7. | done |
+| P6 | Repo scaffold: workspace, TypeScript, lint, test runner, Docker Compose Postgres with pgvector, package skeletons, metric interface types. Issue #1. | repo-chores, lead | Clean clone: install, typecheck, lint and tests pass; the Compose database has pgvector available | in progress |
+| P7 | Written confirmation from Codex.io that we may store its bars and display statistics derived from them on a free public site | you (lead drafts the email) | Reply on file before E3. If the answer is no, P3 and P4 run. | todo |
+| P8 | CI: install, typecheck, lint and test on every pull request, with a pgvector Postgres service. Issue #6. | OpenAI Codex | Fails when any step fails; needs no secrets; under 10 minutes | todo (after P6 merges) |
+
+## Phase A: schema, 500 coins, ATH
+
+| ID | Task | Owner | Depends on | Acceptance criteria | Status |
+|---|---|---|---|---|---|
+| A1 | Schema and migrations in `/db`: coins, pools, candles, narratives, per-coin stage tracking, eval labels, narrative research, ingest runs, data-issue queue. Issue #2. | backend-api | P6 | Migrations apply from empty and are safe to re-apply; unique on chain plus address; candle storage measured on real bars and projected for 100,000 coins; seed script loads fixtures | todo |
+| A2a | Codex.io client in `/ingest/src/sources`: token discovery, pools for a token, pool-level bars with pagination, shared rate limiter, compute-unit metering and budget. Issue #3. | data-ingestion | P5, P6 | Tests run from recorded fixtures with no live calls; rate limiter proven to hold its limit; dry-run returns planned calls and cost; spend is metered from the cost each response reports, and a per-run budget stops the job when it is reached | todo |
+| A2b | Metadata and current-price clients: Helius, IPFS with several gateways, Jupiter | data-ingestion | A2a, Helius key | Same test bar as A2a; verified against the live Helius API once the key arrives | blocked (Helius key) |
+| A3 | Metric library in `/ingest/src/metrics`, implementing `docs/metrics.md`. Issue #4. | data-ingestion | P6 | Pure functions; passes every A4 fixture; `ath` never exceeds `ath_wick`; time above $1M never exceeds time above $100k; result independent of input order | todo |
+| A4 | Edge-case fixtures with hand-worked expected answers, in `/ingest/test/fixtures/metrics`. Issue #5. | testing | P6 | Each fixture has the full expected output and the reasoning; written from `docs/metrics.md`, not from A3's code; every ambiguity found in the rules is reported | todo |
+| A5 | Worker and per-coin pipeline; ingest 500 coins sampled across eras and ATH sizes, including the 20 probe coins | data-ingestion | A1, A2a, A2b, A3, P2 | Cost estimate printed and confirmed before the run; at least 98% of coins complete with reasons listed for the rest; a second run changes nothing; killing the worker mid-run and resuming completes with no duplicates; actual calls within 10% of the estimate | todo |
+| A6 | Validation: compare our ATH with Dune's rough ATH and with public figures for well-known coins; review the largest disagreements and the largest wick-to-ATH gaps; tune thresholds | lead, testing | A5 | 95% of coins within 15% of the Dune figure, every larger gap explained or fixed; well-known coins within 10% of their public ATH | todo |
+
+A3 and A4 run in parallel from the same written rules, so the tests are an independent check. A1, A2a, A3 and A4 all run at once after P6.
+
+## Phase B: classification
+
+| ID | Task | Owner | Depends on | Acceptance criteria | Status |
+|---|---|---|---|---|---|
+| B0 | Pilot research batch on the 20 probe coins, to test the research format. Issue #7. | Grok | none | `/research/narratives/batch-7.json` valid against the `AGENTS.md` schema; every claim sourced; boundary cases noted | todo |
+| B1 | Taxonomy guide: a definition, boundary cases and tie-break rules for each of the 11 narratives, plus what counts as a derivative and its parent | lead, reviewed by Muse, approved by you | none (B0 helps) | `docs/taxonomy.md` approved by you | todo |
+| B2 | Draw a 200-coin sample spread across eras, ATH sizes and likely narratives; open research issues for Grok in batches | lead, Grok | A5 | Sample list committed; a research batch covering every sampled coin | todo |
+| B3 | Label the 200 coins in `/research/evals/labels.csv`: 120 for tuning, 80 held back | Muse, with you (see Q10) | B1, B2 | 200 labels in the `AGENTS.md` format; the split is frozen before any tuning; no classifier output seen while labelling | todo |
+| B4 | Classification pipeline in `/pipeline`: Batch API, prompt caching, structured output (primary, up to three secondary, confidence, one-line reason, parent, sensitive flag, 2 to 3 sentence summary); re-run under 0.7 confidence on Sonnet | data-ingestion | A5, B1 | Dry-run prints token and cost estimate; cache reads confirmed in usage; every output validates against the schema; re-running skips finished coins | todo |
+| B5 | Parent candidates: for each coin, earlier and larger coins with a similar name, ticker or description, passed to the classifier as context | backend-api | A5 | Returns the right parent for a hand-checked set of 20 known derivatives | todo |
+| B6 | Eval harness and loaders for `labels.csv` and the research batches: accuracy overall and per narrative, confusion table, accuracy by confidence band | testing | B3 | One command scores a run against the labels; the confidence bands show whether 0.7 is the right cut-off | todo |
+| B7 | Prompt tuning | lead | B4, B6 | Primary-narrative accuracy above 90% on the 80 held-back coins; 50 summaries spot-checked for claims not supported by the coin's own data; Muse's review notes in `/research/evals/qa-<issue>.md` | todo |
+| B8 | Embeddings: choose the model with a cost estimate, embed name, description, narratives and summary, add the vector column and index | data-ingestion, backend-api | B4, Q12 | Model choice and cost approved by you; all classified coins embedded; nearest neighbours for 20 spot-checked coins look sensible | todo |
+
+Rough classification cost, to be re-estimated from real token counts before any run: about $10 to $30 per 100,000 coins on Haiku with batching and caching, plus about $50 per 100,000 coins if 15% need the Sonnet re-run. Embeddings should be under $10 for the full set.
+
+## Phase C: search and comparables API
+
+| ID | Task | Owner | Depends on | Acceptance criteria | Status |
+|---|---|---|---|---|---|
+| C0 | API contract in `/api/README.md`: endpoints, parameters, response and error shapes, with example responses OpenAI Codex can build `/web` against | lead | A1 | Covers search, coin, narrative and comparables; every field traced to a database column or a documented calculation | todo |
+| C1 | Keyword search and filters (narrative, ATH range, launch date, status), with fuzzy matching on ticker and name | backend-api | A5, B4, C0 | 95th-percentile response under 200 ms on 300,000 synthetic rows; paginated; matches the contract | todo |
+| C2 | Vector similarity search | backend-api | B8 | Index recall at least 0.95 against exact search on a sample; same latency bar | todo |
+| C3 | Comparables: given a contract address, the nearest past coins and their ATH distribution (median, p75, p90, max) | backend-api | C2 | Statistics match a brute-force reference; sample size always returned; fewer than 10 neighbours returns an explicit "not enough comparables" result; unknown addresses handled per Q1 | todo |
+| C4 | API tests | testing | C1, C2, C3 | Covers filters, pagination, bad input, and the comparables statistics on a fixture with a known answer | todo |
+
+## Phase D: frontend
+
+All of Phase D is in `/web` and belongs to OpenAI Codex. Each task becomes an issue labelled `codex` once C0 is merged; the lead reviews each pull request.
+
+| ID | Task | Owner | Depends on | Acceptance criteria | Status |
+|---|---|---|---|---|---|
+| D1 | Layout, shared components, number and duration formatting, provider attribution | OpenAI Codex | C0 | Creator-written text renders as plain text only; images come from our own storage; attribution visible | todo |
+| D2 | Search page | OpenAI Codex | D1, C1 | Keyword, filters and pagination work; empty, loading and error states checked | todo |
+| D3 | Coin page: identity, metrics, summary, narratives, parent, socials, embedded chart | OpenAI Codex | D1 | Server-rendered for search engines; flagged images hidden per Q4 | todo |
+| D4 | Narrative page: coins in a narrative with its ATH distribution | OpenAI Codex | D1, C1 | Sample size shown beside every distribution | todo |
+| D5 | Comparables page | OpenAI Codex | D1, C3 | The "$100k+ only" caveat from Q2 is visible; "not enough comparables" state handled | todo |
+| D6 | End-to-end tests and an accessibility pass | OpenAI Codex | D2 to D5 | Each page's main path and failure states covered | todo |
+
+D2 to D5 can run in parallel after D1.
+
+## Phase E: full backfill and live worker
+
+| ID | Task | Owner | Depends on | Acceptance criteria | Status |
+|---|---|---|---|---|---|
+| E1 | Backfill orchestration: enqueue from the discovery list, progress view, pause and resume, rate budget | data-ingestion | A6 | A 5,000-coin run measures throughput, failure rate and cost per coin | todo |
+| E2 | **Cost estimate for the full backfill, shown to you.** Data first (per Q9), then classification and embeddings, from E1's measurements. | lead | E1 | **Stop for your approval.** | todo |
+| E3 | Full backfill: the candle and metric stages inside the paid Codex.io month, classification and embeddings once Phase B passes | data-ingestion | E2 approved, P7 | Resumable and idempotent as in A5; final spend reported against the estimate | todo |
+| E4 | Live worker: graduation feed, watchlist polling, ingest and classify a coin when it crosses $100k | data-ingestion | E3 | A coin crossing $100k appears within the Q8 target; a missed feed message is recovered by the daily sweep | todo |
+| E5 | Daily refresh of current market cap and status | data-ingestion | E3 | Full sweep finishes inside a day on free-tier limits | todo |
+| E6 | Monitoring and a runbook | data-ingestion, repo-chores | E4 | Alerts on a stalled queue and on provider errors; runbook covers restart and re-ingest | todo |
+
+## Budget summary
+
+| Item | Estimate | When it is confirmed |
+|---|---|---|
+| Probes | $0 spent. DexPaprika's $99 is not needed so far. | Done |
+| Codex.io Growth plan | $360 a month, bought 2026-11-14. Phase A uses under 1% of a month's quota. | Paid |
+| Full backfill data | Inside one Codex.io month up to about 100,000 to 150,000 coins; up to about $1,200 at 300,000 coins. Plus about $75 for Dune. | E2 |
+| Classification and embeddings | Roughly $60 to $90 per 100,000 coins | B4 dry-run, then E2 |
+| Live running cost, data | $360 a month on the current plan, which is the smallest paid size. Live use needs a small fraction of it. | E4 |
+| Hosting | Not estimated | Q6 |
+
+## Later: other chains
+
+Ethereum, Base, BNB and others. Out of scope for this plan. The chain-keyed schema, the per-coin pipeline and the source clients are the pieces built to be reused.

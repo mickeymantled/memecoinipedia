@@ -1,0 +1,20 @@
+# Secrets: never commit real keys
+.env
+.env.*
+!.env.example
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# Dependencies and build output
+node_modules/
+.next/
+dist/
+coverage/
+
+# OS and editor noise
+.DS_Store
+*.log
+
+# Raw provider responses from probes: not redistributed (see docs/data-sources.md, risks)
+probes/*-results.json
