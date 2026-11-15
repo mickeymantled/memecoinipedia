@@ -33,6 +33,7 @@ export type {
   StoreMetricsOutcome,
   WriteMetricsContext,
 } from './coinMetrics.js';
+export { OTHER_POOL_QUOTE, OTHER_POOL_QUOTE_MINTS, poolCountsForMetrics } from './poolQuote.js';
 export { seed } from './seed.js';
 export * from './stages.js';
 export * from './runs.js';

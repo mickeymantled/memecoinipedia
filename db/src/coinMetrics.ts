@@ -1,5 +1,6 @@
 import { sql, type Kysely } from 'kysely';
 import { getBars, type CandleBar } from './candles.js';
+import { poolCountsForMetrics } from './poolQuote.js';
 import type { Database } from './types.js';
 
 /*
@@ -51,14 +52,18 @@ export type LoadedMetricInput =
       input: MetricInputShape;
       /** Pool address to pool id, for every pool of the coin. */
       poolIds: Map<string, number>;
-      /** Bars loaded, all pools and resolutions. */
+      /** Bars loaded, all resolutions, of the pools that count. */
       barCount: number;
+      /** Side pools left out of the input by `poolCountsForMetrics`; their bars stay stored. */
+      sidePoolsLeftOut: number;
     }
   | { ok: false; reason: 'coin_not_found' | 'missing_launch_time' };
 
 /**
  * Reads the coin's launch time, supply, pools and stored bars (up to and
- * including `asOf`). Returns a failure when the coin does not exist or has no
+ * including `asOf`). A side pool whose quote token is not SOL, USDC or USDT is left out of the
+ * input (`poolCountsForMetrics`, docs/metrics.md section 1) and its bars are not read; it stays in
+ * `poolIds`. Every path that turns stored pools into a metric input goes through here. Returns a failure when the coin does not exist or has no
  * launch time, which the metrics need.
  */
 export async function loadMetricInput(
@@ -76,15 +81,20 @@ export async function loadMetricInput(
 
   const pools = await db
     .selectFrom('pools')
-    .select(['id', 'address', 'dex', 'is_primary'])
+    .select(['id', 'address', 'dex', 'is_primary', 'quote_token'])
     .where('coin_id', '=', coinId)
     .orderBy('id')
     .execute();
   const poolIds = new Map<string, number>();
   const out: MetricPoolInput[] = [];
   let barCount = 0;
+  let sidePoolsLeftOut = 0;
   for (const p of pools) {
     poolIds.set(p.address, p.id);
+    if (!poolCountsForMetrics({ isPrimary: p.is_primary, quoteToken: p.quote_token })) {
+      sidePoolsLeftOut += 1;
+      continue;
+    }
     const range = { to: asOf + 1 };
     const [bars1m, bars1h, bars1d] = await Promise.all([
       getBars(db, p.id, 60, range),
@@ -104,6 +114,7 @@ export async function loadMetricInput(
     },
     poolIds,
     barCount,
+    sidePoolsLeftOut,
   };
 }
 
@@ -272,7 +283,13 @@ export async function writeCoinMetrics(
 }
 
 export type StoreMetricsOutcome =
-  | { ok: true; result: MetricResultShape; status: CoinStatus; barCount: number }
+  | {
+      ok: true;
+      result: MetricResultShape;
+      status: CoinStatus;
+      barCount: number;
+      sidePoolsLeftOut: number;
+    }
   | { ok: false; reason: 'coin_not_found' | 'missing_launch_time' | 'no_candles' };
 
 /**
@@ -307,5 +324,11 @@ export async function computeAndStoreCoinMetrics(
     computedAt: opts.computedAt,
     status,
   });
-  return { ok: true, result, status, barCount: loaded.barCount };
+  return {
+    ok: true,
+    result,
+    status,
+    barCount: loaded.barCount,
+    sidePoolsLeftOut: loaded.sidePoolsLeftOut,
+  };
 }

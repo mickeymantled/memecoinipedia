@@ -10,7 +10,7 @@ import { DEFAULT_PLAN_LIMITS } from './plan.js';
 import type { CandleDeps } from './types.js';
 
 /** Stored in `coins.metrics_version`. Raise it when docs/metrics.md or the status rule changes. */
-export const METRICS_VERSION = 4;
+export const METRICS_VERSION = 5;
 
 /** The flag the fetcher sets on a coin it screened out. It is not one of the metric library's flags. */
 export const SCREENED_OUT_FLAG = 'screened_out';
@@ -35,6 +35,8 @@ export type ComputeMetricsResult =
       barCount: number;
       /** The coin has no 1-minute bars and no daily high reaching the screen line: stored as screened out. */
       screenedOut: boolean;
+      /** Side pools left out of the input because their quote token is not SOL, USDC or USDT. */
+      sidePoolsLeftOut: number;
       /** The coin has no stored bar at all: stored with a null ATH and the `no_candles` flag. */
       noCandles: boolean;
     }
@@ -147,6 +149,7 @@ export async function computeMetricsForCoin(
     status: out.status,
     metricsVersion: METRICS_VERSION,
     barCount: out.barCount,
+    sidePoolsLeftOut: out.sidePoolsLeftOut,
     screenedOut,
     noCandles: out.barCount === 0,
   };

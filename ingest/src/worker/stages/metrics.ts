@@ -9,7 +9,7 @@
  * (`noCandlesResult`). The stage requires `candles` (see `STAGE_REQUIRES`): a coin whose
  * candles failed is not given metrics.
  *
- * Reopening. Metric rules version 4 can only lower an ATH, so a coin fetched under an older
+ * Reopening. Metric rules versions 4 and 5 can only lower an ATH, so a coin fetched under an older
  * version can come out with `peak_outside_minute_coverage` for a period it holds no 1-minute bars
  * for. When the result carries the flag, a target of it is at or above `refineFromUsd`, and the
  * coin's candles are `done` without the hourly cap hit and were fetched under an older metrics
@@ -50,7 +50,9 @@ export const metricsStage: Stage = {
     if (!result.ok) return failed(`${result.reason}: ${result.message}`, result.retry);
     // A coin with no stored bar ends `done` with a null ATH and the `no_candles` flag:
     // retrying cannot make bars appear, so it is neither failed nor retried.
-    if (result.noCandles) return done({ noCandles: true });
+    const leftOut =
+      result.sidePoolsLeftOut > 0 ? { sidePoolsLeftOut: result.sidePoolsLeftOut } : {};
+    if (result.noCandles) return done({ noCandles: true, ...leftOut });
     if (
       (result.result.flags as string[]).includes(COVERAGE_FLAG) &&
       (await candlesCanBeRefetched(ctx, coin.id))
@@ -60,9 +62,11 @@ export const metricsStage: Stage = {
         const worthFetching = findCoveragePeaks(loaded.input).some(
           (x) => x.highUsd === undefined || x.highUsd >= DEFAULT_PLAN_LIMITS.refineFromUsd,
         );
-        if (worthFetching) return doneAndReopen({ reopenedCandles: true }, ['candles', 'metrics']);
+        if (worthFetching) {
+          return doneAndReopen({ reopenedCandles: true, ...leftOut }, ['candles', 'metrics']);
+        }
       }
     }
-    return done();
+    return result.sidePoolsLeftOut > 0 ? done(leftOut) : done();
   },
 };
