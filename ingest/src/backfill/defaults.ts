@@ -51,4 +51,9 @@ export const DEFAULT_MIN_ROUGH_PEAK_USD = 30_000;
  * only touch the database take more; the ones that wait on a provider keep batches small, because
  * a batch ends when its slowest coin does.
  */
-export const BACKFILL_BATCH_SIZE = { candles: 5, metrics: 10, metadata: 5 } as const;
+export const BACKFILL_BATCH_SIZE = {
+  candles: 5,
+  metrics: 10,
+  metadata: 5,
+  metadata_file: 5,
+} as const;

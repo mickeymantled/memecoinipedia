@@ -40,6 +40,7 @@ import {
   type HeliusAssets,
   type JupiterPrices,
 } from './stages/metadata.js';
+import { METADATA_FILE_STAGE_VERSION, createMetadataFileStage } from './stages/metadataFile.js';
 import { buildSummary, formatSummary, type RunSummary } from './summary.js';
 import { UsageMeter, type UsageTotals } from './usage.js';
 import { DEFAULT_MAX_ATTEMPTS, PipelineWorker, type PipelineWorkerOptions } from './worker.js';
@@ -61,6 +62,7 @@ export const CODEX_MAX_PER_SECOND = 10;
 /** Stage versions, for the plan: a stage done at a lower version counts as work. */
 export const STAGE_VERSIONS: Partial<Record<StageName, number>> = {
   metadata: METADATA_STAGE_VERSION,
+  metadata_file: METADATA_FILE_STAGE_VERSION,
   candles: CANDLES_STAGE_VERSION,
   metrics: METRICS_VERSION,
 };
@@ -193,13 +195,11 @@ export function buildRegistry(
     addresses,
     maxAttempts,
   });
-  const registry = new StageRegistry().register(discoveredStage).register(
-    createMetadataStage({
-      assets,
-      prices,
-      fetchMetadata: clients.fetchMetadata,
-      usage: meter,
-    }),
+  const registry = new StageRegistry()
+    .register(discoveredStage)
+    .register(createMetadataStage({ assets, prices }));
+  registry.register(
+    createMetadataFileStage({ fetchMetadata: clients.fetchMetadata, usage: meter }),
   );
   // The candles stage needs the run's Codex.io client; metrics reads stored bars and needs none.
   const candles = clients.codex ? createCandlesStage({ codex: clients.codex }) : null;

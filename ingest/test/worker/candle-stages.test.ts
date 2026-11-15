@@ -515,7 +515,13 @@ describeDb('candles and metrics stages in the run', () => {
     expect(report.status).toBe('dry_run');
     expect(h.provider.total()).toBe(0);
     expect(await everything()).toEqual(before);
-    expect(report.plan.stageWork).toEqual({ discovered: 5, metadata: 5, candles: 5, metrics: 5 });
+    expect(report.plan.stageWork).toEqual({
+      discovered: 5,
+      metadata: 5,
+      metadata_file: 5,
+      candles: 5,
+      metrics: 5,
+    });
     expect(report.plan.candles!.totalUnits).toBe(16 * 2 + 20 + 35 + 80);
     expect(text).toContain('about 167 compute units for 5 coins (ceiling 300)');
     expect(text).toContain('30k-50k');

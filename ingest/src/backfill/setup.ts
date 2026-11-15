@@ -36,11 +36,26 @@ import {
   type HeliusAssets,
   type JupiterPrices,
 } from '../worker/stages/metadata.js';
+import { createMetadataFileStage } from '../worker/stages/metadataFile.js';
 import { metricsStage } from '../worker/stages/metrics.js';
 import type { UsageMeter } from '../worker/usage.js';
 
-export type BackfillStageName = 'candles' | 'metrics' | 'metadata';
-export const BACKFILL_STAGES: readonly BackfillStageName[] = ['candles', 'metrics', 'metadata'];
+export type BackfillStageName = 'candles' | 'metrics' | 'metadata' | 'metadata_file';
+export const BACKFILL_STAGES: readonly BackfillStageName[] = [
+  'candles',
+  'metrics',
+  'metadata',
+  'metadata_file',
+];
+/**
+ * The stages a backfill runs when `--stages` is not given. `metadata_file` is left out: it is
+ * paced by the gateways and is run by itself (`--stages metadata_file`).
+ */
+export const DEFAULT_BACKFILL_STAGES: readonly BackfillStageName[] = [
+  'candles',
+  'metrics',
+  'metadata',
+];
 
 export interface BackfillClientOptions {
   codexRps: number;
@@ -120,9 +135,14 @@ export interface BackfillRegistryOptions {
   metadataCandidateIds: () => readonly number[];
 }
 
-/** The stage `metadata` as the backfill runs it: after `metrics`, for listed coins only. */
+/** The stage `metadata` (or `metadata_file`) as the backfill runs it: after `metrics`, for listed coins only. */
 export function backfillMetadataStage(stage: Stage): Stage {
   return { ...stage, requires: 'metrics', onlyIf: { minAthMarketCapUsd: LISTED_ATH_USD } };
+}
+
+/** The stage `metadata_file` as the backfill runs it: after `metadata`, for listed coins only. */
+export function backfillMetadataFileStage(stage: Stage): Stage {
+  return { ...stage, requires: 'metadata', onlyIf: { minAthMarketCapUsd: LISTED_ATH_USD } };
 }
 
 export function buildBackfillRegistry(o: BackfillRegistryOptions): {
@@ -147,14 +167,12 @@ export function buildBackfillRegistry(o: BackfillRegistryOptions): {
       minAthMarketCapUsd: LISTED_ATH_USD,
       candidateIds: o.metadataCandidateIds,
     });
+    registry.register(backfillMetadataStage(createMetadataStage({ assets, prices })));
+  }
+  if (o.stages.includes('metadata_file')) {
     registry.register(
-      backfillMetadataStage(
-        createMetadataStage({
-          assets,
-          prices,
-          fetchMetadata: o.clients.fetchMetadata,
-          usage: o.meter,
-        }),
+      backfillMetadataFileStage(
+        createMetadataFileStage({ fetchMetadata: o.clients.fetchMetadata, usage: o.meter }),
       ),
     );
   }

@@ -79,6 +79,18 @@ export function stripNulDeep(value: unknown, maxDepth = MAX_JSON_DEPTH): unknown
   return root;
 }
 
+/**
+ * The one rule for free text the creator wrote (a description): NUL removed, a blank value
+ * (nothing, or only whitespace) becomes null, anything else is kept exactly as written, including
+ * leading and trailing whitespace. The `metadata` stage (text from Helius) and the `metadata_file`
+ * stage (text from the file) both store text through this function, so the two cannot differ.
+ */
+export function cleanText(value: string | null | undefined): string | null {
+  if (typeof value !== 'string') return null;
+  const s = stripNul(value);
+  return s.trim() === '' ? null : s;
+}
+
 const str = (v: unknown): string | null => (typeof v === 'string' ? stripNul(v) : null);
 
 /**

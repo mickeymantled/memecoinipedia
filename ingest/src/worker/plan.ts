@@ -116,7 +116,7 @@ export interface IngestPlan {
   nothingToDo: boolean;
 }
 
-export function estimateMetadata(coins: number, gateways = DEFAULT_IPFS_GATEWAYS.length): Estimate {
+export function estimateMetadata(coins: number): Estimate {
   if (coins <= 0) return {};
   const heliusRequests = Math.ceil(coins / MAX_ASSETS_PER_REQUEST);
   return {
@@ -129,6 +129,16 @@ export function estimateMetadata(coins: number, gateways = DEFAULT_IPFS_GATEWAYS
       requests: Math.ceil(coins / JUPITER_MAX_MINTS_PER_REQUEST),
       note: 'one request per 100 coins; no credits',
     },
+  };
+}
+
+/** The gateway requests the `metadata_file` stage makes: no credits, one request per coin at least. */
+export function estimateMetadataFile(
+  coins: number,
+  gateways = DEFAULT_IPFS_GATEWAYS.length,
+): Estimate {
+  if (coins <= 0) return {};
+  return {
     'metadata-fetch': {
       requests: coins,
       maxRequests: coins * gateways,
@@ -254,6 +264,8 @@ export async function planIngest(input: PlanInput): Promise<IngestPlan> {
 
   const metadataWork = stageWork['metadata'] ?? 0;
   const estimate = wants('metadata') ? estimateMetadata(metadataWork) : {};
+  if (wants('metadata_file'))
+    Object.assign(estimate, estimateMetadataFile(stageWork['metadata_file'] ?? 0));
   const ceiling = input.maxHeliusCredits ?? null;
   const credits = estimate.helius?.credits ?? 0;
   let candles: CandleEstimate | null = null;

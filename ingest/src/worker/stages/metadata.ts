@@ -1,31 +1,24 @@
 /**
- * The `metadata` stage: what a coin is called and what its creator said about it.
+ * The `metadata` stage: what a coin is called, where its metadata file lives, and its price.
  *
  * For one coin it
  *   1. takes the on-chain asset from Helius `getAssetBatch` (one request per
  *      1,000 coins, through a prefetching loader, not one per coin),
- *   2. fetches the metadata JSON at the on-chain URI with `fetchTokenMetadata`,
- *   3. takes the current price from Jupiter (100 coins per request),
- *   4. stores ticker, name, token program id, metadata URI, description,
- *      socials, the raw metadata JSON and the image reference.
+ *   2. takes the current price from Jupiter (100 coins per request),
+ *   3. stores ticker, name, token program id, metadata URI, the description and the image
+ *      reference when Helius carries them, and the price.
  *
- * It fetches no image. The image reference has no gateway host (see image.ts).
+ * It makes no gateway request and fetches no image: the metadata file is the `metadata_file`
+ * stage (see metadataFile.ts). The image reference has no gateway host (see image.ts).
  *
- * Outcomes of the metadata fetch:
- *   ok                                  stored.
- *   not_found, invalid, too_large,
- *   unsupported_uri                     the stage is `done`; the reason is a data issue
- *                                       (`metadata_<outcome>`), and the coin keeps its on-chain fields.
- *   unreachable                         the stage `failed`, retryable.
- * Beyond the issue: Helius knowing no asset for the mint (`asset_not_found`), a
- * row of the wrong shape (`asset_invalid`) or an asset with no URI
- * (`metadata_no_uri`) are also `done` with a data issue, because a retry
- * cannot change them.
+ * Description and image from Helius are written only while `metadata_file` is not done for the
+ * coin. Once the file stage is done, its values (the file is the record of what the creator wrote
+ * at launch) are never replaced by a re-run of this stage.
  *
- * Socials. A link is kept only when it is a full http(s) URL without
- * credentials (the rule in `normalizeSocialUrl`). A handle or a bare domain
- * is dropped, and each drop is recorded in the `social_links_dropped` issue so
- * the count can be read back from the database.
+ * Data issues this stage owns: Helius knowing no asset for the mint (`asset_not_found`), a row of
+ * the wrong shape (`asset_invalid`), an asset with no URI (`metadata_no_uri`) and a price of the
+ * wrong shape (`price_invalid`). Each is `done` with the issue, because a retry cannot change it.
+ * A Helius or Jupiter error fails the stage as retryable.
  *
  * Token program: the program id is stored (`TokenkegQ...` or `TokenzQd...`),
  * not a label, because it is exact and the label can be derived from it.
@@ -38,29 +31,22 @@ import {
   type NewIssue,
   type StageName,
 } from '@memecoinipedia/db';
-import type { Kysely } from 'kysely';
+import { sql, type Kysely } from 'kysely';
 import { BudgetExceededError } from '../../sources/budget.js';
 import type { AssetInfo } from '../../sources/helius/client.js';
 import type { JupiterToken } from '../../sources/jupiter/client.js';
-import type { MetadataResult } from '../../sources/metadata/fetch.js';
+import { cleanText } from '../../sources/metadata/parse.js';
 import { PrefetchLoader } from '../batch.js';
 import { done, failed, type Stage, type StageContext, type StageCoin } from '../stage.js';
-import type { UsageMeter } from '../usage.js';
 import { imageReference } from './image.js';
 
-export const METADATA_STAGE_VERSION = 1;
-export const SOCIAL_FIELDS = ['twitter', 'telegram', 'website'] as const;
+export const METADATA_STAGE_VERSION = 2;
 
 /** Issue kinds this stage owns: it replaces them on every run. */
 export const METADATA_ISSUE_KINDS = [
   'asset_not_found',
   'asset_invalid',
   'metadata_no_uri',
-  'metadata_not_found',
-  'metadata_invalid',
-  'metadata_too_large',
-  'metadata_unsupported_uri',
-  'social_links_dropped',
   'price_invalid',
 ] as const;
 
@@ -74,35 +60,11 @@ export interface PriceLookup {
 export interface MetadataStageDeps {
   assets: AssetLookup;
   prices: PriceLookup;
-  fetchMetadata(uri: string): Promise<MetadataResult>;
-  usage?: UsageMeter;
 }
 
 const clip = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 const errorText = (err: unknown): string =>
   clip(err instanceof Error ? err.message : String(err), 300);
-const blankToNull = (s: string | null): string | null => (s === null || s.trim() === '' ? null : s);
-
-export interface DroppedLink {
-  field: string;
-  value: string;
-}
-
-/** Social fields the JSON gave a value for that `normalizeSocialUrl` refused. */
-export function droppedSocialLinks(
-  raw: Record<string, unknown>,
-  kept: Record<(typeof SOCIAL_FIELDS)[number], string | null>,
-): DroppedLink[] {
-  const out: DroppedLink[] = [];
-  for (const field of SOCIAL_FIELDS) {
-    const v = raw[field];
-    const present = v !== undefined && v !== null && !(typeof v === 'string' && v.trim() === '');
-    if (present && kept[field] === null) {
-      out.push({ field, value: clip(typeof v === 'string' ? v : JSON.stringify(v), 200) });
-    }
-  }
-  return out;
-}
 
 export function createMetadataStage(deps: MetadataStageDeps): Stage {
   return {
@@ -128,9 +90,9 @@ export function createMetadataStage(deps: MetadataStageDeps): Stage {
         });
       }
       const usable = asset.found && !asset.invalid;
-      const ticker = usable ? blankToNull(asset.symbol) : null;
-      const name = usable ? blankToNull(asset.name) : null;
-      const uri = usable ? blankToNull(asset.uri) : null;
+      const ticker = usable ? cleanText(asset.symbol) : null;
+      const name = usable ? cleanText(asset.name) : null;
+      const uri = usable ? cleanText(asset.uri) : null;
       if (usable && uri === null) issues.push({ kind: 'metadata_no_uri' });
 
       // What the chain says is kept even if the rest of the stage has to be retried.
@@ -146,42 +108,34 @@ export function createMetadataStage(deps: MetadataStageDeps): Stage {
           })
           .where('id', '=', coin.id)
           .execute();
+        // The description and image Helius holds. Once the `metadata_file` stage is done for the
+        // coin, the file's values stand (the file is the record of what the creator wrote at
+        // launch): a later run of this stage, after a version bump, must not put Helius's back.
+        // The condition is part of the UPDATE, so a file stage finishing in between is not undone.
+        await ctx.db
+          .updateTable('coins')
+          .set({
+            description: cleanText(asset.description),
+            image_url: imageReference(asset.image),
+            updated_at: ctx.now(),
+          })
+          .where('id', '=', coin.id)
+          .where((eb) =>
+            eb.not(
+              eb.exists(
+                eb
+                  .selectFrom('coin_stages as f')
+                  .select(sql.lit(1).as('one'))
+                  .where('f.coin_id', '=', coin.id)
+                  .where('f.stage', '=', 'metadata_file')
+                  .where('f.status', '=', 'done'),
+              ),
+            ),
+          )
+          .execute();
       }
 
-      // 2. Metadata JSON.
-      let result: MetadataResult | null = null;
-      if (uri !== null) {
-        try {
-          result = await deps.fetchMetadata(uri);
-        } catch (err) {
-          return failed(`metadata_error: ${errorText(err)}`, true);
-        }
-        deps.usage?.add(
-          'metadata-fetch',
-          result.attempts.reduce((n, a) => n + a.requests, 0),
-        );
-        if (result.outcome === 'unreachable') {
-          const why = result.attempts.map((a) => `${a.gateway} ${a.result}`).join(', ');
-          return failed(`metadata_unreachable: ${clip(why, 300)}`, true);
-        }
-        if (result.outcome !== 'ok') {
-          issues.push({
-            kind: `metadata_${result.outcome}`,
-            detail: {
-              uri: clip(uri, 300),
-              gateway: result.gateway,
-              reason: result.detail,
-              attempts: result.attempts.map((a) => ({
-                gateway: a.gateway,
-                result: a.result,
-                status: a.status,
-              })),
-            },
-          });
-        }
-      }
-
-      // 3. Current price.
+      // 2. Current price.
       let price: JupiterToken;
       try {
         price = await deps.prices.get(coin.address);
@@ -196,43 +150,23 @@ export function createMetadataStage(deps: MetadataStageDeps): Stage {
         });
       }
 
-      // 4. Store.
-      const meta = result?.outcome === 'ok' ? result.metadata : null;
-      const raw = result?.outcome === 'ok' ? result.raw : null;
-      const socials: Record<string, string> = {};
-      if (meta) {
-        for (const f of SOCIAL_FIELDS) {
-          const v = meta[f];
-          if (v !== null) socials[f] = v;
-        }
-        const dropped = droppedSocialLinks(raw ?? {}, meta);
-        if (dropped.length > 0)
-          issues.push({ kind: 'social_links_dropped', detail: { links: dropped } });
-      }
-
-      const set: Record<string, unknown> = { updated_at: ctx.now() };
-      if (meta) {
-        if (ticker === null && meta.symbol !== null) set['ticker'] = blankToNull(meta.symbol);
-        if (name === null && meta.name !== null) set['name'] = blankToNull(meta.name);
-        set['description'] = blankToNull(meta.description);
-        set['image_url'] = imageReference(meta.image);
-        set['socials'] = JSON.stringify(socials);
-        set['metadata_raw'] = JSON.stringify(raw);
-      }
+      // 3. Store.
       if (price.found && !price.invalid) {
         const supply = Number(coin.total_supply);
-        set['current_price_usd'] = price.priceUsd;
-        set['current_liquidity_usd'] = price.liquidityUsd;
-        set['current_volume_24h_usd'] = price.volume24hUsd;
-        set['current_market_cap_usd'] =
-          price.priceUsd !== null && Number.isFinite(supply) ? price.priceUsd * supply : null;
-        set['current_refreshed_at'] = ctx.now();
+        await ctx.db
+          .updateTable('coins')
+          .set({
+            current_price_usd: price.priceUsd,
+            current_liquidity_usd: price.liquidityUsd,
+            current_volume_24h_usd: price.volume24hUsd,
+            current_market_cap_usd:
+              price.priceUsd !== null && Number.isFinite(supply) ? price.priceUsd * supply : null,
+            current_refreshed_at: ctx.now(),
+            updated_at: ctx.now(),
+          })
+          .where('id', '=', coin.id)
+          .execute();
       }
-      await ctx.db
-        .updateTable('coins')
-        .set(set as never)
-        .where('id', '=', coin.id)
-        .execute();
       await replaceCoinIssues(ctx.db, coin.id, METADATA_ISSUE_KINDS, issues);
       return done();
     },
@@ -278,6 +212,8 @@ const notFoundAsset = (mint: string): AssetInfo => ({
   name: null,
   symbol: null,
   uri: null,
+  description: null,
+  image: null,
   layout: null,
   tokenProgram: null,
   tokenProgramId: null,
