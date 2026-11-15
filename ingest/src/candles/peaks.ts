@@ -8,8 +8,8 @@ import type { PeakTarget } from './plan.js';
 
 /**
  * The periods `peak_outside_minute_coverage` points at: every strict hourly or
- * daily coin point (docs/metrics.md section 6) whose price is above the ATH
- * price, or any such point when the ATH is null. Highest price first; on a tie
+ * daily coin point (docs/metrics.md section 6) whose high is above the ATH
+ * price, or any such point when the ATH is null. Highest high first; on a tie
  * the earlier bucket, then the smaller pool address.
  *
  * Runs the same steps as `computeCoinMetrics` up to the coin points, so it
@@ -25,11 +25,11 @@ export function findCoveragePeaks(
   const ath = computeAth(points, input.launchedAt, input.totalSupply);
   return points
     .filter(
-      (p) => p.strict && p.resolution !== '1m' && (ath.athPrice === null || p.price > ath.athPrice),
+      (p) => p.strict && p.resolution !== '1m' && (ath.athPrice === null || p.high > ath.athPrice),
     )
     .sort(
       (a, b) =>
-        b.price - a.price ||
+        b.high - a.high ||
         a.t - b.t ||
         (a.poolAddress < b.poolAddress ? -1 : a.poolAddress > b.poolAddress ? 1 : 0),
     )
@@ -37,5 +37,6 @@ export function findCoveragePeaks(
       poolAddress: p.poolAddress,
       t: p.t,
       resolution: p.resolution === '1h' ? 3600 : 86400,
+      highUsd: p.high * input.totalSupply,
     }));
 }

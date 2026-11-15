@@ -281,7 +281,12 @@ export async function fetchCandlesForCoin(
 
       const done = await countCoverageRequests(db, coin.id, 'peak_refinement');
       summary.refinementRequestsTotal = done;
-      const next = planPeakRefinement(await buildState(), findCoveragePeaks(loaded.input), done);
+      // A period that never traded at the refine line cannot make the coin listed: not worth a request.
+      const targets = findCoveragePeaks(loaded.input).filter(
+        (x) => x.highUsd === undefined || x.highUsd >= limits.refineFromUsd,
+      );
+      if (targets.length === 0) break;
+      const next = planPeakRefinement(await buildState(), targets, done);
       if (!next.request) {
         await issue('peak_refinement_incomplete', {
           why: next.capHit ? 'request_cap' : 'no_more_periods',

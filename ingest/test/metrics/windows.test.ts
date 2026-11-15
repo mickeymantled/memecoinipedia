@@ -205,6 +205,7 @@ describe('section 5: one point per timestamp', () => {
   const w = (over: Partial<Window>): Window => ({
     t: M0,
     price: 1,
+    high: over.high ?? over.price ?? 1,
     volume: 100,
     traders: 5,
     strict: true,
