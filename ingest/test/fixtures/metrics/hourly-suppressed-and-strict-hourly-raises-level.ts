@@ -4,7 +4,7 @@ import { bar, flatRun, hourAt, input, pool } from './build.js';
 export const hourlySuppressedAndStrictHourlyRaisesLevel: MetricFixture = {
   name: 'hourly-suppressed-and-strict-hourly-raises-level',
   description:
-    'An hourly bar covering minutes we hold 1-minute bars for is not a window (finer data wins), though its wick counts. A later strict hourly bar above the ATH raises the level and the peak_outside_minute_coverage flag, but never sets the ATH.',
+    'An hourly bar covering minutes we hold 1-minute bars for is not a window (finer data wins), and, being hourly, it does not feed the wick. A later strict hourly bar above the ATH raises the level and the peak_outside_minute_coverage flag, but never sets the ATH.',
   reasoning: `
 One primary pool. 1-minute bars m0..m3: close .0002, 500 USD, 6 traders.
 Hourly bar H0 at T0: o .0002, h .0006, l .0002, c .0005, 50,000 USD, 30 traders.
@@ -26,6 +26,8 @@ Holds: m1->m2 60; m2->m3 60; m3 (T0+180) -> H1 (T0+3,600) 3,420; H1 -> asOf (T0+
 Above $100k: 60 + 60 + 3,420 + 3,600 = 7,140. None above $1M.
 Drawdown 0 (levels .0002 then .0003). Rug false.
 Flags: peak_outside_minute_coverage.
+
+Rules v4 (this paragraph supersedes any wick figure above). athLiquidityUsd null (no bar of the ATH window reports liquidity); athHourVolumeUsd 1,000 (volume of the clean 1-minute bars of every pool in the hour ending at m1). Wick: only a clean 1-minute bar with at least $1,000 of volume and 5 traders of its own, funded or of unknown liquidity, is a candidate, valued at max(open, close); the ATH takes over when higher. Here the best candidate is not above the ATH (or there is none), so the wick is the ATH: 200,000 at m1.
 `,
   input: input(
     [
@@ -49,9 +51,11 @@ Flags: peak_outside_minute_coverage.
     athAt: 1_699_920_060,
     athPoolAddress: 'pool-a',
     secondsToAth: 60,
-    athWickMarketCapUsd: 600_000,
-    athWickAt: 1_699_920_000,
+    athWickMarketCapUsd: 200_000,
+    athWickAt: 1_699_920_060,
     athWickPoolAddress: 'pool-a',
+    athLiquidityUsd: null,
+    athHourVolumeUsd: 1_000,
     secondsAbove: [7_140, 0, 0, 0],
     maxDrawdownPct: 0,
     rugPattern: false,

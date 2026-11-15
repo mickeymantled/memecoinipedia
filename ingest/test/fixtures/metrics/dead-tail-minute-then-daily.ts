@@ -28,6 +28,8 @@ Day 1 -> day 2: 86,400 (exactly the limit), day 2 -> day 3: 86,400, day 3 -> asO
 Above $100k: 1,800 + 1,680 + 82,860 = 86,340. Above $1M: 0.
 Drawdown: peak .0005, lowest level .00008 -> (.0005-.00008)/.0005 = 84%.
 Rug: level points within 1,800 s after athAt (up to T0+1,860): the lowest is m31 at .0002, above .2 * .0005 = .0001. The level only falls to .00008 a day later. False.
+
+Rules v4 (this paragraph supersedes any wick figure above). athLiquidityUsd null (no bar of the ATH window reports liquidity); athHourVolumeUsd 1,000 (volume of the clean 1-minute bars of every pool in the hour ending at m1). Wick: only a clean 1-minute bar with at least $1,000 of volume and 5 traders of its own, funded or of unknown liquidity, is a candidate, valued at max(open, close); the ATH takes over when higher. Here the best candidate is not above the ATH (or there is none), so the wick is the ATH: 500,000 at m1.
 `,
   input: input(
     [
@@ -45,8 +47,10 @@ Rug: level points within 1,800 s after athAt (up to T0+1,860): the lowest is m31
     athPoolAddress: 'pool-a',
     secondsToAth: 60,
     athWickMarketCapUsd: 500_000,
-    athWickAt: 1_699_920_000,
+    athWickAt: 1_699_920_060,
     athWickPoolAddress: 'pool-a',
+    athLiquidityUsd: null,
+    athHourVolumeUsd: 1_000,
     secondsAbove: [86_340, 0, 0, 0],
     maxDrawdownPct: 84,
     rugPattern: false,

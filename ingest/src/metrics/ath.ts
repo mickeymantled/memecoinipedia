@@ -1,9 +1,17 @@
-import { barPeak, compareStrings, type CleanPool, type CoinPoint } from './internal.js';
-import type { MetricFlag, MetricResult } from './types.js';
+import {
+  atLeast,
+  compareStrings,
+  isFunded,
+  maxLiquidity,
+  SECONDS,
+  type CleanPool,
+  type CoinPoint,
+} from './internal.js';
+import type { MetricFlag, MetricParams, MetricResult } from './types.js';
 
 export type AthFields = Pick<
   MetricResult,
-  'athMarketCapUsd' | 'athAt' | 'athPoolAddress' | 'secondsToAth'
+  'athMarketCapUsd' | 'athAt' | 'athPoolAddress' | 'secondsToAth' | 'athLiquidityUsd'
 >;
 
 export interface AthResult {
@@ -29,7 +37,13 @@ export function computeAth(
   }
   if (best === null) {
     return {
-      fields: { athMarketCapUsd: null, athAt: null, athPoolAddress: null, secondsToAth: null },
+      fields: {
+        athMarketCapUsd: null,
+        athAt: null,
+        athPoolAddress: null,
+        secondsToAth: null,
+        athLiquidityUsd: null,
+      },
       athPrice: null,
       flags: ['no_qualifying_window'],
     };
@@ -41,6 +55,7 @@ export function computeAth(
       athAt: best.t,
       athPoolAddress: best.poolAddress,
       secondsToAth,
+      athLiquidityUsd: best.liquidity,
     },
     athPrice: best.price,
     flags: secondsToAth < 0 ? ['ath_before_launch'] : [],
@@ -52,36 +67,74 @@ export type WickFields = Pick<
   'athWickMarketCapUsd' | 'athWickAt' | 'athWickPoolAddress'
 >;
 
+type WickParams = Pick<
+  MetricParams,
+  'minWindowVolumeUsd' | 'minWindowTraders' | 'minWindowLiquidityUsd'
+>;
+
 /**
- * Section 6, wick: the highest of max(o, h, l, c) over every clean bar of every pool
- * and resolution. Earliest bar wins; on a tie in `t`, the smallest pool address.
+ * Section 6, wick: the highest max(open, close) over clean 1-minute bars that are
+ * funded by themselves (their own liquidity and the previous clean bar's) and that by
+ * themselves have the volume and traders a window needs. Earliest bar wins; on a tie
+ * in `t`, the smallest pool address. If the ATH is higher, or there is no candidate,
+ * the wick is the ATH. Null only when there is neither.
  */
-export function computeWick(pools: readonly CleanPool[], totalSupply: number): WickFields {
-  let best: { peak: number; t: number; address: string } | null = null;
+export function computeWick(
+  pools: readonly CleanPool[],
+  ath: AthResult,
+  params: WickParams,
+  totalSupply: number,
+): WickFields {
+  let top: { value: number; t: number; address: string } | null = null;
   for (const pool of pools) {
-    for (const bars of [pool.bars1m, pool.bars1h, pool.bars1d]) {
-      for (const bar of bars) {
-        const peak = barPeak(bar);
-        if (
-          best === null ||
-          peak > best.peak ||
-          (peak === best.peak &&
-            (bar.t < best.t ||
-              (bar.t === best.t && compareStrings(pool.address, best.address) < 0)))
-        ) {
-          best = { peak, t: bar.t, address: pool.address };
-        }
+    for (let i = 0; i < pool.bars1m.length; i++) {
+      const bar = pool.bars1m[i];
+      if (bar === undefined) continue;
+      if (
+        !isFunded(maxLiquidity([bar, pool.bars1m[i - 1]]), params.minWindowLiquidityUsd) ||
+        !atLeast(bar.volumeUsd, params.minWindowVolumeUsd) ||
+        !atLeast(bar.traders, params.minWindowTraders)
+      ) {
+        continue;
+      }
+      const value = Math.max(bar.o, bar.c);
+      if (
+        top === null ||
+        value > top.value ||
+        (value === top.value &&
+          (bar.t < top.t || (bar.t === top.t && compareStrings(pool.address, top.address) < 0)))
+      ) {
+        top = { value, t: bar.t, address: pool.address };
       }
     }
   }
-  if (best === null) {
+  if (ath.athPrice !== null && (top === null || ath.athPrice > top.value)) {
+    return {
+      athWickMarketCapUsd: ath.athPrice * totalSupply,
+      athWickAt: ath.fields.athAt,
+      athWickPoolAddress: ath.fields.athPoolAddress,
+    };
+  }
+  if (top === null) {
     return { athWickMarketCapUsd: null, athWickAt: null, athWickPoolAddress: null };
   }
   return {
-    athWickMarketCapUsd: best.peak * totalSupply,
-    athWickAt: best.t,
-    athWickPoolAddress: best.address,
+    athWickMarketCapUsd: top.value * totalSupply,
+    athWickAt: top.t,
+    athWickPoolAddress: top.address,
   };
+}
+
+/** Section 6, `athHourVolumeUsd`: 1-minute volume of every pool in (athAt - 3600, athAt]. */
+export function athHourVolume(pools: readonly CleanPool[], athAt: number | null): number | null {
+  if (athAt === null) return null;
+  let sum = 0;
+  for (const pool of pools) {
+    for (const bar of pool.bars1m) {
+      if (bar.t > athAt - SECONDS['1h'] && bar.t <= athAt) sum += bar.volumeUsd;
+    }
+  }
+  return sum;
 }
 
 /**

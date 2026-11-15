@@ -32,6 +32,7 @@ Bars may arrive unsorted. Sort each list by `t` before use. The result must not 
 | `minWindowVolumeUsd` | 1,000 | USD that must trade in a window for it to count |
 | `minWindowTraders` | 5 | Distinct traders a window needs |
 | `minSecondaryPoolLiquidityUsd` | 5,000 | Liquidity a non-primary pool needs for its bar to count |
+| `minWindowLiquidityUsd` | 5,000 | Liquidity a window needs to be funded (section 4) |
 | `carryForwardMaxSec` | 86,400 | Longest time a price is assumed to hold with no trades |
 | `maxMarketCapUsd` | 20,000,000,000 | Anything above this is a data error |
 | `thresholdsUsd` | 100k, 1M, 10M, 100M | Market caps that time-above is measured for |
@@ -64,19 +65,23 @@ What is left are the clean bars.
 - `price`: the lower median of the closes present. With three bars that is the middle close. With two bars it is the lower close. With one bar it is that bar's close. (For an even count, the lower median is the lower of the two middle values.)
 - `volume`: the sum of `volumeUsd` over the bars present.
 - `traders`: the highest `traders` value among the bars present. Per-minute counts of distinct wallets cannot be de-duplicated across minutes, so the highest single-minute count is the only number we can prove.
-- `strict`: true when at least two bars are present, `volume` is at least `minWindowVolumeUsd`, and `traders` is at least `minWindowTraders`.
+- `liquidity`: the largest `liquidityUsd` among the bars present that report one (a finite number of zero or more), or null when none does.
+- `funded`: true when `liquidity` is null or at least `minWindowLiquidityUsd`. Only the window's own bars count, not the bar before it. Unknown liquidity counts as funded. The highest value is used, not the last bar's, because a pool dumped in the ATH minute reports its liquidity after the dump, and the price before the dump was real.
+- `strict`: true when at least two bars are present, `volume` is at least `minWindowVolumeUsd`, `traders` is at least `minWindowTraders`, and the window is funded.
 
 The effect with the default window: a price counts as reached only if at least two 1-minute closes in a 3-minute span were at or above it, with real volume and at least five wallets in one of those minutes. One candle cannot do it. Neither can two wallets trading back and forth.
 
-**Hourly and daily bars.** Each clean bar is its own window: `price` is its close, `high` is `max(o, h, l, c)` of the bar (used only by the coverage flag in step 4), `volume` its `volumeUsd`, `traders` its `traders`. `strict` is true when `volume` is at least `minWindowVolumeUsd` and `traders` is at least `minWindowTraders`.
+**Hourly and daily bars.** Each clean bar is its own window: `price` is its close, `high` is `max(o, h, l, c)` of the bar (used only by the coverage flag in step 4), `volume` its `volumeUsd`, `traders` its `traders`. `liquidity` is the larger of the `liquidityUsd` of the bar and of the pool's previous clean bar at the same resolution (the previous one in that pool's cleaned list, whether or not "finer data wins" removes it as a window), counting only values that are reported (finite, zero or more), or null when neither reports one. The window is funded when `liquidity` is null or at least `minWindowLiquidityUsd`. The previous bar is there so that the hour in which a pool is drained still raises the coverage flag. `strict` is true when `volume` is at least `minWindowVolumeUsd`, `traders` is at least `minWindowTraders`, and the window is funded.
 
-**Finer data wins.** An hourly bar is not used as a window when any pool has a clean 1-minute bar inside that hour. A daily bar is not used as a window when any pool has a clean 1-minute or hourly bar inside that day, whether or not that hourly bar is itself used as a window. "Inside" means the finer bar's `t` is at or after the coarse bar's `t` and before the end of its bucket. Only clean bars count: a bar that was dropped suppresses nothing. Suppressed bars still count for the wick in step 4.
+A window that is not funded is not strict. Everything downstream follows from `strict`: such a window cannot set the ATH or raise the level, can lower the level, does not count as a recovery, and does not raise the coverage flag.
+
+**Finer data wins.** An hourly bar is not used as a window when any pool has a clean 1-minute bar inside that hour. A daily bar is not used as a window when any pool has a clean 1-minute or hourly bar inside that day, whether or not that hourly bar is itself used as a window. "Inside" means the finer bar's `t` is at or after the coarse bar's `t` and before the end of its bucket. Only clean bars count: a bar that was dropped suppresses nothing. 
 
 ## 5. Step 3: one point per timestamp
 
 Group the windows from all pools by `t`. Where more than one pool has a window at the same `t`, keep the window with the largest `volume`. On a tie, a primary pool wins; on a further tie, the pool with the smallest address. Addresses are compared as plain strings by character code, which is case-sensitive, never by locale.
 
-Each kept window is a **coin point**: `t`, `price`, `strict`, pool, resolution.
+Each kept window is a **coin point**: `t`, `price`, `strict`, `liquidity`, pool, resolution.
 
 Using the busiest pool, not the highest price, means a small side pool that drifts away from the real price cannot set any metric.
 
@@ -88,9 +93,14 @@ Using the busiest pool, not the highest price, means a small side pool that drif
 - `secondsToAth` is `athAt` minus `launchedAt`. If it is negative, keep the number and raise the flag `ath_before_launch`.
 - If there is no strict 1-minute coin point, all four are null and the flag `no_qualifying_window` is raised.
 
-- **Wick** is the highest value of `max(o, h, l, c)` over every clean bar, at every resolution, in every pool, including bars not used as windows. `athWickMarketCapUsd` is that times `totalSupply`; `athWickAt` and `athWickPoolAddress` come from the earliest bar that reaches it (on a tie in `t`, the smallest pool address). All three are null when there are no clean bars.
+- **Wick.** A clean 1-minute bar of any pool is a wick candidate when all three hold: (a) taking the `liquidityUsd` the bar and the pool's previous clean 1-minute bar report (as in section 4), there is none, or the larger is at least `minWindowLiquidityUsd`; (b) its own `volumeUsd` is at least `minWindowVolumeUsd`; (c) its own `traders` is at least `minWindowTraders`. A candidate's value is `max(o, c)`. The wick is the largest value; the earliest bar if several share it, then the smallest pool address. If the ATH exists and its price is higher than that value, or there is no candidate, the wick is the ATH: same price, `athAt` and `athPoolAddress`. `athWickMarketCapUsd` is the wick price times `totalSupply`; `athWickAt` and `athWickPoolAddress` come with it. All three are null only when there is no candidate and no ATH. Hourly and daily bars and bar highs never feed the wick.
 
 `athMarketCapUsd` can never exceed `athWickMarketCapUsd`.
+
+- **`athLiquidityUsd`** is the `liquidity` of the coin point that set the ATH. Null when the ATH is null or that value is null.
+- **`athHourVolumeUsd`** is the sum of `volumeUsd` over the clean 1-minute bars of every pool with `athAt - 3600 < t <= athAt`. Null when the ATH is null.
+
+These two say how much stood behind a peak. No rule reads them.
 
 **Coverage flag.** If a strict coin point from an hourly or daily bar has a high (`max(o, h, l, c)` of its bar) above the ATH price, or the ATH is null while such a point exists, raise `peak_outside_minute_coverage`. A period can hold a higher ATH only if it traded above the current one, and its close says nothing about that: a coin can spike and collapse inside one hour. The flag means the real peak may sit in a period we hold no 1-minute bars for, and the fetcher must fetch them and recompute.
 
@@ -138,6 +148,7 @@ This is a price pattern, not proof of intent. Graduated pump.fun pools cannot ha
 |---|---|
 | `athMarketCapUsd`, `athAt`, `athPoolAddress`, `secondsToAth` | number or string, or null |
 | `athWickMarketCapUsd`, `athWickAt`, `athWickPoolAddress` | number or string, or null |
+| `athLiquidityUsd`, `athHourVolumeUsd` | number or null |
 | `secondsAbove` | one number of seconds for each threshold |
 | `maxDrawdownPct` | number from 0 to 100, or null |
 | `rugPattern` | boolean |
@@ -151,7 +162,7 @@ The exact TypeScript shapes are in `/ingest/src/metrics/types.ts`.
 
 These are requirements on ingestion (task A5), listed here because the rules above depend on them. They were tightened on 2026-11-15, after the first live run cost 60 compute units a coin.
 
-- **Screen.** Daily bars of the graduation pool for its whole life come first. If the highest daily high is under $90,000 as a market cap, the coin cannot have an ATH of $100,000, because an ATH never exceeds a candle high. Nothing else is fetched. The coin is stored with that high as its wick, no ATH, and the flag `screened_out`. A coin whose Dune hourly peak is more than 1.5 times that high is not screened on one pool: its other pools are fetched first.
+- **Screen.** Daily bars of the graduation pool for its whole life come first. If the highest daily high is under $90,000 as a market cap, the coin cannot have an ATH of $100,000, because an ATH never exceeds a candle high. Nothing else is fetched. The coin is stored with no ATH, no wick and the flag `screened_out`; the daily bars stay stored. A coin whose Dune hourly peak is more than 1.5 times that high is not screened on one pool: its other pools are fetched first.
 - **1-minute bars** for the first 1,500 minutes of the graduation pool, starting five minutes before it began trading.
 - **Hourly bars** for every day whose daily high is $80,000 or more as a market cap and that 1-minute bars do not already cover. A day below that line cannot add time above any threshold, so daily bars are enough for it.
 - **1-minute bars for any later period that could hold the peak.** When `peak_outside_minute_coverage` is raised, fetch 1,500 minutes around the highest such bar and recompute, until the flag clears or only bars under $90,000 are left. Those cannot make a coin listed, so they are not fetched and the flag stays.
@@ -162,7 +173,8 @@ What these rules cost in accuracy: time above a threshold is measured to the min
 
 ## 13. Known limits
 
-- A coin that spikes for exactly one minute on real volume gets an ATH below that minute's close. That is the price of rejecting single-candle wicks. The raw figure is kept as the wick, and A6 reviews the coins where the two differ most.
+- A coin that spikes for exactly one minute on real volume gets an ATH below that minute's close. That is the price of rejecting single-candle wicks. The traded minute is kept as the wick, and A6 reviews the coins where the two differ most. About 2% of sampled coins have a peak that lasted one minute and so is not their ATH.
+- A coin traded by fewer than five wallets a minute gets no ATH (about 1% of sampled coins).
 - A sustained data error that stays under $20 billion and lasts two minutes with volume would pass. A6 reviews every coin whose wick is far above its ATH and every coin whose ATH is far from the cross-check source.
 - Requiring five wallets in a single minute is stricter than five across the window. Very slow, genuine markets can fail it. A6 measures how often.
 - A single point that is not strict can lower the level. On the busiest pool that is normally a true state of the pool. But a lone print from a side pool in a minute when the main pool is silent, or one bad low bar, lowers the level too. That can cut time-above short, inflate the drawdown and set the rug pattern, and the level only comes back at the next strict point. A6 counts how often one point that is not strict moves the level by more than half. The candidate fix is to let the level drop to a price only after two consecutive points at or below it.

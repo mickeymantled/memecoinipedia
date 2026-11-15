@@ -25,6 +25,8 @@ Rug:
 Crash level: (1 - 50/100) * .002 = .001. Window: t in (T0+60, T0+60+300 = T0+360]. m6 at T0+360 has level .0009 <= .001: crash point (exactly on the limit, inclusive).
 Recovery line: .9 * .002 = .0018. Strict coin points after m6: .0009 and .0012, all below .0018: not cancelled.
 rugPattern = true. (With the default 80% drop, the level never goes to .0004, so the default parameters would give false.)
+
+Rules v4 (this paragraph supersedes any wick figure above). athLiquidityUsd null (no bar of the ATH window reports liquidity); athHourVolumeUsd 1,000 (volume of the clean 1-minute bars of every pool in the hour ending at m1). Wick: only a clean 1-minute bar with at least $1,000 of volume and 5 traders of its own, funded or of unknown liquidity, is a candidate, valued at max(open, close); the ATH takes over when higher. Here the best candidate is not above the ATH (or there is none), so the wick is the ATH: 2,000,000 at m1.
 `,
   params: { rugDropPct: 50, rugWithinSec: 300, rugRecoveryFraction: 0.9 },
   input: input(
@@ -43,8 +45,10 @@ rugPattern = true. (With the default 80% drop, the level never goes to .0004, so
     athPoolAddress: 'pool-a',
     secondsToAth: 60,
     athWickMarketCapUsd: 2_000_000,
-    athWickAt: 1_699_920_000,
+    athWickAt: 1_699_920_060,
     athWickPoolAddress: 'pool-a',
+    athLiquidityUsd: null,
+    athHourVolumeUsd: 1_000,
     secondsAbove: [720, 420, 0, 0],
     maxDrawdownPct: 55,
     rugPattern: true,

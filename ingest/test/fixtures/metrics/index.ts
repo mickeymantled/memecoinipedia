@@ -49,6 +49,14 @@ import { tradersIsMaxNotSum } from './traders-is-max-not-sum.js';
 import { twoWalletWashLowTraders } from './two-wallet-wash-low-traders.js';
 import { unsortedInputAndBarsAfterAsOf } from './unsorted-input-and-bars-after-asof.js';
 import { wickTieSmallestAddress } from './wick-tie-smallest-address.js';
+import { athHourVolumeSumsAllPoolsAndWindowEdges } from './ath-hour-volume-sums-all-pools-and-window-edges.js';
+import { drainedHourRaisesCoverageFlag } from './drained-hour-raises-coverage-flag.js';
+import { exactWindowLiquidity5000 } from './exact-window-liquidity-5000.js';
+import { hourAfterDrainDoesNotRaiseCoverageFlag } from './hour-after-drain-does-not-raise-coverage-flag.js';
+import { neverFundedPoolCannotSetAthAndLowersLevel } from './never-funded-pool-cannot-set-ath-and-lowers-level.js';
+import { poolDumpedInAthMinuteKeepsAthAndRugPattern } from './pool-dumped-in-ath-minute-keeps-ath-and-rug-pattern.js';
+import { unknownLiquidityCountsAsFunded } from './unknown-liquidity-counts-as-funded.js';
+import { wickIgnoresWildHighAndThinMinutes } from './wick-ignores-wild-high-and-thin-minutes.js';
 
 /**
  * Every hand-worked metric fixture. Each case lives in its own file in this
@@ -109,4 +117,12 @@ export const metricFixtures: MetricFixture[] = [
   paramsWindow5AndThresholds,
   paramsRug,
   paramsMaxMarketCap,
+  athHourVolumeSumsAllPoolsAndWindowEdges,
+  drainedHourRaisesCoverageFlag,
+  exactWindowLiquidity5000,
+  hourAfterDrainDoesNotRaiseCoverageFlag,
+  neverFundedPoolCannotSetAthAndLowersLevel,
+  poolDumpedInAthMinuteKeepsAthAndRugPattern,
+  unknownLiquidityCountsAsFunded,
+  wickIgnoresWildHighAndThinMinutes,
 ];

@@ -19,6 +19,8 @@ ATH = .0002 * 1e9 = 200,000 at m1: athAt = T0+60, secondsToAth 60.
 Wick: .01 at m0 (T0): 10,000,000.
 Level: m0 not strict and the level is undefined, so it does nothing (the $10M print never becomes the level). m1..m5 strict .0002: five level points. Holds 60 each (m5 at T0+300 to asOf T0+360 = 60): 300 above $100k. None above $1M.
 Drawdown 0. Rug false. No flags.
+
+Rules v4 (this paragraph supersedes any wick figure above). athLiquidityUsd null (no bar of the ATH window reports liquidity); athHourVolumeUsd 3,500 (volume of the clean 1-minute bars of every pool in the hour ending at m1). Wick: only a clean 1-minute bar with at least $1,000 of volume and 5 traders of its own, funded or of unknown liquidity, is a candidate, valued at max(open, close); the ATH takes over when higher. The wick is unchanged.
 `,
   input: input(
     [
@@ -37,6 +39,8 @@ Drawdown 0. Rug false. No flags.
     athWickMarketCapUsd: 10_000_000,
     athWickAt: 1_699_920_000,
     athWickPoolAddress: 'pool-a',
+    athLiquidityUsd: null,
+    athHourVolumeUsd: 3_500,
     secondsAbove: [300, 0, 0, 0],
     maxDrawdownPct: 0,
     rugPattern: false,

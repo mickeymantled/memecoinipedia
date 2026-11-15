@@ -4,7 +4,7 @@ import { input, minute, minuteRun, pool } from './build.js';
 export const spikeHeldTwoClosesOfThree: MetricFixture = {
   name: 'spike-held-two-closes-of-three',
   description:
-    'A jump that holds for two consecutive closes does count: two of three closes in a window make the median. The wick is the earlier of the two bars. Also ends as a rug pattern (90% fall straight after).',
+    'A jump that holds for two consecutive closes does count: two of three closes in a window make the median. The wick is the ATH (the same price). Also ends as a rug pattern (90% fall straight after).',
   reasoning: `
 Eight 1-minute bars m0..m7, one primary pool, 500 USD / 6 traders each. Closes: m0 .0002, m1 .0002, m2 .0002, m3 .002, m4 .002, m5 .0002, m6 .0002, m7 .0002. asOf = m8, launchedAt = T0.
 
@@ -24,6 +24,8 @@ Level points (m0 is ignored, level undefined): m1 .0002, m2 .0002, m3 .0002, m4 
 Above $100k: 7 * 60 = 420. Above $1M (level .002 = $2M): m4 and m5 = 120. Above $10M: 0.
 Drawdown: peak .002, later level .0002 -> 90%.
 Rug: athAt = T0+240. Level points after it within 1800 s: m6 level .0002 <= .2 * .002 = .0004, so m6 is the crash point. Strict points after m6: m7 price .0002, below .5 * .002 = .001. So rugPattern = true.
+
+Rules v4 (this paragraph supersedes any wick figure above). athLiquidityUsd null (no bar of the ATH window reports liquidity); athHourVolumeUsd 2,500 (volume of the clean 1-minute bars of every pool in the hour ending at m4). Wick: only a clean 1-minute bar with at least $1,000 of volume and 5 traders of its own, funded or of unknown liquidity, is a candidate, valued at max(open, close); the ATH takes over when higher. Here the best candidate is not above the ATH (or there is none), so the wick is the ATH: 2,000,000 at m4.
 `,
   input: input(
     [pool('pool-a', minuteRun(0, [0.0002, 0.0002, 0.0002, 0.002, 0.002, 0.0002, 0.0002, 0.0002]))],
@@ -35,8 +37,10 @@ Rug: athAt = T0+240. Level points after it within 1800 s: m6 level .0002 <= .2 *
     athPoolAddress: 'pool-a',
     secondsToAth: 240,
     athWickMarketCapUsd: 2_000_000,
-    athWickAt: 1_699_920_180,
+    athWickAt: 1_699_920_240,
     athWickPoolAddress: 'pool-a',
+    athLiquidityUsd: null,
+    athHourVolumeUsd: 2_500,
     secondsAbove: [420, 120, 0, 0],
     maxDrawdownPct: 90,
     rugPattern: true,

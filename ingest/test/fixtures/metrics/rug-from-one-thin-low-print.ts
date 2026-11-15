@@ -16,6 +16,8 @@ Above $100k: only the first level: 540 ($50k is below). Above $1M: 540.
 Drawdown: (.002-.00005)/.002 = 97.5%.
 
 Rug: m10 is at T0+600, within 1,800 s of athAt. Its level .00005 <= .0004: crash point. No strict coin point after it. rugPattern = true.
+
+Rules v4 (this paragraph supersedes any wick figure above). athLiquidityUsd null (no bar of the ATH window reports liquidity); athHourVolumeUsd 1,000 (volume of the clean 1-minute bars of every pool in the hour ending at m1). Wick: only a clean 1-minute bar with at least $1,000 of volume and 5 traders of its own, funded or of unknown liquidity, is a candidate, valued at max(open, close); the ATH takes over when higher. Here the best candidate is not above the ATH (or there is none), so the wick is the ATH: 2,000,000 at m1.
 `,
   input: input(
     [
@@ -32,8 +34,10 @@ Rug: m10 is at T0+600, within 1,800 s of athAt. Its level .00005 <= .0004: crash
     athPoolAddress: 'pool-a',
     secondsToAth: 60,
     athWickMarketCapUsd: 2_000_000,
-    athWickAt: 1_699_920_000,
+    athWickAt: 1_699_920_060,
     athWickPoolAddress: 'pool-a',
+    athLiquidityUsd: null,
+    athHourVolumeUsd: 1_000,
     secondsAbove: [540, 540, 0, 0],
     maxDrawdownPct: 97.5,
     rugPattern: true,
