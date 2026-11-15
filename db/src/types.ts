@@ -208,6 +208,13 @@ export interface ProviderUsageSamplesTable {
   units: number;
 }
 
+/** Small named JSON values of the live process (migration 0015). */
+export interface LiveStateTable {
+  key: string;
+  value: Json;
+  updated_at: Ts;
+}
+
 export interface DataIssuesTable {
   id: Id;
   coin_id: number;
@@ -231,6 +238,7 @@ export interface Database {
   eval_labels: EvalLabelsTable;
   narrative_research: NarrativeResearchTable;
   data_issues: DataIssuesTable;
+  live_state: LiveStateTable;
 }
 
 /**
@@ -415,4 +423,5 @@ export const databaseShape: { [T in keyof Database]: Record<keyof Database[T], t
     resolved_at: true,
     resolution: true,
   },
+  live_state: { key: true, value: true, updated_at: true },
 };
