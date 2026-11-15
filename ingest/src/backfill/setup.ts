@@ -133,6 +133,11 @@ export interface BackfillRegistryOptions {
   maxAttempts: number;
   /** Coin ids most recently queued for metadata, for the loaders to prefetch with. */
   metadataCandidateIds: () => readonly number[];
+  /**
+   * An extra condition on the candles stage taking a coin, asked before the stage's own (the live
+   * process closes it while the day's unit ceiling is reached). Absent: the stage as it is.
+   */
+  candlesAdmit?: () => boolean;
 }
 
 /** The stage `metadata` (or `metadata_file`) as the backfill runs it: after `metrics`, for listed coins only. */
@@ -154,7 +159,16 @@ export function buildBackfillRegistry(o: BackfillRegistryOptions): {
   if (o.stages.includes('candles')) {
     if (!o.clients.codex) throw new Error('The candles stage needs a Codex.io client');
     candles = createCandlesStage({ codex: o.clients.codex });
-    registry.register(candles);
+    const own = candles;
+    const extra = o.candlesAdmit;
+    // The stage object keeps its getters (`stopped`): the registered one is a view of it.
+    registry.register(
+      extra
+        ? Object.create(own, {
+            admit: { value: () => extra() && own.admit!(), enumerable: true },
+          })
+        : own,
+    );
   }
   if (o.stages.includes('metrics')) registry.register(metricsStage);
   if (o.stages.includes('metadata')) {

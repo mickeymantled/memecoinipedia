@@ -14,6 +14,7 @@
  * the next run waits for that before it calls itself finished.
  */
 import {
+  acquirePipelineLock,
   countByRoughPeak,
   countCoinsNotDone,
   createDb,
@@ -25,6 +26,7 @@ import {
   stageBreakdown,
   startRun,
   type Database,
+  type PipelineLock,
   type ResolvedSelection,
   type SelectionSpec,
   type StageBreakdown,
@@ -325,6 +327,8 @@ export async function runBackfill(opts: BackfillOptions): Promise<BackfillReport
   const db = opts.db ?? (databaseUrl ? createDb(databaseUrl, { max: dbPool }) : null);
   if (!db) throw new Error('DATABASE_URL is not set');
 
+  // One pipeline process per database: a confirmed run holds this lock until it ends.
+  let lock: PipelineLock | null = null;
   try {
     const plan = await planBackfill(db, opts.selection, stages, maxAttempts, now());
     const planText = formatBackfillPlan(plan, {
@@ -340,6 +344,9 @@ export async function runBackfill(opts: BackfillOptions): Promise<BackfillReport
     if (!opts.confirm) {
       return { ...base, status: 'dry_run', runId: null, seconds: (Date.now() - started) / 1000 };
     }
+    const connectionString = databaseUrl;
+    if (!connectionString) throw new Error('DATABASE_URL is not set');
+    lock = await acquirePipelineLock(connectionString, 'backfill', { now: now() });
     if (plan.nothingToDo) {
       return {
         ...base,
@@ -348,9 +355,6 @@ export async function runBackfill(opts: BackfillOptions): Promise<BackfillReport
         seconds: (Date.now() - started) / 1000,
       };
     }
-    const connectionString = databaseUrl;
-    if (!connectionString) throw new Error('DATABASE_URL is not set');
-
     const meter = new UsageMeter();
     const clients: SourceClients & Partial<BackfillClients> =
       opts.clients ??
@@ -553,6 +557,7 @@ export async function runBackfill(opts: BackfillOptions): Promise<BackfillReport
     );
     return { plan, status, runId, ceilingStop: candlesStopped, scanned, seconds };
   } finally {
+    await lock?.release();
     if (ownsDb) await db.destroy();
   }
 }
