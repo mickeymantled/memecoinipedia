@@ -10,7 +10,7 @@ import { DEFAULT_PLAN_LIMITS } from './plan.js';
 import type { CandleDeps } from './types.js';
 
 /** Stored in `coins.metrics_version`. Raise it when docs/metrics.md or the status rule changes. */
-export const METRICS_VERSION = 6;
+export const METRICS_VERSION = 8;
 
 /**
  * The last rules version that changed which bars count or how a peak is found, so a coin whose

@@ -22,6 +22,9 @@ export {
   writeCoinMetrics,
   computeAndStoreCoinMetrics,
   decideStatus,
+  statusFromEvidence,
+  lastAliveFromBars,
+  hasWeekOfBars,
   STATUS_RULES,
 } from './coinMetrics.js';
 export type {
@@ -32,6 +35,7 @@ export type {
   LoadedMetricInput,
   StoreMetricsOutcome,
   WriteMetricsContext,
+  StatusEvidence,
 } from './coinMetrics.js';
 export { OTHER_POOL_QUOTE, OTHER_POOL_QUOTE_MINTS, poolCountsForMetrics } from './poolQuote.js';
 export { seed } from './seed.js';
@@ -43,3 +47,4 @@ export * from './live.js';
 export * from './pipelineLock.js';
 export { databaseShape } from './types.js';
 export type * from './types.js';
+export * from './refresh.js';

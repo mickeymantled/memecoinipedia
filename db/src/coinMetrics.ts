@@ -200,28 +200,76 @@ export function decideStatus(
   input: Pick<MetricInputShape, 'pools' | 'asOf'>,
   result: Pick<MetricResultShape, 'rugPattern'>,
 ): CoinStatus {
-  if (result.rugPattern) return 'rugged';
+  return statusFromEvidence({
+    rugPattern: result.rugPattern,
+    lastAliveAt: lastAliveFromBars(input),
+    hasWeekOfHistory: hasWeekOfBars(input),
+    now: input.asOf,
+  });
+}
+
+/** Unix seconds of the earliest stored bar of any pool, or null with none. */
+function firstBarTime(input: Pick<MetricInputShape, 'pools'>): number | null {
   let firstBar: number | null = null;
   for (const pool of input.pools) {
     for (const bars of [pool.bars1m, pool.bars1h, pool.bars1d]) {
       for (const bar of bars) if (firstBar === null || bar.t < firstBar) firstBar = bar.t;
     }
   }
-  if (firstBar === null) return 'unknown';
+  return firstBar;
+}
 
-  const aliveAt = (e: number): boolean => {
-    const s = stateAt(input.pools, e);
-    return (
-      s.volume24h >= STATUS_RULES.minVolume24hUsd && s.liquidity >= STATUS_RULES.minLiquidityUsd
-    );
-  };
-  // Alive when the line was met on any of the last 7 days (the end of each).
+/** At least 7 days between the first stored bar and `asOf`. */
+export function hasWeekOfBars(input: Pick<MetricInputShape, 'pools' | 'asOf'>): boolean {
+  const first = firstBarTime(input);
+  return first !== null && input.asOf - first >= STATUS_RULES.deadAfterDays * DAY;
+}
+
+/**
+ * `last_alive_at` from the stored bars: the latest of the last 7 day-ends (`asOf`, `asOf` minus a
+ * day, up to minus six days) at which the alive line was met, in unix seconds, or null when it was
+ * met at none (or there are no bars). The same line and the same day boundaries the status has
+ * always used (docs/metrics.md, section 14).
+ */
+export function lastAliveFromBars(input: Pick<MetricInputShape, 'pools' | 'asOf'>): number | null {
+  if (firstBarTime(input) === null) return null;
   for (let k = 0; k < STATUS_RULES.deadAfterDays; k++) {
-    if (aliveAt(input.asOf - k * DAY)) return 'alive';
+    const e = input.asOf - k * DAY;
+    const s = stateAt(input.pools, e);
+    if (
+      s.volume24h >= STATUS_RULES.minVolume24hUsd &&
+      s.liquidity >= STATUS_RULES.minLiquidityUsd
+    ) {
+      return e;
+    }
   }
-  // Below the line for all 7 days: dead once there are 7 full days of history.
-  if (input.asOf - firstBar < STATUS_RULES.deadAfterDays * DAY) return 'unknown';
-  return 'dead';
+  return null;
+}
+
+export interface StatusEvidence {
+  /** The stored rug pattern. */
+  rugPattern: boolean | null;
+  /** `coins.last_alive_at` in unix seconds, or null. */
+  lastAliveAt: number | null;
+  /** The coin has at least 7 days of history. */
+  hasWeekOfHistory: boolean;
+  /** The time the status is asked at, unix seconds. */
+  now: number;
+}
+
+/**
+ * The one function that decides a coin's status (docs/metrics.md, section 14); the metrics
+ * computation and the daily refresh both call it.
+ *
+ * rugged if the rug pattern is stored; alive if `lastAliveAt` is less than 7 days before `now`;
+ * dead if not and the coin has 7 days of history; otherwise unknown.
+ */
+export function statusFromEvidence(e: StatusEvidence): CoinStatus {
+  if (e.rugPattern) return 'rugged';
+  if (e.lastAliveAt !== null && e.now - e.lastAliveAt < STATUS_RULES.deadAfterDays * DAY) {
+    return 'alive';
+  }
+  return e.hasWeekOfHistory ? 'dead' : 'unknown';
 }
 
 export interface WriteMetricsContext {
@@ -232,6 +280,8 @@ export interface WriteMetricsContext {
   /** Stored as `metrics_computed_at` and `updated_at`. */
   computedAt: Date;
   status: CoinStatus;
+  /** Stored as `last_alive_at` when given (the caller has already taken the later of two values). */
+  lastAliveAt?: Date | null;
 }
 
 const date = (s: number | null): Date | null => (s === null ? null : new Date(s * 1000));
@@ -277,6 +327,7 @@ export async function writeCoinMetrics(
       metrics_as_of: new Date(ctx.asOf * 1000),
       metrics_computed_at: ctx.computedAt,
       status: ctx.status,
+      ...(ctx.lastAliveAt !== undefined ? { last_alive_at: ctx.lastAliveAt } : {}),
       status_changed_at: sql`case when status <> ${ctx.status} then ${ctx.computedAt} else status_changed_at end`,
       updated_at: ctx.computedAt,
     })
@@ -318,8 +369,26 @@ export async function computeAndStoreCoinMetrics(
   if (!loaded.ok) return loaded;
   if (loaded.barCount === 0 && !opts.noBars) return { ok: false, reason: 'no_candles' };
   const result = loaded.barCount === 0 ? opts.noBars! : opts.compute(loaded.input);
-  const status = decideStatus(loaded.input, result);
+  // `last_alive_at` never moves backwards: the later of what is stored and what the bars say.
+  const stored = await db
+    .selectFrom('coins')
+    .select('last_alive_at')
+    .where('id', '=', coinId)
+    .executeTakeFirst();
+  const fromBars = lastAliveFromBars(loaded.input);
+  const storedSec = stored?.last_alive_at
+    ? Math.floor(stored.last_alive_at.getTime() / 1000)
+    : null;
+  const lastAlive =
+    fromBars === null ? storedSec : storedSec === null ? fromBars : Math.max(storedSec, fromBars);
+  const status = statusFromEvidence({
+    rugPattern: result.rugPattern,
+    lastAliveAt: lastAlive,
+    hasWeekOfHistory: hasWeekOfBars(loaded.input),
+    now: opts.asOf,
+  });
   await writeCoinMetrics(db, coinId, result, {
+    lastAliveAt: lastAlive === null ? null : new Date(lastAlive * 1000),
     poolIds: loaded.poolIds,
     metricsVersion: opts.metricsVersion,
     asOf: opts.asOf,

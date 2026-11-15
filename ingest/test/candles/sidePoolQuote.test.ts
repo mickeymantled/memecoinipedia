@@ -239,7 +239,7 @@ describeDb('metric rules v5: which side pools count', () => {
   });
 
   it('is version 6: a coin done at version 5 is recomputed, and a second pass does nothing', async () => {
-    expect(METRICS_VERSION).toBe(6);
+    expect(METRICS_VERSION).toBe(8);
     expect(metricsStage.version).toBe(6);
     await seedCoin(MEME);
     const opts: ExecuteOptions = {
