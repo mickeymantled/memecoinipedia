@@ -1,4 +1,5 @@
-import { insertLiveGraduates } from '@memecoinipedia/db';
+import { getLiveState, insertLiveGraduates } from '@memecoinipedia/db';
+import { STATE_LAST_WATCH } from '../../src/live/constants.js';
 import { sql } from 'kysely';
 import { afterEach, describe, expect, it } from 'vitest';
 import { discoverOnce } from '../../src/live/discover.js';
@@ -165,6 +166,55 @@ describeDb('the watch loop', () => {
     expect(f.logs.some((l) => l.includes('\n'))).toBe(false);
     const second = await watchOnce(f.deps);
     expect(second.polled).toBe(50);
+  });
+
+  describe('the stored record of the last pass (live_state last_watch)', () => {
+    const record = (f: LiveFixture) => getLiveState<{ endedAt: string; okAt: string | null }>(f.db, STATE_LAST_WATCH);
+
+    it('is written by a pass with nothing due', async () => {
+      fx = await liveFixture();
+      const f = fx;
+      expect(await record(f)).toBeNull();
+      const pass = await watchOnce(f.deps);
+      expect(pass.polled).toBe(0);
+      const now = f.clock.now().toISOString();
+      expect(await record(f)).toEqual({ endedAt: now, okAt: now });
+    });
+
+    it('keeps the time of the last clean pass when a price request fails', async () => {
+      fx = await liveFixture();
+      const f = fx;
+      await watched(f, 1, 600);
+      const clean = f.clock.now().toISOString();
+      await watchOnce(f.deps);
+      expect(await record(f)).toEqual({ endedAt: clean, okAt: clean });
+
+      f.clock.advance(1_200_000); // the coin is due again
+      const real = f.jupiter.getTokens.bind(f.jupiter);
+      f.jupiter.getTokens = async () => {
+        throw new Error('Jupiter down');
+      };
+      const failedAt = f.clock.now().toISOString();
+      expect((await watchOnce(f.deps)).error).toBe('Jupiter down');
+      expect(await record(f)).toEqual({ endedAt: failedAt, okAt: clean });
+
+      f.jupiter.getTokens = real;
+      f.clock.advance(60_000);
+      const again = f.clock.now().toISOString();
+      await watchOnce(f.deps);
+      expect(await record(f)).toEqual({ endedAt: again, okAt: again });
+    });
+
+    it('has no clean time when the first pass fails', async () => {
+      fx = await liveFixture();
+      const f = fx;
+      await watched(f, 1, 600);
+      f.jupiter.getTokens = async () => {
+        throw new Error('Jupiter down');
+      };
+      await watchOnce(f.deps);
+      expect(await record(f)).toEqual({ endedAt: f.clock.now().toISOString(), okAt: null });
+    });
   });
 });
 

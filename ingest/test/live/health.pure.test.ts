@@ -26,7 +26,7 @@ function healthy(over: Partial<HealthFacts> = {}): HealthFacts {
     heartbeatAt: ago(10),
     settings: { maxCodexUnitsPerDay: 1000 },
     lastDiscovery: { at: ago(60), status: 'ok' },
-    watch: { watched: 10, young: 4, newestPriceAt: ago(30) },
+    watch: { watched: 10, young: 4, lastPass: { endedAt: ago(30), okAt: ago(30) } },
     stages: [
       {
         stage: 'candles',
@@ -154,22 +154,70 @@ describe('3. watch loop', () => {
     [3 * 600 - 1, 'ok'],
     [6 * 600 - 1, 'warn'],
     [6 * 600, 'alert'],
-  ])('newest price %i s old, young coins watched, is %s', (age, want) => {
+  ])('last clean pass %i s ago, young coins watched, is %s', (age, want) => {
     expect(
-      level(healthy({ watch: { watched: 5, young: 2, newestPriceAt: ago(age) } }), 'watch'),
+      level(
+        healthy({
+          watch: { watched: 5, young: 2, lastPass: { endedAt: ago(5), okAt: ago(age) } },
+        }),
+        'watch:prices',
+      ),
     ).toBe(want);
   });
   it('allows hourly intervals when only old coins are watched', () => {
     const f = (age: number) =>
-      healthy({ watch: { watched: 5, young: 0, newestPriceAt: ago(age) } });
-    expect(level(f(6 * 3600 - 1), 'watch')).toBe('warn');
-    expect(level(f(6 * 3600), 'watch')).toBe('alert');
-    expect(level(f(3 * 3600 - 1), 'watch')).toBe('ok');
+      healthy({
+        liveRun: { id: 7, status: 'running', startedAt: ago(10 * 3600) },
+        watch: { watched: 5, young: 0, lastPass: { endedAt: ago(5), okAt: ago(age) } },
+      });
+    expect(level(f(6 * 3600 - 1), 'watch:prices')).toBe('warn');
+    expect(level(f(6 * 3600), 'watch:prices')).toBe('alert');
+    expect(level(f(3 * 3600 - 1), 'watch:prices')).toBe('ok');
   });
-  it('is quiet with nothing watched', () => {
-    expect(level(healthy({ watch: { watched: 0, young: 0, newestPriceAt: null } }), 'watch')).toBe(
-      'ok',
-    );
+  // The loop runs a pass every 30 s: 10 missed warn, 20 alert.
+  it.each([
+    [10 * 30 - 1, 'ok'],
+    [20 * 30 - 1, 'warn'],
+    [20 * 30, 'alert'],
+  ])('last pass ended %i s ago is %s', (age, want) => {
+    expect(
+      level(
+        healthy({ watch: { watched: 5, young: 2, lastPass: { endedAt: ago(age), okAt: ago(5) } } }),
+        'watch',
+      ),
+    ).toBe(want);
+  });
+  it('tells a stopped loop from Jupiter not answering', () => {
+    const stopped = healthy({
+      watch: { watched: 5, young: 2, lastPass: { endedAt: ago(900), okAt: ago(900) } },
+    });
+    expect(level(stopped, 'watch')).toBe('alert');
+    const failing = healthy({
+      watch: { watched: 5, young: 2, lastPass: { endedAt: ago(10), okAt: ago(6 * 600) } },
+    });
+    expect(level(failing, 'watch')).toBe('ok');
+    expect(level(failing, 'watch:prices')).toBe('alert');
+  });
+  it('warns before the loop has written anything', () => {
+    const f = healthy({ watch: { watched: 5, young: 2, lastPass: null } });
+    expect(level(f, 'watch')).toBe('warn');
+    expect(evaluateHealth(f, L).some((c) => c.name === 'watch:prices')).toBe(false);
+  });
+  it('warns when every pass of this run had a failed request, alerts once the run is old enough', () => {
+    const f = (runAge: number) =>
+      healthy({
+        liveRun: { id: 7, status: 'running', startedAt: ago(runAge) },
+        watch: { watched: 5, young: 2, lastPass: { endedAt: ago(5), okAt: null } },
+      });
+    expect(level(f(3 * 600 - 1), 'watch:prices')).toBe('ok');
+    expect(level(f(6 * 600), 'watch:prices')).toBe('alert');
+  });
+  it('is quiet about prices with nothing watched, and still reads the loop', () => {
+    const f = healthy({
+      watch: { watched: 0, young: 0, lastPass: { endedAt: ago(5), okAt: ago(5) } },
+    });
+    expect(level(f, 'watch')).toBe('ok');
+    expect(evaluateHealth(f, L).some((c) => c.name === 'watch:prices')).toBe(false);
   });
 });
 

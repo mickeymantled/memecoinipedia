@@ -9,8 +9,9 @@
  *   process      pg_locks (the lock itself), `live_state.pipeline_lock` (who took it), the newest
  *                `provider_usage_samples` row of the latest `live` run (written every 15 s: the heartbeat)
  *   discovery    `live_state.last_discovery` (written at the end of every pass, even a paused or failed one)
- *   watch loop   newest `coins.current_refreshed_at` among the watched coins (the watch pass stores
- *                it for every coin Jupiter priced). The process stores no "last watch pass" of its own.
+ *   watch loop   `live_state.last_watch`, written at the end of every watch pass (even one with nothing
+ *                due): when the last pass ended, and when the last one ended without a failed price request.
+ *                Two lines: `watch` (is the loop running) and `watch:prices` (is Jupiter answering).
  *   queue        `coin_stages` rows: `running` past the stage timeout, and `pending` rows of watched coins
  *                while no coin has finished the stage
  *   failures     `coin_stages` failed in the last 24 hours, by stage and the reason up to its first colon
@@ -35,15 +36,18 @@ import {
   DISCOVERY_INTERVAL_SECONDS,
   LIVE_RUN_KIND,
   STATE_LAST_DISCOVERY,
+  STATE_LAST_WATCH,
   STATE_REFRESH,
   STATE_SETTINGS,
   USAGE_SAMPLE_SECONDS,
   WATCH_MID_EVERY_SECONDS,
+  WATCH_PASS_SECONDS,
   WATCH_MID_UNDER_SECONDS,
   WATCH_OLDER_EVERY_SECONDS,
   dayKey,
 } from './constants.js';
 import type { RefreshState } from './refresh.js';
+import type { WatchRecord } from './watchRecord.js';
 import { startOfUtcDay, watchSpec } from './util.js';
 
 // ----------------------------------------------------------------------------- limits
@@ -70,6 +74,8 @@ export const HEARTBEAT_WARN_SAMPLES = 8;
 export const HEARTBEAT_ALERT_SAMPLES = 24;
 export const DISCOVERY_WARN_INTERVALS = 3;
 export const DISCOVERY_ALERT_INTERVALS = 6;
+export const WATCH_PASS_WARN_PASSES = 10;
+export const WATCH_PASS_ALERT_PASSES = 20;
 export const WATCH_WARN_INTERVALS = 3;
 export const WATCH_ALERT_INTERVALS = 6;
 
@@ -81,7 +87,10 @@ export interface HealthLimits {
   /** Age of the last discovery pass. A pass is every 5 minutes: three missed, then six. */
   discoveryWarnSeconds: number;
   discoveryAlertSeconds: number;
-  /** Age of the newest watched price, in intervals of the slowest tier that matters (see `watchInterval`). */
+  /** Age of the end of the watch loop's last pass. A pass is every 30 seconds; 10 missed, then 20. */
+  watchPassWarnSeconds: number;
+  watchPassAlertSeconds: number;
+  /** Age of the last pass without a failed price request, in intervals of the fastest tier watched (10 minutes, or an hour). */
   watchWarnIntervals: number;
   watchAlertIntervals: number;
   /** A `running` stage past its timeout times this: 1 means the worker should already have taken it over, 2 that it did not. */
@@ -110,6 +119,8 @@ export const DEFAULT_HEALTH_LIMITS: HealthLimits = {
   heartbeatAlertSeconds: HEARTBEAT_ALERT_SAMPLES * USAGE_SAMPLE_SECONDS,
   discoveryWarnSeconds: DISCOVERY_WARN_INTERVALS * DISCOVERY_INTERVAL_SECONDS,
   discoveryAlertSeconds: DISCOVERY_ALERT_INTERVALS * DISCOVERY_INTERVAL_SECONDS,
+  watchPassWarnSeconds: WATCH_PASS_WARN_PASSES * WATCH_PASS_SECONDS,
+  watchPassAlertSeconds: WATCH_PASS_ALERT_PASSES * WATCH_PASS_SECONDS,
   watchWarnIntervals: WATCH_WARN_INTERVALS,
   watchAlertIntervals: WATCH_ALERT_INTERVALS,
   stalledWarnMultiple: 1,
@@ -176,7 +187,12 @@ export interface HealthFacts {
   heartbeatAt: Date | null;
   settings: { maxCodexUnitsPerDay?: number } | null;
   lastDiscovery: { at: Date; status: string; error?: string } | null;
-  watch: { watched: number; young: number; newestPriceAt: Date | null };
+  watch: {
+    watched: number;
+    young: number;
+    /** The loop's own record (`live_state` key `last_watch`); null before its first write. */
+    lastPass: { endedAt: Date; okAt: Date | null } | null;
+  };
   stages: StageFacts[];
   failures: FailureFacts[];
   /** Rows that finished (`done` or `failed`) in the last 24 hours, by stage. */
@@ -224,10 +240,10 @@ export async function collectHealthFacts(db: Kysely<Database>, now: Date): Promi
     .select([
       sql<string>`count(*)`.as('watched'),
       sql<string>`count(*) filter (where coins.graduated_at > ${youngSince})`.as('young'),
-      sql<Date | null>`max(coins.current_refreshed_at)`.as('newest'),
     ])
     .where((eb) => isWatched(eb, spec))
     .executeTakeFirstOrThrow();
+  const lastWatch = await getLiveState<Partial<WatchRecord>>(db, STATE_LAST_WATCH);
 
   const stages: StageFacts[] = [];
   for (const { stage, timeoutSeconds } of HEALTH_STAGES) {
@@ -308,7 +324,17 @@ export async function collectHealthFacts(db: Kysely<Database>, now: Date): Promi
           ...(last.error ? { error: last.error } : {}),
         }
       : null,
-    watch: { watched: Number(w.watched), young: Number(w.young), newestPriceAt: w.newest },
+    watch: {
+      watched: Number(w.watched),
+      young: Number(w.young),
+      lastPass:
+        lastWatch && typeof lastWatch.endedAt === 'string'
+          ? {
+              endedAt: new Date(lastWatch.endedAt),
+              okAt: typeof lastWatch.okAt === 'string' ? new Date(lastWatch.okAt) : null,
+            }
+          : null,
+    },
     stages,
     failures: failed.map((r) => ({ stage: r.stage, reason: r.reason, count: Number(r.n) })),
     finished24h: Object.fromEntries(fin24.map((r) => [r.stage, Number(r.n)])),
@@ -452,38 +478,60 @@ export function evaluateHealth(
     }
   }
 
-  // 3. Watch loop
-  if (f.watch.watched === 0) {
-    checks.push({
-      name: 'watch',
-      level: 'ok',
-      figure: 'no watched coins, nothing to read',
-      limit: '-',
-    });
-  } else {
-    // The newest price among the watched coins is at most one interval of the fastest tier present
-    // old: every 10 minutes when a coin under 3 days old is watched, else hourly.
-    const interval = f.watch.young > 0 ? WATCH_MID_EVERY_SECONDS : WATCH_OLDER_EVERY_SECONDS;
-    const warn = limits.watchWarnIntervals * interval;
-    const alert = limits.watchAlertIntervals * interval;
-    const age = f.watch.newestPriceAt ? secondsSince(now, f.watch.newestPriceAt) : runAge;
-    const limit = `${duration(warn)}/${duration(alert)}`;
-    if (age === null) {
+  // 3. Watch loop: two readings of the loop's own record (`last_watch`).
+  {
+    const passLimit = `${duration(limits.watchPassWarnSeconds)}/${duration(limits.watchPassAlertSeconds)}`;
+    const last = f.watch.lastPass;
+    if (!last) {
+      // Before the loop's first write, as for a database where the live process never ran.
       checks.push({
         name: 'watch',
         level: 'warn',
-        figure: `${n(f.watch.watched)} watched coins, none priced yet`,
-        limit,
+        figure: 'no watch pass recorded yet (the process writes one at the end of each pass)',
+        limit: passLimit,
       });
     } else {
-      checks.push({
-        name: 'watch',
-        level: byAge(age, warn, alert),
-        figure: f.watch.newestPriceAt
-          ? `newest watched price ${duration(age)} old (${n(f.watch.watched)} coins watched)`
-          : `no watched price yet, run started ${duration(age)} ago`,
-        limit,
-      });
+      // A record from before this run started is the previous process's: count from the run start.
+      const startedAt = run.startedAt;
+      const stale = startedAt !== null && last.endedAt < startedAt;
+      const age = stale ? runAge : secondsSince(now, last.endedAt);
+      if (age !== null) {
+        checks.push({
+          name: 'watch',
+          level: byAge(age, limits.watchPassWarnSeconds, limits.watchPassAlertSeconds),
+          figure: stale
+            ? `no watch pass in this run yet, run started ${duration(age)} ago`
+            : `last pass ended ${duration(age)} ago`,
+          limit: passLimit,
+        });
+      }
+      if (f.watch.watched > 0) {
+        // The last pass without a failed price request is at most one interval of the fastest tier
+        // present old: every 10 minutes when a coin under 3 days old is watched, else hourly.
+        const interval = f.watch.young > 0 ? WATCH_MID_EVERY_SECONDS : WATCH_OLDER_EVERY_SECONDS;
+        const warn = limits.watchWarnIntervals * interval;
+        const alert = limits.watchAlertIntervals * interval;
+        const okStale = last.okAt === null || (startedAt !== null && last.okAt < startedAt);
+        const okAge = okStale ? runAge : last.okAt ? secondsSince(now, last.okAt) : null;
+        const limit = `${duration(warn)}/${duration(alert)}`;
+        if (okAge === null) {
+          checks.push({
+            name: 'watch:prices',
+            level: 'warn',
+            figure: 'no pass without a failed price request recorded yet',
+            limit,
+          });
+        } else {
+          checks.push({
+            name: 'watch:prices',
+            level: byAge(okAge, warn, alert),
+            figure: okStale
+              ? `every pass of this run had a failed price request, run started ${duration(okAge)} ago (${n(f.watch.watched)} coins watched)`
+              : `last pass without a failed price request ended ${duration(okAge)} ago (${n(f.watch.watched)} coins watched)`,
+            limit,
+          });
+        }
+      }
     }
   }
 

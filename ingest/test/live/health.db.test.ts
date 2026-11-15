@@ -23,7 +23,12 @@ import {
   type HealthCheck,
   type HealthReport,
 } from '../../src/live/health.js';
-import { STATE_LAST_DISCOVERY, STATE_REFRESH, STATE_SETTINGS } from '../../src/live/constants.js';
+import {
+  STATE_LAST_DISCOVERY,
+  STATE_LAST_WATCH,
+  STATE_REFRESH,
+  STATE_SETTINGS,
+} from '../../src/live/constants.js';
 import { adminUrl, describeDb, FakeClock } from './helpers.js';
 
 let t: TestDatabase;
@@ -60,6 +65,17 @@ async function healthyWorld(): Promise<void> {
     ago(60),
   );
   await watchedCoin({ priced: 30 });
+  await setLastWatch(30, 30);
+}
+
+/** The loop's own record: when the last pass ended and when the last clean one did (seconds ago). */
+async function setLastWatch(endedAgo: number, okAgo: number | null): Promise<void> {
+  await setLiveState(
+    t.db,
+    STATE_LAST_WATCH,
+    { endedAt: ago(endedAgo).toISOString(), okAt: okAgo === null ? null : ago(okAgo).toISOString() },
+    ago(endedAgo),
+  );
 }
 
 async function watchedCoin(o: { priced: number | null; graduated?: number }): Promise<number> {
@@ -204,20 +220,73 @@ describeDb('live health on a throwaway database', () => {
   });
 
   // ------------------------------------------------------------- 3. watch loop
-  it('watch: alerts when the newest watched price is old, quiet just inside', async () => {
+  it('watch: alerts when the last pass ended long ago, quiet just inside', async () => {
+    await healthyWorld();
+    await holdLock();
+    await setLastWatch(L.watchPassAlertSeconds - 1, 30);
+    expect(check(await health(), 'watch').level).toBe('warn');
+    await setLastWatch(L.watchPassAlertSeconds, 30);
+    expect(check(await health(), 'watch').level).toBe('alert');
+    await setLastWatch(L.watchPassWarnSeconds - 1, 30);
+    expect(check(await health(), 'watch').level).toBe('ok');
+    await setLastWatch(L.watchPassWarnSeconds, 30);
+    expect(check(await health(), 'watch').level).toBe('warn');
+  });
+
+  it('watch:prices: alerts when only failed passes ended lately, quiet just inside', async () => {
     await healthyWorld();
     await holdLock();
     const limit = L.watchAlertIntervals * 600; // a coin under 3 days old is watched
+    // The loop runs (last pass 10 s ago) but no pass has gone without a failed request.
+    await setLastWatch(10, limit - 1);
+    let r = await health();
+    expect(check(r, 'watch').level).toBe('ok');
+    expect(check(r, 'watch:prices').level).toBe('warn');
+    await setLastWatch(10, limit);
+    r = await health();
+    expect(check(r, 'watch').level).toBe('ok');
+    expect(check(r, 'watch:prices').level).toBe('alert');
+    await setLastWatch(10, L.watchWarnIntervals * 600 - 1);
+    expect(check(await health(), 'watch:prices').level).toBe('ok');
+  });
+
+  it('watch: a loop that stopped is told apart from Jupiter not answering', async () => {
+    await healthyWorld();
+    await holdLock();
+    // Stopped: both lines old.
+    await setLastWatch(L.watchPassAlertSeconds, L.watchPassAlertSeconds);
+    let r = await health();
+    expect(check(r, 'watch').level).toBe('alert');
+    expect(check(r, 'watch').figure).toContain('last pass ended');
+    // Running but failing: the first line is quiet, the second alerts.
+    await setLastWatch(5, L.watchAlertIntervals * 600);
+    r = await health();
+    expect(check(r, 'watch').level).toBe('ok');
+    expect(check(r, 'watch:prices').level).toBe('alert');
+  });
+
+  it('watch: before the first write it is a warn, and a pass with nothing due still writes it', async () => {
+    await healthyWorld();
+    await holdLock();
+    await t.db.deleteFrom('live_state').where('key', '=', STATE_LAST_WATCH).execute();
+    const r = await health();
+    expect(check(r, 'watch').level).toBe('warn');
+    expect(check(r, 'watch').figure).toContain('no watch pass recorded yet');
+    expect(r.checks.find((c) => c.name === 'watch:prices')).toBeUndefined();
+    expect(r.status).toBe('warn');
+  });
+
+  it('watch: a record left by an earlier process counts from this run start', async () => {
+    await healthyWorld(); // the run started 3600 s ago
+    await holdLock();
     await t.db
-      .updateTable('coins')
-      .set({ current_refreshed_at: ago(limit - 1) })
+      .updateTable('ingest_runs')
+      .set({ started_at: ago(5) })
       .execute();
-    expect(check(await health(), 'watch').level).toBe('warn');
-    await t.db
-      .updateTable('coins')
-      .set({ current_refreshed_at: ago(limit) })
-      .execute();
-    expect(check(await health(), 'watch').level).toBe('alert');
+    await setLastWatch(3000, 3000);
+    const c = check(await health(), 'watch');
+    expect(c.level).toBe('ok');
+    expect(c.figure).toContain('no watch pass in this run yet');
   });
 
   // --------------------------------------------------------- 4. stalled queue
@@ -347,10 +416,7 @@ describeDb('live health on a throwaway database', () => {
     await holdLock();
     clock.set('2026-11-16T00:30:00.000Z');
     // Re-time the rows so nothing else alerts at the new time.
-    await t.db
-      .updateTable('coins')
-      .set({ current_refreshed_at: ago(30) })
-      .execute();
+    await setLastWatch(30, 30);
     await setLiveState(
       t.db,
       STATE_LAST_DISCOVERY,
@@ -371,10 +437,7 @@ describeDb('live health on a throwaway database', () => {
     await holdLock();
     const retime = async (iso: string) => {
       clock.set(iso);
-      await t.db
-        .updateTable('coins')
-        .set({ current_refreshed_at: ago(30) })
-        .execute();
+      await setLastWatch(30, 30);
       await recordUsageSample(t.db, runId, { provider: 'codex', requests: 2, units: 101 }, ago(5));
       await setLiveState(
         t.db,
@@ -508,5 +571,21 @@ describeDb('live.ts health, as a process', () => {
     const bad = await cli(['health'], { DATABASE_URL: dead.toString() });
     expect(bad.code).toBe(2);
     expect(bad.err).toContain('cannot read the database');
+    expect(bad.err).not.toContain('migrate');
   });
+});
+
+describeDb('live.ts health on a database that is behind on migrations', () => {
+  it('says migrations are behind, names the migrate command, and exits 2', async () => {
+    const bare = await createTestDatabase(adminUrl!, { migrate: false });
+    try {
+      const r = await cli(['health'], { DATABASE_URL: bare.url });
+      expect(r.code).toBe(2);
+      expect(r.err).toContain('cannot read the database');
+      expect(r.err).toContain('migrations have not all been applied');
+      expect(r.err).toContain('pnpm --filter @memecoinipedia/db migrate');
+    } finally {
+      await bare.drop();
+    }
+  }, 60_000);
 });

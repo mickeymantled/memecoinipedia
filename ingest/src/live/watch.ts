@@ -38,6 +38,7 @@ import {
 } from './constants.js';
 import type { LiveDeps } from './deps.js';
 import { WATCH_INTERVALS, safeText, watchEvery, watchSpec } from './util.js';
+import { recordWatchPass } from './watchRecord.js';
 
 /** Memory of the watch loop between passes. Losing it (a restart) costs one extra price read. */
 export interface WatchState {
@@ -217,5 +218,6 @@ export async function watchOnce(
       }
     }
   }
+  await recordWatchPass(deps.db, deps.now(), pass.error === undefined);
   return pass;
 }

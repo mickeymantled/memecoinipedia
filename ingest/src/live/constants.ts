@@ -25,6 +25,7 @@ export const STATE_LAST_DISCOVERY = 'last_discovery';
 export const STATE_LAST_SWEEP = 'last_sweep';
 export const STATE_SETTINGS = 'live_settings';
 export const STATE_REFRESH = 'refresh_state';
+export const STATE_LAST_WATCH = 'last_watch';
 export const dayKey = (d: Date): string => `day:${d.toISOString().slice(0, 10)}`;
 
 // -------------------------------------------------------------------- discovery

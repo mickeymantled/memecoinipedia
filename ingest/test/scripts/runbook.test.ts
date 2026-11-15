@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { PIPELINE_LOCK_KEY } from '@memecoinipedia/db';
 import { describe, expect, it } from 'vitest';
 
 /**
@@ -108,6 +109,28 @@ describe('docs/runbook.md', () => {
       expect(existsSync(`${ROOT}ingest/scripts/${m[1]}`), m[1]).toBe(true);
     }
     expect(RUNBOOK).not.toMatch(/\/Users\/|\/home\/|\/private\/|\/tmp\//);
+  });
+
+  it('writes the pipeline lock key the way pg_locks lists it, and limits the recipe to its database', () => {
+    // A 64-bit advisory key is listed as two int4 halves: the high half is the classid, the low the objid.
+    const classid = Math.floor(PIPELINE_LOCK_KEY / 2 ** 32);
+    const objid = PIPELINE_LOCK_KEY % 2 ** 32;
+    const queries = fencedLines(RUNBOOK).filter((l) => l.includes('pg_locks'));
+    expect(queries.length).toBeGreaterThan(0);
+    for (const q of queries) {
+      expect(q).toContain(`l.classid = ${classid} `);
+      expect(q).toContain(`l.objid = ${objid} `);
+      expect(q).toContain('l.objsubid = 1');
+      expect(q).toContain('d.datname = current_database()');
+      expect(q).toContain('d.oid = l.database');
+      expect(q).toContain('client_addr');
+    }
+    // The same numbers and conditions as the code's own read of the lock.
+    const src = readFileSync(`${ROOT}db/src/pipelineLock.ts`, 'utf8');
+    expect(src).toContain('Math.floor(PIPELINE_LOCK_KEY / 2 ** 32)');
+    expect(src).toContain('PIPELINE_LOCK_KEY % 2 ** 32');
+    expect(src).toContain('current_database()');
+    expect(src).toContain('objsubid = 1');
   });
 
   it('documents the health command and every option it takes', () => {

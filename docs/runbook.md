@@ -62,22 +62,26 @@ usage in the last hour and in total, the failures by reason, and an estimate of 
 | `process` | heartbeat old | The process holds the lock but has stopped writing its usage samples (every 15 seconds): it is stuck, or cannot reach the database. Read its log; if it does not recover, stop it (section on stopping) and start it again. |
 | `process` (warn) | a backfill holds the lock | The live process is not running because a backfill is. Normal during a backfill. |
 | `discovery` | last pass older than six intervals (30 minutes) | Codex.io is down or limiting, or the process is stuck. A pass that was only paused at the daily unit ceiling is a warn: see `provider:codex:day`. The cursor is kept, so after any gap the next pass reads from the cursor and loses nothing. |
-| `watch` | newest watched price older than six intervals | Jupiter is failing, or the watch loop is stuck. The log says `watch: price request failed`. Nothing to do if Jupiter is down; the coins are read again as soon as it answers. |
+| `watch` | the last watch pass ended more than 10 minutes ago (warn at 5) | The watch loop is not running: the process is stuck or down (see the `process` rows). The loop writes the end of every pass, even one with nothing due, so a quiet watched set does not raise this. A `warn` saying no pass is recorded yet appears right after a first start, until the first pass (within a minute). |
+| `watch:prices` | no pass without a failed price request for six intervals of the fastest watched tier (60 minutes with a coin under 3 days old; 6 hours otherwise; warn at three) | The loop runs but Jupiter is not answering. The log says `watch: price request failed`. Nothing to do if Jupiter is down; the coins are read again as soon as it answers. If it is a 429, see "A provider is down or limiting". |
 | `queue:STAGE:running` | a stage `running` for twice its timeout | A worker died holding it, or nothing is taking over. A running process takes such rows over after the timeout; if it has not, the process is stuck: restart it. |
 | `queue:STAGE:waiting` | watched coins waiting for a stage while nothing finishes it for an hour | Candles hold at the daily unit ceiling (check `provider:codex:day`); otherwise a provider is down. The process queues waiting coins again every 10 minutes. |
 | `failures:STAGE:REASON` | 20 or more failures of one reason in 24 hours, and a quarter of the stage's finished rows | Look at the reason: `price_error`, `metadata_unreachable` and so on. A provider outage ends by itself; see the provider section, then retry the failed stages. |
 | `provider:codex:day` | 95% of the day's unit ceiling (warn at 80%) | The process pauses discovery and candle fetches itself at 100% until the next UTC day. To allow more, restart it with a higher `--max-codex-units-per-day` (see the cost section first). |
 | `provider:codex:month` | 95% of the allowance you gave (warn at 80%) | Spend is near the month's plan; decide before the next run. |
 | `provider:jupiter:pauses` | many pauses today | Jupiter is rate limiting. The check reads the provider name `jupiter_pause`, which comes with issue #93; until that is merged there is no such row and the line is not printed. |
-| `refresh:yesterday` | yesterday's daily refresh did not finish | The process was down for part of yesterday. Only the latest day is kept, so this shows only until today's refresh starts. |
+| `refresh:yesterday` | yesterday's daily refresh did not finish | Nothing. Today's refresh covers every listed coin, so what yesterday's missed is read again today. It means the process was down for part of yesterday (see the `process` rows if it is down now). Only the latest day is kept, so this shows only until today's refresh starts. |
 | `refresh:today` | today's refresh has not started by 01:00 UTC | It starts at the first tick of the UTC day. The process is down or its ticks are failing. |
 
 What the checks read: the lock itself (`pg_locks`); the newest usage sample of the latest live run
-as the heartbeat; `live_state` keys `last_discovery` and `refresh_state`; the newest
-`coins.current_refreshed_at` among the watched coins for the watch loop (the process does not store
-a "last watch pass" of its own; the smallest addition that would make the check exact is a
-`live_state` key written at the end of each watch pass); `coin_stages` rows for the queue and the
-failures; the usage tally for the providers.
+as the heartbeat; `live_state` keys `last_discovery` and `refresh_state`; the watch loop's own record, the
+`live_state` key `last_watch` (when the last pass ended, and when the last pass without a failed
+price request ended); `coin_stages` rows for the queue and the failures; the usage tally for the
+providers. A `last_watch` left by an earlier process counts from the start of the current run.
+
+If `health` answers that the database schema is behind and names the `migrate` command, migrations
+have not all been applied to that database: apply them (section "Migrations, backups, restoring"),
+then run it again. It exits 2.
 
 ## The live process
 
@@ -152,7 +156,17 @@ twice.
   number. Coins already done are skipped.
 - `Backfill run finished.` Nothing is waiting in the stages you named. A line below lists coins
   still waiting, if any.
-- A Jupiter rate limit does not stop the backfill; it does not use Jupiter for prices.
+- A Jupiter rate limit does not stop the backfill, and it does hit it: the `metadata` stage asks
+  Jupiter for prices, 100 coins a request. On this version a 429 fails every coin of that batch
+  with the reason `price_error` after the client's quick retries (the coins then show in
+  `backfill-status.ts` under failures, and a stage that used its attempts stays `failed`). What to
+  do: run the `metadata` stage with `--metadata-concurrency 1`; if 429s persist, stop the run
+  (Ctrl-C) and wait; retry the failed coins later with `--retry-failed`:
+
+```
+pnpm -C ingest exec tsx --env-file=../.env scripts/backfill.ts run --stages metadata --metadata-concurrency 1 --confirm
+pnpm -C ingest exec tsx --env-file=../.env scripts/backfill.ts run --stages metadata --metadata-concurrency 1 --retry-failed --confirm
+```
 
 ## Another process holds the lock
 
@@ -175,9 +189,17 @@ pnpm -C ingest exec tsx --env-file=../.env scripts/live.ts status
   (a half-open connection), find the session and end it, then start your run:
 
 ```
-psql "$DATABASE_URL" -c "select l.pid, a.state, a.query_start from pg_locks l join pg_stat_activity a on a.pid = l.pid where l.locktype = 'advisory' and l.classid = 1 and l.objid = 3007493705"
+psql "$DATABASE_URL" -c "select l.pid, d.datname as database, coalesce(a.client_addr::text, 'local socket') as client, a.state, a.query_start from pg_locks l join pg_database d on d.oid = l.database join pg_stat_activity a on a.pid = l.pid where l.locktype = 'advisory' and d.datname = current_database() and l.classid = 1 and l.objid = 3007493705 and l.objsubid = 1"
 psql "$DATABASE_URL" -c "select pg_terminate_backend(PID)"
 ```
+
+Advisory locks belong to one database, and `pg_locks` lists the whole server, so the query is
+limited to the database `DATABASE_URL` names (`d.datname = current_database()`); the output shows
+that database and the client address of the session. Check both before you go on: the database must be
+the one you mean, and the client must be the machine the pipeline ran on. The two numbers
+(`classid = 1`, `objid = 3007493705`) are the pipeline lock key split into its two halves, as
+`pg_locks` lists a 64-bit key; a test keeps them equal to `PIPELINE_LOCK_KEY` in
+`db/src/pipelineLock.ts`.
 
 Replace `PID` with the pid from the first command. Do this only after you are sure no pipeline
 process is running; ending the session of a live one makes it stop with "The pipeline lock was lost".
@@ -233,10 +255,15 @@ continue (it catches up from the cursor), and retry failed backfill stages with 
 If it is limiting you (usage near the ceiling), do not raise the ceiling to push through: see the
 cost section.
 
-**Jupiter (prices, the daily refresh).** The `watch` check ages and the log says
-`watch: price request failed`. The watch loop goes first on the shared limiter and the refresh
-yields to it. Without a key Jupiter allows about one request every two seconds. Nothing to do while
-it limits; set `JUPITER_API_KEY` in `.env` and restart the live process for a higher rate.
+**Jupiter (prices: the live watch loop, the daily refresh, and the backfill's `metadata` stage).**
+In the live process the `watch:prices` check ages and the log says `watch: price request failed`.
+The watch loop goes first on the shared limiter and the refresh yields to it. Without a key
+Jupiter allows about one request every two seconds. Nothing to do while it limits; set
+`JUPITER_API_KEY` in `.env` and restart the live process for a higher rate. In a backfill, a 429 on
+the `metadata` stage fails the coins of the batch with `price_error` after quick retries (on this
+version there is no pause and resume): run that stage with `--metadata-concurrency 1`, stop the
+run if 429s persist, and retry later with `--retry-failed` (the two commands are in "What the
+backfill's last lines mean").
 
 **Helius (token launch information in the metadata stage).** Failures show as stage failures with
 the reason code of the metadata stage. Retry them when Helius is back:
@@ -312,7 +339,6 @@ A backup predates migrations applied after it; run `migrate` on the restored dat
 
 - Re-ingesting one coin from the start, and refreshing the pools of chosen coins: no command (see
   above); `reopenStages` and `requeueFailed` in `db/src/stages.ts` are the functions.
-- A "last watch pass" time stored by the live process, which would make the `watch` check exact.
 - A recorded Jupiter pause (`jupiter_pause`): comes with issue #93.
 - Delivery of alerts: `live health` prints and sets an exit code; where its alert goes is decided
   with hosting (Q6 in `PLAN.md`).

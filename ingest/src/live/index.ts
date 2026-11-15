@@ -10,3 +10,4 @@ export * from './status.js';
 export * from './sweep.js';
 export * from './util.js';
 export * from './watch.js';
+export * from './watchRecord.js';

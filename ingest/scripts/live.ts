@@ -134,7 +134,14 @@ async function main(): Promise<void> {
       let text = err instanceof Error ? err.message : String(err);
       for (const s of secretsFromEnv(process.env))
         if (s.length >= 6) text = text.split(s).join('[redacted]');
-      process.stderr.write(`health: cannot read the database: ${text}\n`);
+      // 42P01: a table is missing, 42703: a column is missing. Either way the schema is behind.
+      const code = (err as { code?: unknown } | null)?.code;
+      const behind =
+        code === '42P01' || code === '42703'
+          ? ' The database schema is behind this code: migrations have not all been applied. ' +
+            'Run `pnpm --filter @memecoinipedia/db migrate`, then try again.'
+          : '';
+      process.stderr.write(`health: cannot read the database: ${text}.${behind}\n`);
       process.exit(2);
     }
     out(values.json ? JSON.stringify(report) : formatHealth(report));
