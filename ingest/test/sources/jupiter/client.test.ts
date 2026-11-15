@@ -75,6 +75,38 @@ describe('getTokens', () => {
     });
   });
 
+  it('reads website, twitter and telegram from the recorded response, and null where a row has none', async () => {
+    const f = fakeGetFetch([{ body: fixtureText('jupiter', 'search') }]);
+    const tokens = await client(f).c.getTokens([FARTCOIN, VANGOAT, DODGE, ROSE, USOF]);
+    const by = Object.fromEntries(tokens.map((t) => [t.mint, t]));
+    expect(by[FARTCOIN]).toMatchObject({ website: null, twitter: null, telegram: null });
+    expect(by[VANGOAT]).toMatchObject({
+      website: 'https://oncyber.io/vangoat',
+      twitter: 'https://x.com/TheVincentVanG',
+      telegram: 'https://t.me/VanGoatPortal',
+    });
+    expect(by[DODGE]).toMatchObject({ twitter: null, telegram: null });
+    expect(by[DODGE]!.website).toMatch(/^https:\/\/www\.ndtv\.com\//);
+    expect(by[USOF]).toMatchObject({ website: 'https://www.usof.info/', telegram: null });
+    expect(tokens.filter((t) => t.website !== null)).toHaveLength(4);
+    expect(tokens.filter((t) => t.twitter !== null)).toHaveLength(3);
+    expect(tokens.filter((t) => t.telegram !== null)).toHaveLength(2);
+  });
+
+  it('reads a link that is not a string as none, without making the row invalid', async () => {
+    const f = fakeGetFetch([
+      { body: JSON.stringify([{ id: 'A', usdPrice: 1, website: 5, twitter: { a: 1 } }]) },
+    ]);
+    const [t] = await client(f).c.getTokens(['A']);
+    expect(t).toMatchObject({
+      found: true,
+      invalid: null,
+      priceUsd: 1,
+      website: null,
+      twitter: null,
+    });
+  });
+
   it('splits batches at 100 mints', async () => {
     const mints = Array.from({ length: 250 }, (_, i) => `Mint${String(i).padStart(3, '0')}`);
     const f = fakeGetFetch((req) => ({ body: bodyFor(queryIds(req.url)) }));
@@ -184,6 +216,9 @@ describe('no launch-time field', () => {
         'updatedAt',
         'invalid',
         'volume24hUsd',
+        'website',
+        'twitter',
+        'telegram',
       ].sort(),
     );
   });

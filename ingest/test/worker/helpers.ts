@@ -91,6 +91,9 @@ export function token(mint: string, extra: Partial<JupiterToken> = {}): JupiterT
     totalSupply: 1e9,
     isVerified: false,
     updatedAt: '2026-11-15T00:00:00Z',
+    website: null,
+    twitter: null,
+    telegram: null,
     invalid: null,
     ...extra,
   };

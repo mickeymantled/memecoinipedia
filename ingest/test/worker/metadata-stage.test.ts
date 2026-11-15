@@ -131,7 +131,7 @@ describeDb('metadata stage', () => {
       expect(await stage()).toMatchObject({
         status: 'done',
         attempts: 1,
-        version: 2,
+        version: 3,
         last_error: null,
       });
       expect(await issues()).toEqual([]);
@@ -298,6 +298,6 @@ describe('metadata stage without a database', () => {
       assets: { get: async (m) => asset(m) },
       prices: { get: async (m) => token(m) },
     });
-    expect(stage).toMatchObject({ name: 'metadata', version: 2 });
+    expect(stage).toMatchObject({ name: 'metadata', version: 3 });
   });
 });

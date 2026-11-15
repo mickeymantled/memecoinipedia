@@ -74,6 +74,10 @@ const tokenSchema = z.object({
     })
     .nullish(),
   updatedAt: z.string().nullish(),
+  // Links as given (anything else than a string is read as none); cleaned downstream like a file's.
+  website: z.unknown().optional(),
+  twitter: z.unknown().optional(),
+  telegram: z.unknown().optional(),
 });
 
 /** Only the array is checked here; each row is checked on its own with `tokenSchema`. */
@@ -99,6 +103,13 @@ export interface JupiterToken {
   isVerified: boolean | null;
   /** When Jupiter last updated the entry (ISO 8601). Not a launch time. */
   updatedAt: string | null;
+  /**
+   * Links from the token's page, as Jupiter gives them: not cleaned, and possibly edited since
+   * launch. Null when absent or not a string.
+   */
+  website: string | null;
+  twitter: string | null;
+  telegram: string | null;
   /**
    * Null for a good row. When Jupiter returned a row for this mint that did not match the
    * expected shape, `found` is true, every other field is null, and this lists the issues.
@@ -178,6 +189,9 @@ const notFound = (mint: string): JupiterToken => ({
   totalSupply: null,
   isVerified: null,
   updatedAt: null,
+  website: null,
+  twitter: null,
+  telegram: null,
   invalid: null,
 });
 
@@ -274,6 +288,9 @@ export class JupiterClient {
           totalSupply: r.totalSupply ?? null,
           isVerified: r.isVerified ?? null,
           updatedAt: r.updatedAt ?? null,
+          website: typeof r.website === 'string' ? r.website : null,
+          twitter: typeof r.twitter === 'string' ? r.twitter : null,
+          telegram: typeof r.telegram === 'string' ? r.telegram : null,
           invalid: null,
         });
       }

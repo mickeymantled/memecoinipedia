@@ -117,7 +117,7 @@ describeDb('metadata_file stage', () => {
     expect(await issues()).toEqual([
       {
         kind: 'social_links_dropped',
-        detail: { links: [{ field: 'website', value: '@coin_handle' }] },
+        detail: { links: [{ field: 'website', value: '@coin_handle' }], source: 'metadata_file' },
       },
     ]);
     expect(calls).toEqual([URI]);
