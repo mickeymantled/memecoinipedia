@@ -58,6 +58,8 @@ export interface WatchPass {
   retriggered: number;
   /** Jupiter requests made (counted here, one per chunk). */
   requests: number;
+  /** True when the pass ended because Jupiter had asked every request to wait. */
+  paused?: boolean;
   error?: string;
 }
 
@@ -140,6 +142,11 @@ export async function watchOnce(
   for (let i = 0; i < due.length; i += WATCH_MINTS_PER_REQUEST) {
     const chunk = due.slice(i, i + WATCH_MINTS_PER_REQUEST);
     let tokens: JupiterToken[];
+    // Jupiter asked every request of the process to wait: end the pass, the coins are due again.
+    if ((deps.jupiter.pausedForMs?.() ?? 0) > 0) {
+      pass.paused = true;
+      break;
+    }
     try {
       pass.requests++;
       tokens = await deps.jupiter.getTokens(chunk.map((c) => c.address));

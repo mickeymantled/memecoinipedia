@@ -12,6 +12,8 @@ import {
 } from '../../src/live/constants.js';
 import type { CodexDayGate } from '../../src/live/gate.js';
 import { LiveLoop } from '../../src/live/loop.js';
+import { JupiterRateLimitedError } from '../../src/sources/jupiter/index.js';
+import { collectLiveStatus, formatLiveStatus } from '../../src/live/status.js';
 import { refreshOnce, refreshState } from '../../src/live/refresh.js';
 import { topUpOnce } from '../../src/live/topup.js';
 import { watchDue, newWatchState } from '../../src/live/watch.js';
@@ -188,6 +190,67 @@ describeDb('the daily refresh', () => {
     expect(f.jupiter.asked.slice(1).flat().length).toBeGreaterThan(0);
     expect((await refreshState(f.deps))?.coins).toBeGreaterThan(0);
   }, 120_000);
+});
+
+describeDb('Jupiter pausing on HTTP 429', () => {
+  it('ends the refresh pass while Jupiter is paused, and goes on from the same place when it is over', async () => {
+    fx = await liveFixture();
+    const f = fx;
+    await insertListed(f, 250);
+    f.jupiter.pausedForMs = () => 30_000;
+    expect(await refreshOnce(f.deps)).toMatchObject({ status: 'paused', requests: 0 });
+    expect(f.jupiter.requests).toBe(0);
+    f.jupiter.pausedForMs = () => 0;
+    expect((await refreshOnce(f.deps)).status).toBe('done');
+    expect(f.jupiter.requests).toBe(3);
+  });
+
+  it('treats a client that gave up as a pause, not a failure: the place does not move', async () => {
+    fx = await liveFixture();
+    const f = fx;
+    await insertListed(f, 250);
+    f.jupiter.failWith = new JupiterRateLimitedError(5, 240);
+    const pass = await refreshOnce(f.deps);
+    expect(pass.status).toBe('paused');
+    expect((await refreshState(f.deps))?.afterId).toBe(0);
+    expect(f.logs.filter((l) => l.startsWith('error'))).toEqual([]);
+    f.jupiter.failWith = null;
+    expect((await refreshOnce(f.deps)).status).toBe('done');
+    expect((await refreshState(f.deps))?.coins).toBe(250);
+  });
+
+  it('ends the watch pass while paused, and when the pause is over the watch request goes before the refresh', async () => {
+    fx = await liveFixture();
+    const f = fx;
+    await insertListed(f, 250);
+    const w = await addCoin(f, 1, 10 * MIN, () => 20_000);
+    const loop = new LiveLoop(f.deps, { topUp: false });
+    f.jupiter.pausedForMs = () => 45_000;
+    const paused = await loop.tick();
+    expect(f.jupiter.requests).toBe(0);
+    expect(paused.watch?.paused).toBe(true);
+    // The watch coin is still due, so the refresh yields to it, paused or not.
+    expect(paused.refresh?.status).toBe('yielded');
+    f.jupiter.pausedForMs = () => 0;
+    f.clock.advance(MIN * 1000);
+    await loop.tick();
+    expect(f.jupiter.asked[0]).toContain(w.mint);
+    expect(f.jupiter.asked.slice(1).flat().length).toBeGreaterThan(0);
+  }, 120_000);
+});
+
+describeDb('the status report and Jupiter pauses', () => {
+  it('prints the pauses and the seconds paused', async () => {
+    fx = await liveFixture();
+    const f = fx;
+    await sql`insert into provider_usage_samples (run_id, provider, sampled_at, requests, units)
+      values (${f.runId}, 'jupiter_pause', ${new Date(f.clock.ms - HOUR * 1000)}, 3, 150)`.execute(
+      f.db,
+    );
+    const status = await collectLiveStatus(f.db, f.clock.now());
+    expect(status.today).toMatchObject({ jupiterPauses: 3, jupiterSecondsPaused: 150 });
+    expect(formatLiveStatus(status)).toMatch(/paused 3 times after HTTP 429 for 150 s in all/);
+  });
 });
 
 describeDb('the candle top-up', () => {

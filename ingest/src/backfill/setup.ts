@@ -23,7 +23,7 @@ import {
 } from '../sources/codex/index.js';
 import { HELIUS_PROVIDER } from '../sources/helius/costs.js';
 import { HeliusClient } from '../sources/helius/client.js';
-import { JupiterClient } from '../sources/jupiter/client.js';
+import { JupiterClient, jupiterPauseUsage } from '../sources/jupiter/client.js';
 import { MetadataFetcher } from '../sources/metadata/fetch.js';
 import { RateLimiter } from '../sources/ratelimit.js';
 import { DEFAULT_GATEWAY_RPS, type IngestEnv, type SourceClients } from '../worker/run.js';
@@ -33,6 +33,7 @@ import { discoveredStage } from '../worker/stages/discovered.js';
 import {
   createMetadataLoaders,
   createMetadataStage,
+  type MetadataStage,
   type HeliusAssets,
   type JupiterPrices,
 } from '../worker/stages/metadata.js';
@@ -116,6 +117,7 @@ export function createBackfillClients(env: IngestEnv, o: BackfillClientOptions):
       return {
         [HELIUS_PROVIDER]: { requests: h.requests, units: h.units },
         jupiter: { requests: jupiter.requestCount(), units: 0 },
+        ...jupiterPauseUsage(jupiter),
         ...(c ? { [CODEX_PROVIDER]: { requests: c.requests, units: c.units } } : {}),
       };
     },
@@ -138,11 +140,17 @@ export interface BackfillRegistryOptions {
    * process closes it while the day's unit ceiling is reached). Absent: the stage as it is.
    */
   candlesAdmit?: () => boolean;
+  /** How long Jupiter's rate limit holds the metadata stage, in milliseconds. Absent: for the run (a backfill stops on it). */
+  metadataStopHoldMs?: number;
 }
 
 /** The stage `metadata` (or `metadata_file`) as the backfill runs it: after `metrics`, for listed coins only. */
-export function backfillMetadataStage(stage: Stage): Stage {
-  return { ...stage, requires: 'metrics', onlyIf: { minAthMarketCapUsd: LISTED_ATH_USD } };
+export function backfillMetadataStage<S extends Stage>(stage: S): S {
+  // `Object.create` keeps the stage's getters (`stopped`), which a spread would freeze.
+  return Object.create(stage, {
+    requires: { value: 'metrics', enumerable: true },
+    onlyIf: { value: { minAthMarketCapUsd: LISTED_ATH_USD }, enumerable: true },
+  }) as S;
 }
 
 /** The stage `metadata_file` as the backfill runs it: after `metadata`, for listed coins only. */
@@ -153,9 +161,11 @@ export function backfillMetadataFileStage(stage: Stage): Stage {
 export function buildBackfillRegistry(o: BackfillRegistryOptions): {
   registry: StageRegistry;
   candles: CandlesStage | null;
+  metadata: MetadataStage | null;
 } {
   const registry = new StageRegistry().register(discoveredStage);
   let candles: CandlesStage | null = null;
+  let metadata: MetadataStage | null = null;
   if (o.stages.includes('candles')) {
     if (!o.clients.codex) throw new Error('The candles stage needs a Codex.io client');
     candles = createCandlesStage({ codex: o.clients.codex });
@@ -181,7 +191,12 @@ export function buildBackfillRegistry(o: BackfillRegistryOptions): {
       minAthMarketCapUsd: LISTED_ATH_USD,
       candidateIds: o.metadataCandidateIds,
     });
-    registry.register(backfillMetadataStage(createMetadataStage({ assets, prices })));
+    metadata = createMetadataStage({
+      assets,
+      prices,
+      ...(o.metadataStopHoldMs !== undefined ? { stopHoldMs: o.metadataStopHoldMs } : {}),
+    });
+    registry.register(backfillMetadataStage(metadata));
   }
   if (o.stages.includes('metadata_file')) {
     registry.register(
@@ -190,7 +205,7 @@ export function buildBackfillRegistry(o: BackfillRegistryOptions): {
       ),
     );
   }
-  return { registry, candles };
+  return { registry, candles, metadata };
 }
 
 export { DEFAULT_GATEWAY_RPS };

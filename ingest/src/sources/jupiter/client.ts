@@ -22,12 +22,35 @@
  * Helius's raw-unit supply.
  */
 import { z } from 'zod';
-import { getBytes, type GetBytesOptions, type GetFetchLike } from '../http.js';
+import {
+  getBytes,
+  parseRetryAfter,
+  type GetBytesOptions,
+  type GetFetchLike,
+  type GetFetchResponse,
+} from '../http.js';
 import { RateLimiter } from '../ratelimit.js';
 
 export const JUPITER_PROVIDER = 'jupiter';
 export const JUPITER_BASE_URL = 'https://api.jup.ag';
 export const JUPITER_MAX_MINTS_PER_REQUEST = 100;
+/** Provider name of the pause tally in `provider_usage`: `requests` is pauses, `units` seconds paused. */
+export const JUPITER_PAUSE_PROVIDER = 'jupiter_pause';
+
+/**
+ * The share of Jupiter's documented rate (0.5 requests a second without a key, 1 with one) the
+ * limiter is set to. A run sent about 1,250 requests at exactly the documented rate and met 429
+ * after half an hour, so the documented rate is a ceiling, not a safe pace; 0.8 leaves a fifth
+ * of room for the requests the provider counts differently from us.
+ */
+export const JUPITER_RATE_SHARE = 0.8;
+/** How long every Jupiter request waits after a 429 that carries no `Retry-After`. */
+export const JUPITER_PAUSE_DEFAULT_MS = 60_000;
+/** A `Retry-After` is taken at its word up to this long; the pause is capped here. */
+export const JUPITER_PAUSE_MAX_MS = 300_000;
+/** After this many pauses in a row with no answered request between them, the client gives up. */
+export const JUPITER_MAX_PAUSES_IN_A_ROW = 5;
+
 /** One request carries up to 100 tokens at about 1.4 KB each. */
 const MAX_RESPONSE_BYTES = 4 * 1024 * 1024;
 
@@ -93,6 +116,27 @@ export class JupiterRedirectError extends Error {
   }
 }
 
+/**
+ * Jupiter answered 429 `JUPITER_MAX_PAUSES_IN_A_ROW` times in a row, each time after a full
+ * pause. Not a fault of any coin: the caller stops its pass or run, leaves its coins pending and
+ * spends none of their attempts. Never retried by the HTTP helper (`retryable` is false).
+ */
+export class JupiterRateLimitedError extends Error {
+  readonly retryable = false;
+  readonly pauses: number;
+  readonly secondsPaused: number;
+
+  constructor(pauses: number, secondsPaused: number) {
+    super(
+      `Jupiter kept answering HTTP 429: ${pauses} pauses in a row, ${Math.round(secondsPaused)} seconds paused; ` +
+        'stopping. Try again later, or set JUPITER_API_KEY for a higher rate.',
+    );
+    this.name = 'JupiterRateLimitedError';
+    this.pauses = pauses;
+    this.secondsPaused = secondsPaused;
+  }
+}
+
 export class JupiterResponseError extends Error {
   readonly issues: string[];
 
@@ -110,6 +154,10 @@ export interface JupiterClientOptions {
   fetch?: GetFetchLike;
   /** Default: 0.5 requests a second without a key, 1 with one. */
   limiter?: RateLimiter;
+  /** Milliseconds, monotonic. Default `performance.now()`. For the pause; give the limiter the same clock. */
+  now?: () => number;
+  /** Default: a real timer. */
+  sleep?: (ms: number) => Promise<void>;
   /** Overrides for timeout, retries, backoff, sleep and jitter. */
   http?: Omit<GetBytesOptions, 'fetch' | 'headers' | 'maxBytes'>;
 }
@@ -140,19 +188,44 @@ export class JupiterClient {
   private readonly limiter: RateLimiter;
   private readonly httpOptions: Omit<GetBytesOptions, 'fetch' | 'headers' | 'maxBytes'>;
   private requests = 0;
+  private readonly now: () => number;
+  private readonly sleep: (ms: number) => Promise<void>;
+  /** No request starts before this time (client clock): set by a 429, shared by every caller. */
+  private pausedUntil = 0;
+  private pausesInARow = 0;
+  private pauses = 0;
+  private msPaused = 0;
 
   constructor(opts: JupiterClientOptions = {}) {
     this.apiKey = opts.apiKey === '' ? undefined : opts.apiKey;
     this.baseUrl = (opts.baseUrl ?? JUPITER_BASE_URL).replace(/\/+$/, '');
     this.fetchImpl = opts.fetch;
     this.limiter =
-      opts.limiter ?? new RateLimiter({ maxPerSecond: this.apiKey ? 1 : 0.5, burst: 1 });
+      opts.limiter ??
+      new RateLimiter({
+        maxPerSecond: (this.apiKey ? 1 : 0.5) * JUPITER_RATE_SHARE,
+        burst: 1,
+        ...(opts.now ? { now: opts.now } : {}),
+        ...(opts.sleep ? { sleep: opts.sleep } : {}),
+      });
+    this.now = opts.now ?? (() => performance.now());
+    this.sleep = opts.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
     this.httpOptions = opts.http ?? {};
   }
 
   /** HTTP requests made so far, retries included. */
   requestCount(): number {
     return this.requests;
+  }
+
+  /** Pauses so far (each 429 that started or extended a pause) and the seconds spent paused. */
+  pauseStats(): { pauses: number; secondsPaused: number } {
+    return { pauses: this.pauses, secondsPaused: this.msPaused / 1000 };
+  }
+
+  /** Milliseconds until requests may go out again; 0 when not paused. For a caller that would rather end its pass than wait. */
+  pausedForMs(): number {
+    return Math.max(0, Math.ceil(this.pausedUntil - this.now()));
   }
 
   /**
@@ -208,13 +281,50 @@ export class JupiterClient {
     return out;
   }
 
+  private startPause(retryAfterMs: number | null): void {
+    const t = this.now();
+    const ms = Math.min(
+      JUPITER_PAUSE_MAX_MS,
+      Math.max(1_000, retryAfterMs ?? JUPITER_PAUSE_DEFAULT_MS),
+    );
+    const wasPaused = this.pausedUntil > t;
+    const until = Math.max(this.pausedUntil, t + ms);
+    // Several requests already in flight can all meet the same 429: that is one pause.
+    this.msPaused += until - Math.max(t, this.pausedUntil);
+    this.pausedUntil = until;
+    if (!wasPaused) {
+      this.pauses++;
+      this.pausesInARow++;
+      if (this.pausesInARow >= JUPITER_MAX_PAUSES_IN_A_ROW) {
+        throw new JupiterRateLimitedError(this.pausesInARow, this.msPaused / 1000);
+      }
+    }
+  }
+
   private async fetchBatch(batch: readonly string[]): Promise<z.infer<typeof responseSchema>> {
     const base: GetFetchLike = this.fetchImpl ?? ((url, init) => fetch(url, init));
-    const limited: GetFetchLike = (url, init) =>
-      this.limiter.run(() => {
-        this.requests++;
-        return base(url, init);
-      });
+    // The pause lives here, not in the HTTP helper: a 429 stops every request of the process, and
+    // the request that met it goes out again once the pause is over. The helper never sees a 429.
+    const limited: GetFetchLike = async (url, init) => {
+      for (;;) {
+        for (let wait = this.pausedForMs(); wait > 0; wait = this.pausedForMs()) {
+          await this.sleep(wait);
+        }
+        // A request that waited for the limiter while another met a 429 is not sent into the pause.
+        const res: GetFetchResponse | null = await this.limiter.run(async () => {
+          if (this.pausedForMs() > 0) return null;
+          this.requests++;
+          return base(url, init);
+        });
+        if (res === null) continue;
+        if (res.status !== 429) {
+          this.pausesInARow = 0;
+          return res;
+        }
+        await res.body?.cancel().catch(() => undefined);
+        this.startPause(parseRetryAfter(res.headers.get('retry-after')));
+      }
+    };
     const headers: Record<string, string> = {
       accept: 'application/json',
       'user-agent': 'ingest-client/0.1',
@@ -241,4 +351,14 @@ export class JupiterClient {
     if (!parsed.success) throw new JupiterResponseError(issueList(parsed.error));
     return parsed.data;
   }
+}
+
+/** The pause tally as a usage entry (`requests` pauses, `units` whole seconds), or nothing before any pause. */
+export function jupiterPauseUsage(
+  client: Pick<JupiterClient, 'pauseStats'>,
+): Record<string, { requests: number; units: number }> {
+  const { pauses, secondsPaused } = client.pauseStats();
+  return pauses > 0
+    ? { [JUPITER_PAUSE_PROVIDER]: { requests: pauses, units: Math.round(secondsPaused) } }
+    : {};
 }

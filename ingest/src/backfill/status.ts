@@ -30,6 +30,7 @@ import { CANDLES_STAGE_VERSION, CANDLES_TIMEOUT_SECONDS } from '../worker/stages
 import { METADATA_STAGE_VERSION } from '../worker/stages/metadata.js';
 import { queueName } from '../worker/worker.js';
 import { METADATA_FILE_STAGE_VERSION } from '../worker/stages/metadataFile.js';
+import { JUPITER_PAUSE_PROVIDER } from '../sources/jupiter/client.js';
 import { DEFAULT_MIN_ROUGH_PEAK_USD } from './defaults.js';
 
 export const BACKFILL_RUN_KIND = 'backfill';
@@ -247,10 +248,17 @@ export function formatStatus(s: BackfillStatus): string {
   lines.push('');
   lines.push('Provider         requests (last hour)            units (last hour)');
   if (s.usage.length === 0) lines.push('  none recorded');
-  for (const u of s.usage) {
+  for (const u of s.usage.filter((x) => x.provider !== JUPITER_PAUSE_PROVIDER)) {
     lines.push(
       `${u.provider.padEnd(14)} ${`${n(u.requests)} (${n(u.lastHourRequests)})`.padStart(20)} ` +
         `${`${n(u.units)} (${n(u.lastHourUnits)})`.padStart(24)}`,
+    );
+  }
+  const pause = s.usage.find((x) => x.provider === JUPITER_PAUSE_PROVIDER);
+  if (pause && pause.requests > 0) {
+    lines.push(
+      `Jupiter paused ${n(pause.requests)} times after HTTP 429, ${n(pause.units)} seconds in all ` +
+        `(${n(pause.lastHourRequests)} times, ${n(pause.lastHourUnits)} s in the last hour).`,
     );
   }
   lines.push('');

@@ -252,6 +252,10 @@ export interface FakeJupiter {
   figures: Map<string, Partial<JupiterToken>>;
   /** Overrides for every mint at once: a function of the mint (return undefined for none). */
   figuresFor?: (mint: string) => Partial<JupiterToken> | undefined;
+  /** Set to make the client report a pause (as `JupiterClient.pausedForMs`). */
+  pausedForMs?: () => number;
+  /** Set to make `getTokens` throw (a client that gave up on 429). The request is counted first. */
+  failWith?: Error | null;
 }
 
 export function fakeJupiter(world: World, clock: FakeClock): FakeJupiter {
@@ -264,6 +268,7 @@ export function fakeJupiter(world: World, clock: FakeClock): FakeJupiter {
     async getTokens(mints) {
       j.requests++;
       j.asked.push([...mints]);
+      if (j.failWith) throw j.failWith;
       return mints.map((mint) => {
         const over = j.figures.get(mint) ?? j.figuresFor?.(mint);
         if (over?.found === false)

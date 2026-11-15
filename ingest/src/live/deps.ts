@@ -19,7 +19,15 @@ export interface LiveDeps {
       opts?: DiscoverOptions,
     ): AsyncGenerator<DiscoveredToken>;
   };
-  jupiter: { getTokens(mints: readonly string[]): Promise<JupiterToken[]> };
+  jupiter: {
+    getTokens(mints: readonly string[]): Promise<JupiterToken[]>;
+    /**
+     * Milliseconds until Jupiter requests may go out again after a 429 (`JupiterClient.pausedForMs`).
+     * A pass that sees a positive number ends instead of waiting, so the next tick starts with the
+     * watch loop again. Absent: never paused.
+     */
+    pausedForMs?(): number;
+  };
   /** Puts coins in a stage's queue (`PipelineWorker.enqueueCoins`). The stage rows stay the truth. */
   enqueue(stage: StageName, coinIds: readonly number[]): Promise<void>;
   gate: SpendGate;
