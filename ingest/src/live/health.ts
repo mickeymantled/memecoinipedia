@@ -483,11 +483,18 @@ export function evaluateHealth(
     const passLimit = `${duration(limits.watchPassWarnSeconds)}/${duration(limits.watchPassAlertSeconds)}`;
     const last = f.watch.lastPass;
     if (!last) {
-      // Before the loop's first write, as for a database where the live process never ran.
+      // No record: count from the run's start, as discovery and the heartbeat do. A pass that
+      // throws every time never writes, so this must be able to alert.
       checks.push({
         name: 'watch',
-        level: 'warn',
-        figure: 'no watch pass recorded yet (the process writes one at the end of each pass)',
+        level:
+          runAge === null
+            ? 'warn'
+            : byAge(runAge, limits.watchPassWarnSeconds, limits.watchPassAlertSeconds),
+        figure:
+          runAge === null
+            ? 'no watch pass recorded (the process writes one at the end of each pass)'
+            : `no watch pass recorded, run started ${duration(runAge)} ago`,
         limit: passLimit,
       });
     } else {
@@ -505,7 +512,9 @@ export function evaluateHealth(
           limit: passLimit,
         });
       }
-      if (f.watch.watched > 0) {
+      // The record is an earlier process's: this run has had no pass, so there is nothing to say
+      // about its price requests until it has (the `watch` line above says so).
+      if (f.watch.watched > 0 && !stale) {
         // The last pass without a failed price request is at most one interval of the fastest tier
         // present old: every 10 minutes when a coin under 3 days old is watched, else hourly.
         const interval = f.watch.young > 0 ? WATCH_MID_EVERY_SECONDS : WATCH_OLDER_EVERY_SECONDS;

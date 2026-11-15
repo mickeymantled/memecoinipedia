@@ -198,10 +198,51 @@ describe('3. watch loop', () => {
     expect(level(failing, 'watch')).toBe('ok');
     expect(level(failing, 'watch:prices')).toBe('alert');
   });
-  it('warns before the loop has written anything', () => {
-    const f = healthy({ watch: { watched: 5, young: 2, lastPass: null } });
-    expect(level(f, 'watch')).toBe('warn');
+  // No record at all: counted from the run's start, against the pass limits (300 s warn, 600 s alert).
+  it.each([
+    [4 * 60, 'ok'],
+    [6 * 60, 'warn'],
+    [11 * 60, 'alert'],
+  ])('no record, run started %i s ago, is %s', (runAge, want) => {
+    const f = healthy({
+      liveRun: { id: 7, status: 'running', startedAt: ago(runAge) },
+      watch: { watched: 5, young: 2, lastPass: null },
+    });
+    expect(level(f, 'watch')).toBe(want);
+    expect(get(evaluateHealth(f, L), 'watch').figure).toBe(
+      `no watch pass recorded, run started ${runAge / 60} min ago`,
+    );
     expect(evaluateHealth(f, L).some((c) => c.name === 'watch:prices')).toBe(false);
+  });
+  it('no record and no live run is the single never-run warn', () => {
+    const checks = evaluateHealth(healthy({ liveRun: null, watch: { watched: 5, young: 2, lastPass: null } }), L);
+    expect(checks).toHaveLength(1);
+    expect(checks[0]).toMatchObject({ name: 'process', level: 'warn' });
+  });
+  it('no record and a run with no start time is a warn', () => {
+    const f = healthy({
+      liveRun: { id: 7, status: 'running', startedAt: null },
+      watch: { watched: 5, young: 2, lastPass: null },
+    });
+    expect(level(f, 'watch')).toBe('warn');
+  });
+  it('a record older than this run says there was no pass, and leaves prices out', () => {
+    const f = healthy({
+      liveRun: { id: 7, status: 'running', startedAt: ago(120) },
+      watch: { watched: 5, young: 2, lastPass: { endedAt: ago(3000), okAt: ago(3000) } },
+    });
+    const w = get(evaluateHealth(f, L), 'watch');
+    expect(w.figure).toContain('no watch pass in this run yet');
+    expect(evaluateHealth(f, L).some((c) => c.name === 'watch:prices')).toBe(false);
+  });
+  it('only failed passes in this run says so, once a pass has happened', () => {
+    const f = healthy({
+      liveRun: { id: 7, status: 'running', startedAt: ago(120) },
+      watch: { watched: 5, young: 2, lastPass: { endedAt: ago(5), okAt: null } },
+    });
+    expect(get(evaluateHealth(f, L), 'watch:prices').figure).toContain(
+      'every pass of this run had a failed price request',
+    );
   });
   it('warns when every pass of this run had a failed request, alerts once the run is old enough', () => {
     const f = (runAge: number) =>

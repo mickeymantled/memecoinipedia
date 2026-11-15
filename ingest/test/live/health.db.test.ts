@@ -265,15 +265,26 @@ describeDb('live health on a throwaway database', () => {
     expect(check(r, 'watch:prices').level).toBe('alert');
   });
 
-  it('watch: before the first write it is a warn, and a pass with nothing due still writes it', async () => {
+  it('watch: with no record it counts from the run start and alerts, quiet just inside', async () => {
     await healthyWorld();
     await holdLock();
     await t.db.deleteFrom('live_state').where('key', '=', STATE_LAST_WATCH).execute();
-    const r = await health();
-    expect(check(r, 'watch').level).toBe('warn');
-    expect(check(r, 'watch').figure).toContain('no watch pass recorded yet');
+    const startedAgo = async (s: number) =>
+      t.db
+        .updateTable('ingest_runs')
+        .set({ started_at: ago(s) })
+        .execute();
+    await startedAgo(L.watchPassWarnSeconds - 1);
+    let r = await health();
+    expect(check(r, 'watch').level).toBe('ok');
+    expect(check(r, 'watch').figure).toContain('no watch pass recorded, run started');
     expect(r.checks.find((c) => c.name === 'watch:prices')).toBeUndefined();
-    expect(r.status).toBe('warn');
+    await startedAgo(L.watchPassAlertSeconds - 1);
+    expect(check(await health(), 'watch').level).toBe('warn');
+    await startedAgo(L.watchPassAlertSeconds);
+    r = await health();
+    expect(check(r, 'watch').level).toBe('alert');
+    expect(r.status).toBe('alert');
   });
 
   it('watch: a record left by an earlier process counts from this run start', async () => {
@@ -284,9 +295,11 @@ describeDb('live health on a throwaway database', () => {
       .set({ started_at: ago(5) })
       .execute();
     await setLastWatch(3000, 3000);
-    const c = check(await health(), 'watch');
+    const r = await health();
+    const c = check(r, 'watch');
     expect(c.level).toBe('ok');
     expect(c.figure).toContain('no watch pass in this run yet');
+    expect(r.checks.find((x) => x.name === 'watch:prices')).toBeUndefined();
   });
 
   // --------------------------------------------------------- 4. stalled queue
