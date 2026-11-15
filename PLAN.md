@@ -130,32 +130,37 @@ How to read it:
 
 ## Pull requests waiting for you
 
-Merge in this order. #14, #16, #17 and #18 are built on #8, so #8 goes first.
+**Merge in the order of the table, top to bottom.** On 2026-11-15 the first 17 were merged together on a local branch as a rehearsal (nothing was pushed). The result passes typecheck, lint and all 1,531 tests (ingest 1,238, pipeline 138, api 85, db 70), and the four migrations are numbered without a clash.
 
-So that Phase A does not wait for the merges, the lead built the branch `claude/phase-a-base`: #8, #14, #20 (which contains #16), #17 and #18 merged together, with no conflicts. Typecheck and lint pass on it, as do 834 ingest tests and 24 database tests. A5 is built on it. It is not a pull request and is never merged itself.
+Two things to know before starting:
+
+- **#31 and #36 will show a conflict on GitHub when their turn comes.** Both are plain text conflicts and the lead resolves them on the branch as soon as the pull requests before them are merged. #31: `ingest/package.json` and `pnpm-lock.yaml` (keep the `pg-boss` dependency), `ingest/src/index.ts` (keep both export lines). #36: `db/package.json` (keep both the `./testing` and the `./synthetic` export), `db/test/migrate.test.ts` (keep the form that reads every migration on disk).
+- **#38 and #53 are opened against another pull request's branch, not `main`.** Each must point at `main` before it is merged. The lead changes that as soon as the one below it is in.
 
 | Order | Pull request | Task | State |
 |---|---|---|---|
 | 1 | #8 | P6 scaffold and metric interface types | Reviewed, ready |
 | 2 | #14 | A1 schema, migrations, candle storage | Reviewed, ready |
 | 3 | #16 | A2a Codex.io client | Reviewed, ready |
-| after #16 | #20 | A2b metadata and current-price clients (Helius, IPFS, Jupiter) | Reviewed, ready. Built on #16. |
 | 4 | #17 | A3 metric library, with clarifications to `docs/metrics.md` | Reviewed, ready |
 | 5 | #18 | A4 metric fixtures | Reviewed, ready. With #17 merged, all 50 fixtures pass. |
+| 6 | #20 | A2b metadata and current-price clients (Helius, IPFS, Jupiter) | Reviewed, ready. Built on #16. |
+| 7 | #22 | P2 Dune queries, with the sizing result and the Phase A sample | Reviewed, ready |
+| 8 | #24 | A2c Dune client and candidate-list download | Reviewed, ready. Built on #20. Its cost count is off (#42); the download itself is done. |
+| 9 | #28 | C0 API contract, `/api/README.md` | Written by the lead. Revised on 2026-11-15 with the points #36 found unclear. Please read the "Choices worth a look" in its description. Phase D issues for OpenAI Codex open once it is merged. |
+| 10 | #30 | A5b candle plan and metric write-back | Reviewed, ready |
+| 11 | #31 | A5a pipeline core: worker, stage tracking, seeding, metadata | Reviewed, ready. **Conflict to resolve first (see above).** |
+| 12 | #38 | A5c candles and metrics stages in the worker, and the 500-coin run | Reviewed, ready. The run report is `ingest/reports/phase-a-sample-2026-11-15.md`. Base to be changed to `main`. |
+| 13 | #32 | B4 classification pipeline | Reviewed, ready. No live run yet: needs an Anthropic API key. |
+| 14 | #35 | B6 eval harness | Reviewed, ready. Built on #32. |
+| 15 | #36 | C1 search API: keyword search, filters, coin and narrative endpoints | Reviewed, ready. **Conflict to resolve first (see above).** |
+| 16 | #15 | B0 Grok's pilot batch | Reviewed, ready. Independent of the others. |
+| 17 | #52 | B2 the 200-coin evaluation sample | Written by the lead: a list of coins and how it was drawn. Independent of the others. |
+| 18 | #53 | A6b sample of coins under the $30k floor | Reviewed, ready. A query, its result and a report; no code. Not in the rehearsal; built on #38 and #22. Base to be changed to `main`. |
 | any | #10 | `AGENTS.md`: lead-owned paths and the product name (Q11) | Your decision |
 | not yet | #12 | B1 taxonomy guide | Draft. Waiting for Muse's review (#13), then your approval. |
-| any | #15 | B0 Grok's pilot batch | Reviewed, ready. Independent of the others. |
-| any | #22 | P2 Dune queries, with the sizing result and the Phase A sample | Reviewed, ready. Independent of the others. |
-| after #20 | #24 | A2c Dune client and candidate-list download | Reviewed, ready. Built on #20. |
-| any | #28 | C0 API contract, `/api/README.md` | Written by the lead. Revised on 2026-11-15 with the points #36 found unclear. Please read the "Choices worth a look" in its description. Phase D issues for OpenAI Codex open once it is merged. |
-| after #18 | #30 | A5b candle plan and metric write-back | Reviewed, ready. Built on `claude/phase-a-base`. |
-| after #18 | #31 | A5a pipeline core: worker, stage tracking, seeding, metadata | Reviewed, ready. Built on `claude/phase-a-base`. |
-| after #18 | #32 | B4 classification pipeline | Reviewed, ready. Built on `claude/phase-a-base`. No live run yet: needs an Anthropic API key. |
-| after #32 | #35 | B6 eval harness | Reviewed, ready. Built on #32. |
-| after #28 | #36 | C1 search API: keyword search, filters, coin and narrative endpoints | Reviewed, ready. Built on `claude/phase-a-base`. |
-| after #31 and #30 | #38 | A5c candles and metrics stages in the worker, and the 500-coin run | Reviewed, ready. The run report is `ingest/reports/phase-a-sample-2026-11-15.md`. Built on #31 and #30. |
-| any | #52 | B2 the 200-coin evaluation sample | Written by the lead: a list of coins and how it was drawn. Independent of the others. |
-| after #38 and #22 | #53 | A6b sample of coins under the $30k floor | Reviewed, ready. A query, its result and a report; no code. Built on #38 and #22. |
+
+The rehearsal also found four optional environment variables missing from `.env.example` (`PORT`, and three for the classifier). The lead's reviews of #32 and #36 had missed them; they were added to those two pull requests the same day.
 
 ## Phase 0: probes and setup
 
