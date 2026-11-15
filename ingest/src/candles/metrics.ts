@@ -10,7 +10,7 @@ import { DEFAULT_PLAN_LIMITS } from './plan.js';
 import type { CandleDeps } from './types.js';
 
 /** Stored in `coins.metrics_version`. Raise it when docs/metrics.md or the status rule changes. */
-export const METRICS_VERSION = 3;
+export const METRICS_VERSION = 4;
 
 /** The flag the fetcher sets on a coin it screened out. It is not one of the metric library's flags. */
 export const SCREENED_OUT_FLAG = 'screened_out';
@@ -45,8 +45,9 @@ export type ComputeMetricsResult =
 /**
  * The same answer for a screened-out coin as the fetcher's stage 1 gives, from
  * stored bars alone: no 1-minute bars, and no daily high of `screenBelowUsd` as a
- * market cap. Then the highest daily high is the wick, and the ATH, the time
- * above the thresholds and the drawdown stay null (they need 1-minute bars). The
+ * market cap. Then the ATH, the wick, the time above the thresholds, the drawdown
+ * and the two ATH outputs are all null: they need 1-minute bars, and the wick rule
+ * (docs/metrics.md section 6) takes no daily bar. The daily bars stay stored. The
  * flag set is `screened_out` alone.
  */
 export function screenedOutResult(
@@ -63,16 +64,16 @@ export function screenedOutResult(
     }
   }
   if (!any || top * input.totalSupply >= screenBelowUsd) return null;
-  // The wick is the library's, so a bar it would drop as implausible is dropped here too.
-  const lib = computeCoinMetrics(input);
   return {
     athMarketCapUsd: null,
     athAt: null,
     athPoolAddress: null,
     secondsToAth: null,
-    athWickMarketCapUsd: lib.athWickMarketCapUsd,
-    athWickAt: lib.athWickAt,
-    athWickPoolAddress: lib.athWickPoolAddress,
+    athWickMarketCapUsd: null,
+    athWickAt: null,
+    athWickPoolAddress: null,
+    athLiquidityUsd: null,
+    athHourVolumeUsd: null,
     secondsAbove: [],
     maxDrawdownPct: null,
     rugPattern: false,

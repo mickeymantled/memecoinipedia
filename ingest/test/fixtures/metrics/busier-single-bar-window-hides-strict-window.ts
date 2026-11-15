@@ -19,6 +19,8 @@ Coin points: m0 (pool-a, not strict, .0002), m1 (pool-b, not strict, .0003). No 
 ATH: all four null, flag no_qualifying_window.
 Wick: .0003 at m1 (T0+60), pool-b: 300,000.
 Level: no strict point, never defined: no level points. secondsAbove zeros, drawdown null. Rug false.
+
+Rules v4 (this paragraph supersedes any wick figure above). No ATH. Wick: only a clean 1-minute bar with at least $1,000 of volume and 5 traders of its own, funded or of unknown liquidity, is a candidate, valued at max(open, close); the ATH takes over when higher. The wick is unchanged.
 `,
   input: input(
     [
@@ -38,6 +40,8 @@ Level: no strict point, never defined: no level points. secondsAbove zeros, draw
     athWickMarketCapUsd: 300_000,
     athWickAt: 1_699_920_060,
     athWickPoolAddress: 'pool-b',
+    athLiquidityUsd: null,
+    athHourVolumeUsd: null,
     secondsAbove: [0, 0, 0, 0],
     maxDrawdownPct: null,
     rugPattern: false,

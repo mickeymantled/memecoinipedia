@@ -27,6 +27,8 @@ const RESULT_FIELDS: readonly (keyof MetricResult)[] = [
   'athWickMarketCapUsd',
   'athWickAt',
   'athWickPoolAddress',
+  'athLiquidityUsd',
+  'athHourVolumeUsd',
   'secondsAbove',
   'maxDrawdownPct',
   'rugPattern',

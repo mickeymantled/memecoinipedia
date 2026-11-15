@@ -1,4 +1,4 @@
-import { computeAth, computeWick, peakOutsideMinuteCoverage } from './ath.js';
+import { athHourVolume, computeAth, computeWick, peakOutsideMinuteCoverage } from './ath.js';
 import { cleanPools } from './clean.js';
 import { maxDrawdownPct } from './drawdown.js';
 import { buildLevelSeries } from './level.js';
@@ -55,7 +55,7 @@ export const computeCoinMetrics: ComputeCoinMetrics = (
   // Section 6: ATH and wick.
   const ath = computeAth(points, input.launchedAt, input.totalSupply);
   ath.flags.forEach((f) => flags.add(f));
-  const wick = computeWick(cleaned.pools, input.totalSupply);
+  const wick = computeWick(cleaned.pools, ath, params, input.totalSupply);
   if (peakOutsideMinuteCoverage(points, ath.athPrice)) flags.add('peak_outside_minute_coverage');
 
   // Sections 7 to 10: level series, time above, drawdown, rug pattern.
@@ -64,6 +64,7 @@ export const computeCoinMetrics: ComputeCoinMetrics = (
   return {
     ...ath.fields,
     ...wick,
+    athHourVolumeUsd: athHourVolume(cleaned.pools, ath.fields.athAt),
     secondsAbove: secondsAbove(
       series,
       params.thresholdsUsd,

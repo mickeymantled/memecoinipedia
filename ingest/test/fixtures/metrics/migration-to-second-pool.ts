@@ -26,6 +26,8 @@ Wick: highest bar value .0005 (pool-b m8): 500,000 at T0+480, pool-b.
 Level: m0 ignored. pool-a m1..m5 strict .0002. m6 (pool-b, not strict) price .0003 above the level: level stays .0002, level point (m6, .0002). m7 strict .0003. m8, m9, m10 strict .0004.
 Level points m1..m10: ten points, each holding 60 s (m10 at T0+600 to asOf T0+660 = 60). All levels at least $200k: 600 above $100k. None above $1M.
 Drawdown 0. Rug false.
+
+Rules v4 (this paragraph supersedes any wick figure above). athLiquidityUsd 50,000 (the largest liquidity of the ATH window); athHourVolumeUsd 5,400 (volume of the clean 1-minute bars of every pool in the hour ending at m8). Wick: only a clean 1-minute bar with at least $1,000 of volume and 5 traders of its own, funded or of unknown liquidity, is a candidate, valued at max(open, close); the ATH takes over when higher. Here the best candidate is not above the ATH (or there is none), so the wick is the ATH: 400,000 at m8.
 `,
   input: input(
     [
@@ -49,9 +51,11 @@ Drawdown 0. Rug false.
     athAt: 1_699_920_480,
     athPoolAddress: 'pool-b',
     secondsToAth: 480,
-    athWickMarketCapUsd: 500_000,
+    athWickMarketCapUsd: 400_000,
     athWickAt: 1_699_920_480,
     athWickPoolAddress: 'pool-b',
+    athLiquidityUsd: 50_000,
+    athHourVolumeUsd: 5_400,
     secondsAbove: [600, 0, 0, 0],
     maxDrawdownPct: 0,
     rugPattern: false,

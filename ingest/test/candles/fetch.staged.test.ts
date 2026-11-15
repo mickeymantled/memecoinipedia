@@ -170,11 +170,13 @@ describeDb('the staged fetch on simulated trading', () => {
     expect(row.seconds_above_100k).toBeNull();
     expect(row.seconds_above_1m).toBeNull();
     expect(row.max_drawdown_pct).toBeNull();
-    // The wick is the highest price of the day: 20,000 + 299 * 100 = 49,900.
-    expect(row.ath_wick_market_cap_usd).toBeCloseTo(49_900, 3);
-    expect(row.ath_wick_at).toEqual(new Date(T0 * 1000)); // the daily bar's start
-    expect(row.ath_wick_pool_id).not.toBeNull();
-    expect(row.metrics_version).toBe(3);
+    // No 1-minute bars: no wick either (daily bars never feed it), and no ATH outputs.
+    expect(row.ath_wick_market_cap_usd).toBeNull();
+    expect(row.ath_wick_at).toBeNull();
+    expect(row.ath_wick_pool_id).toBeNull();
+    expect(row.ath_liquidity_usd).toBeNull();
+    expect(row.ath_hour_volume_usd).toBeNull();
+    expect(row.metrics_version).toBe(4);
     expect(row.metrics_as_of).toEqual(new Date(NOW * 1000));
     expect(row.metrics_computed_at).toEqual(new Date(NOW * 1000));
     // The coin traded on its first day and the line (volume, liquidity) was met within the last 7 days.
@@ -213,7 +215,14 @@ describeDb('the staged fetch on simulated trading', () => {
     expect(m.ok && !m.screenedOut).toBe(true);
     const staged = await t.db
       .selectFrom('coins')
-      .select(['ath_market_cap_usd', 'ath_at', 'seconds_above_100k', 'ath_wick_market_cap_usd'])
+      .select([
+        'ath_market_cap_usd',
+        'ath_at',
+        'seconds_above_100k',
+        'ath_wick_market_cap_usd',
+        'ath_liquidity_usd',
+        'ath_hour_volume_usd',
+      ])
       .where('id', '=', id)
       .executeTakeFirstOrThrow();
     expect(staged.ath_market_cap_usd).toBeGreaterThan(400_000);
@@ -239,7 +248,14 @@ describeDb('the staged fetch on simulated trading', () => {
       await computeMetricsForCoin(deps2, { id: id2 });
       const exRow = await other.db
         .selectFrom('coins')
-        .select(['ath_market_cap_usd', 'ath_at', 'seconds_above_100k', 'ath_wick_market_cap_usd'])
+        .select([
+          'ath_market_cap_usd',
+          'ath_at',
+          'seconds_above_100k',
+          'ath_wick_market_cap_usd',
+          'ath_liquidity_usd',
+          'ath_hour_volume_usd',
+        ])
         .where('id', '=', id2)
         .executeTakeFirstOrThrow();
       expect(staged).toEqual(exRow);

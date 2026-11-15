@@ -1,7 +1,18 @@
-import { atLeast, barPeak, SECONDS, type CleanPool, type Window } from './internal.js';
+import {
+  atLeast,
+  barPeak,
+  isFunded,
+  maxLiquidity,
+  SECONDS,
+  type CleanPool,
+  type Window,
+} from './internal.js';
 import type { Bar, MetricParams } from './types.js';
 
-type WindowParams = Pick<MetricParams, 'windowMinutes' | 'minWindowVolumeUsd' | 'minWindowTraders'>;
+type WindowParams = Pick<
+  MetricParams,
+  'windowMinutes' | 'minWindowVolumeUsd' | 'minWindowTraders' | 'minWindowLiquidityUsd'
+>;
 
 /** Section 4: the lower median. 3 values: the middle. 2 values: the lower. 1: itself. */
 export function lowerMedian(values: readonly number[]): number {
@@ -29,6 +40,7 @@ export function minuteWindows(
     const volume = inWindow.reduce((sum, b) => sum + b.volumeUsd, 0);
     const traders = Math.max(...inWindow.map((b) => b.traders));
     const price = lowerMedian(inWindow.map((b) => b.c));
+    const liquidity = maxLiquidity(inWindow);
     return {
       t: bar.t,
       price,
@@ -38,7 +50,9 @@ export function minuteWindows(
       strict:
         inWindow.length >= 2 &&
         atLeast(volume, params.minWindowVolumeUsd) &&
-        atLeast(traders, params.minWindowTraders),
+        atLeast(traders, params.minWindowTraders) &&
+        isFunded(liquidity, params.minWindowLiquidityUsd),
+      liquidity,
       poolAddress: pool.address,
       isPrimary: pool.isPrimary,
       resolution: '1m',
@@ -52,7 +66,9 @@ export function coarseWindow(
   pool: Pick<CleanPool, 'address' | 'isPrimary'>,
   resolution: '1h' | '1d',
   params: WindowParams,
+  previous?: Bar,
 ): Window {
+  const liquidity = maxLiquidity([bar, previous]);
   return {
     t: bar.t,
     price: bar.c,
@@ -61,7 +77,9 @@ export function coarseWindow(
     traders: bar.traders,
     strict:
       atLeast(bar.volumeUsd, params.minWindowVolumeUsd) &&
-      atLeast(bar.traders, params.minWindowTraders),
+      atLeast(bar.traders, params.minWindowTraders) &&
+      isFunded(liquidity, params.minWindowLiquidityUsd),
+    liquidity,
     poolAddress: pool.address,
     isPrimary: pool.isPrimary,
     resolution,
@@ -109,12 +127,12 @@ function windowsFor(
   const windows: Window[] = [];
   for (const pool of pools) {
     windows.push(...minuteWindows(pool.bars1m, pool, params));
-    for (const bar of pool.bars1h) {
-      if (hourlyUsed(bar)) windows.push(coarseWindow(bar, pool, '1h', params));
-    }
-    for (const bar of pool.bars1d) {
-      if (dailyUsed(bar)) windows.push(coarseWindow(bar, pool, '1d', params));
-    }
+    pool.bars1h.forEach((bar, i) => {
+      if (hourlyUsed(bar)) windows.push(coarseWindow(bar, pool, '1h', params, pool.bars1h[i - 1]));
+    });
+    pool.bars1d.forEach((bar, i) => {
+      if (dailyUsed(bar)) windows.push(coarseWindow(bar, pool, '1d', params, pool.bars1d[i - 1]));
+    });
   }
   return windows;
 }

@@ -18,6 +18,8 @@ Wick: .0005 (the hourly bar; pool-b's bars are gone): 500,000 at T0, pool-a.
 Level: the hourly point sets .0005: one level point at T0 holding to asOf (T0+3,600): 3,600 s above $100k. None above $1M.
 Drawdown 0. Rug false.
 Flags sorted: no_qualifying_window, peak_outside_minute_coverage.
+
+Rules v4 (this paragraph supersedes any wick figure above). No ATH. Wick: only a clean 1-minute bar with at least $1,000 of volume and 5 traders of its own, funded or of unknown liquidity, is a candidate, valued at max(open, close); the ATH takes over when higher. There is no candidate and no ATH, so the wick is null.
 `,
   input: input(
     [
@@ -33,9 +35,11 @@ Flags sorted: no_qualifying_window, peak_outside_minute_coverage.
     athAt: null,
     athPoolAddress: null,
     secondsToAth: null,
-    athWickMarketCapUsd: 500_000,
-    athWickAt: 1_699_920_000,
-    athWickPoolAddress: 'pool-a',
+    athWickMarketCapUsd: null,
+    athWickAt: null,
+    athWickPoolAddress: null,
+    athLiquidityUsd: null,
+    athHourVolumeUsd: null,
     secondsAbove: [3_600, 0, 0, 0],
     maxDrawdownPct: 0,
     rugPattern: false,
