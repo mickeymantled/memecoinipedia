@@ -329,7 +329,9 @@ export async function writeCoinMetrics(
       metrics_as_of: new Date(ctx.asOf * 1000),
       metrics_computed_at: ctx.computedAt,
       status: ctx.status,
-      ...(ctx.lastAliveAt !== undefined ? { last_alive_at: ctx.lastAliveAt } : {}),
+      ...(ctx.lastAliveAt !== undefined
+        ? { last_alive_at: sql`greatest(last_alive_at, ${ctx.lastAliveAt}::timestamptz)` }
+        : {}),
       status_changed_at: sql`case when status <> ${ctx.status} then ${ctx.computedAt} else status_changed_at end`,
       updated_at: ctx.computedAt,
     })
@@ -371,31 +373,37 @@ export async function computeAndStoreCoinMetrics(
   if (!loaded.ok) return loaded;
   if (loaded.barCount === 0 && !opts.noBars) return { ok: false, reason: 'no_candles' };
   const result = loaded.barCount === 0 ? opts.noBars! : opts.compute(loaded.input);
-  // `last_alive_at` never moves backwards: the later of what is stored and what the bars say.
-  const stored = await db
-    .selectFrom('coins')
-    .select('last_alive_at')
-    .where('id', '=', coinId)
-    .executeTakeFirst();
   const fromBars = lastAliveFromBars(loaded.input);
-  const storedSec = stored?.last_alive_at
-    ? Math.floor(stored.last_alive_at.getTime() / 1000)
-    : null;
-  const lastAlive =
-    fromBars === null ? storedSec : storedSec === null ? fromBars : Math.max(storedSec, fromBars);
-  const status = statusFromEvidence({
-    rugPattern: result.rugPattern,
-    lastAliveAt: lastAlive,
-    hasWeekOfHistory: hasWeekOfBars(loaded.input),
-    now: opts.asOf,
-  });
-  await writeCoinMetrics(db, coinId, result, {
-    lastAliveAt: lastAlive === null ? null : new Date(lastAlive * 1000),
-    poolIds: loaded.poolIds,
-    metricsVersion: opts.metricsVersion,
-    asOf: opts.asOf,
-    computedAt: opts.computedAt,
-    status,
+  // The status is decided from the `last_alive_at` actually stored when the write happens: the row
+  // is locked, so a refresh writing at the same time is either before (and read here) or after
+  // (and its own write keeps the later value). `last_alive_at` never moves backwards.
+  const status = await db.transaction().execute(async (trx) => {
+    const stored = await trx
+      .selectFrom('coins')
+      .select('last_alive_at')
+      .where('id', '=', coinId)
+      .forUpdate()
+      .executeTakeFirst();
+    const storedSec = stored?.last_alive_at
+      ? Math.floor(stored.last_alive_at.getTime() / 1000)
+      : null;
+    const lastAlive =
+      fromBars === null ? storedSec : storedSec === null ? fromBars : Math.max(storedSec, fromBars);
+    const decided = statusFromEvidence({
+      rugPattern: result.rugPattern,
+      lastAliveAt: lastAlive,
+      hasWeekOfHistory: hasWeekOfBars(loaded.input),
+      now: opts.asOf,
+    });
+    await writeCoinMetrics(trx, coinId, result, {
+      lastAliveAt: lastAlive === null ? null : new Date(lastAlive * 1000),
+      poolIds: loaded.poolIds,
+      metricsVersion: opts.metricsVersion,
+      asOf: opts.asOf,
+      computedAt: opts.computedAt,
+      status: decided,
+    });
+    return decided;
   });
   return {
     ok: true,

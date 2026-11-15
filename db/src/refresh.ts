@@ -94,76 +94,82 @@ export async function storeRefresh(
   };
   if (figures.length === 0) return out;
   const nowSec = Math.floor(now.getTime() / 1000);
-  const rows = await db
-    .selectFrom('coins')
-    .select([
-      'id',
-      'rug_pattern',
-      'last_alive_at',
-      'status',
-      'graduated_at',
-      'launched_at',
-      'ath_at',
-    ])
-    .where(
-      'id',
-      'in',
-      figures.map((f) => f.id),
-    )
-    .execute();
-  const byId = new Map(rows.map((r) => [r.id, r]));
-  const ids: number[] = [];
-  const lastAlive: (Date | null)[] = [];
-  const statuses: string[] = [];
-  const kept: RefreshFigure[] = [];
-  for (const f of figures) {
-    const c = byId.get(f.id);
-    if (!c) continue;
-    const met = meetsAliveLine(f);
-    if (met) out.metLine++;
-    const storedSec = c.last_alive_at ? Math.floor(c.last_alive_at.getTime() / 1000) : null;
-    // Only forwards.
-    const newSec = met ? Math.max(storedSec ?? 0, nowSec) : storedSec;
-    const historyStart = c.graduated_at ?? c.launched_at ?? c.ath_at;
-    const status = statusFromEvidence({
-      rugPattern: c.rug_pattern,
-      lastAliveAt: newSec,
-      hasWeekOfHistory:
-        historyStart !== null &&
-        nowSec - Math.floor(historyStart.getTime() / 1000) >=
-          STATUS_RULES.deadAfterDays * DAY_SECONDS,
-      now: nowSec,
-    });
-    out.toStatus[status]++;
-    if (status !== c.status) out.changed++;
-    ids.push(f.id);
-    lastAlive.push(newSec === null ? null : new Date(newSec * 1000));
-    statuses.push(status);
-    kept.push(f);
-  }
-  if (ids.length === 0) return out;
-  await sql`
-    update coins set
-      current_price_usd = t.price,
-      current_market_cap_usd = t.mcap,
-      current_liquidity_usd = t.liq,
-      current_volume_24h_usd = t.vol,
-      current_refreshed_at = ${now},
-      last_alive_at = t.alive,
-      status = t.status,
-      status_changed_at = case when coins.status <> t.status then ${now} else coins.status_changed_at end,
-      updated_at = ${now}
-    from unnest(
-      ${ids}::bigint[],
-      ${kept.map((f) => f.priceUsd)}::float8[],
-      ${kept.map((f) => f.marketCapUsd)}::float8[],
-      ${kept.map((f) => f.liquidityUsd)}::float8[],
-      ${kept.map((f) => f.volume24hUsd)}::float8[],
-      ${lastAlive}::timestamptz[],
-      ${statuses}::text[]
-    ) as t(id, price, mcap, liq, vol, alive, status)
-    where coins.id = t.id
-  `.execute(db);
+  await db.transaction().execute(async (trx) => {
+    // Locked, so a metrics write at the same time is either read here or keeps what is stored here.
+    const rows = await trx
+      .selectFrom('coins')
+      .select([
+        'id',
+        'rug_pattern',
+        'last_alive_at',
+        'status',
+        // The coin's history starts at its earliest stored bar, as in the metrics computation; a
+        // coin that holds no pool falls back to its launch time, then its graduation time.
+        sql<Date | null>`case when exists (select 1 from pools p where p.coin_id = coins.id)
+          then (select min(p.first_bar_at) from pools p where p.coin_id = coins.id)
+          else coalesce(coins.launched_at, coins.graduated_at) end`.as('history_start'),
+      ])
+      .where(
+        'id',
+        'in',
+        figures.map((f) => f.id),
+      )
+      .forUpdate()
+      .execute();
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    const ids: number[] = [];
+    const lastAlive: (Date | null)[] = [];
+    const statuses: string[] = [];
+    const kept: RefreshFigure[] = [];
+    for (const f of figures) {
+      const c = byId.get(f.id);
+      if (!c) continue;
+      const met = meetsAliveLine(f);
+      if (met) out.metLine++;
+      const storedSec = c.last_alive_at ? Math.floor(c.last_alive_at.getTime() / 1000) : null;
+      // Only forwards.
+      const newSec = met ? Math.max(storedSec ?? 0, nowSec) : storedSec;
+      const historyStart = c.history_start;
+      const status = statusFromEvidence({
+        rugPattern: c.rug_pattern,
+        lastAliveAt: newSec,
+        hasWeekOfHistory:
+          historyStart !== null &&
+          nowSec - Math.floor(historyStart.getTime() / 1000) >=
+            STATUS_RULES.deadAfterDays * DAY_SECONDS,
+        now: nowSec,
+      });
+      out.toStatus[status]++;
+      if (status !== c.status) out.changed++;
+      ids.push(f.id);
+      lastAlive.push(newSec === null ? null : new Date(newSec * 1000));
+      statuses.push(status);
+      kept.push(f);
+    }
+    if (ids.length === 0) return;
+    await sql`
+      update coins set
+        current_price_usd = t.price,
+        current_market_cap_usd = t.mcap,
+        current_liquidity_usd = t.liq,
+        current_volume_24h_usd = t.vol,
+        current_refreshed_at = ${now},
+        last_alive_at = greatest(coins.last_alive_at, t.alive),
+        status = t.status,
+        status_changed_at = case when coins.status <> t.status then ${now} else coins.status_changed_at end,
+        updated_at = ${now}
+      from unnest(
+        ${ids}::bigint[],
+        ${kept.map((f) => f.priceUsd)}::float8[],
+        ${kept.map((f) => f.marketCapUsd)}::float8[],
+        ${kept.map((f) => f.liquidityUsd)}::float8[],
+        ${kept.map((f) => f.volume24hUsd)}::float8[],
+        ${lastAlive}::timestamptz[],
+        ${statuses}::text[]
+      ) as t(id, price, mcap, liq, vol, alive, status)
+      where coins.id = t.id
+    `.execute(trx);
+  });
   return out;
 }
 
@@ -212,8 +218,11 @@ const refreshedToday = (eb: ExpressionBuilder<Database, 'coins'>, s: TopUpSpec) 
 
 const rule1 = (s: TopUpSpec) =>
   sql<boolean>`coins.current_market_cap_usd >= coins.ath_market_cap_usd * ${s.athShare}::float8`;
+// The newest bar is old, and the candles last finished longer ago than that too: a top-up that
+// brought no new bar is not repeated the next day.
 const rule2 = (s: TopUpSpec) =>
-  sql<boolean>`${newestBar} < ${s.now}::timestamptz - make_interval(secs => ${s.staleBarSeconds}::float8)`;
+  sql<boolean>`(${newestBar} < ${s.now}::timestamptz - make_interval(secs => ${s.staleBarSeconds}::float8)
+    and ${stageFinished('candles', new Date(s.now.getTime() - s.staleBarSeconds * 1000))})`;
 
 export async function listTopUp(
   db: Kysely<Database>,

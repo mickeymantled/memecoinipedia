@@ -233,4 +233,6 @@ Inputs: the stored rug pattern, `coins.last_alive_at`, and whether the coin has 
 
 `last_alive_at` never moves backwards: the refresh sets it only forwards, and a metrics recompute keeps the later of the stored value and the one from the bars.
 
-**History.** "7 days of history" is at least 7 days between the coin's first stored bar and `asOf` in the metrics computation. In the refresh, which holds no bars in memory, it is at least 7 days between the coin's graduation (its launch time when there is none, its ATH time when there is neither) and the refresh time.
+**History.** "7 days of history" is one definition for both writers: at least 7 days between the coin's earliest stored bar (`pools.first_bar_at`, the earliest over its pools) and the time asked at. The metrics computation reads it from the bars it holds; the refresh reads the same value in the query that reads the coin. Only a coin that holds no pool at all falls back to its launch time, and then to its graduation time when there is no launch time.
+
+**Two writers at once.** Each writer reads the coin's row locked, takes the later of the stored `last_alive_at` and its own value, decides the status from that value, and writes `greatest(stored, new)`. The status is therefore always decided from the `last_alive_at` that is stored when the write happens, and a value never moves backwards when a refresh and a metrics computation overlap.

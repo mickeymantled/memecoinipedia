@@ -1,6 +1,11 @@
 import { afterAll, beforeAll, beforeEach, expect, it } from 'vitest';
 import { sql } from 'kysely';
-import { statusFromEvidence } from '../src/coinMetrics.js';
+import {
+  computeAndStoreCoinMetrics,
+  hasWeekOfBars,
+  lastAliveFromBars,
+  statusFromEvidence,
+} from '../src/coinMetrics.js';
 import {
   countListedInFlight,
   countTopUp,
@@ -76,6 +81,8 @@ describeDb('the refresh and top-up queries', () => {
       candles?: { status: string; finishedAgo: number } | null;
       metrics?: { status: string; finishedAgo: number } | null;
       newestBarAgo?: number | null;
+      firstBarAgo?: number | null;
+      launchedAgo?: number | null;
     } = {},
   ): Promise<number> {
     const r = await sql<{ id: number }>`
@@ -103,8 +110,14 @@ describeDb('the refresh and top-up queries', () => {
       o.metrics === undefined ? { status: 'done', finishedAgo: DAYSEC } : o.metrics,
     );
     if (o.newestBarAgo !== undefined && o.newestBarAgo !== null) {
-      await sql`insert into pools (chain, address, coin_id, dex, last_bar_at)
-        values ('solana', ${'P' + addr(i)}, ${id}, 'PumpSwap', ${ago(o.newestBarAgo)})`.execute(
+      await sql`insert into pools (chain, address, coin_id, dex, last_bar_at, first_bar_at)
+        values ('solana', ${'P' + addr(i)}, ${id}, 'PumpSwap', ${ago(o.newestBarAgo)},
+          ${o.firstBarAgo === undefined || o.firstBarAgo === null ? null : ago(o.firstBarAgo)})`.execute(
+        t.db,
+      );
+    }
+    if (o.launchedAgo !== undefined && o.launchedAgo !== null) {
+      await sql`update coins set launched_at = ${ago(o.launchedAgo)} where id = ${id}`.execute(
         t.db,
       );
     }
@@ -237,8 +250,16 @@ describeDb('the refresh and top-up queries', () => {
   it('selects for the top-up: alive, listed, refreshed today, near the ATH or with stale bars; never dead, rugged, or near-ATH-less with fresh bars', async () => {
     const sixty = await coin(1, { current: 120_000, newestBarAgo: DAYSEC }); // 60% of 200,000, fresh bars
     const tenFresh = await coin(2, { current: 20_000, newestBarAgo: DAYSEC }); // 10%, fresh bars
-    const tenStale = await coin(3, { current: 20_000, newestBarAgo: 8 * DAYSEC }); // 10%, bars end 8 days ago
-    const noPrice = await coin(4, { current: null, newestBarAgo: 8 * DAYSEC }); // unknown to Jupiter, stale bars
+    const tenStale = await coin(3, {
+      current: 20_000,
+      newestBarAgo: 8 * DAYSEC,
+      candles: { status: 'done', finishedAgo: 8 * DAYSEC },
+    }); // 10%, bars end 8 days ago
+    const noPrice = await coin(4, {
+      current: null,
+      newestBarAgo: 8 * DAYSEC,
+      candles: { status: 'done', finishedAgo: 9 * DAYSEC },
+    }); // unknown to Jupiter, stale bars
     const dead = await coin(5, { status: 'dead', current: 190_000, newestBarAgo: 8 * DAYSEC });
     const rugged = await coin(6, { status: 'rugged', current: 190_000, newestBarAgo: 8 * DAYSEC });
     const unlisted = await coin(7, { ath: 99_000, current: 99_000, newestBarAgo: 8 * DAYSEC });
@@ -278,5 +299,207 @@ describeDb('the refresh and top-up queries', () => {
     void [reopened, running, doneToday, failed];
     expect(await listTopUp(t.db, SPEC, { afterId: 0, limit: 100 })).toEqual([ready]);
     expect(await countListedInFlight(t.db, 100_000)).toBe(1); // only the pending candles row
+  });
+
+  it('counts history from the earliest stored bar, with launch then graduation time only for a coin with no pool', async () => {
+    const changedAt = ago(DAYSEC);
+    const common = {
+      launchedAgo: 10 * DAYSEC,
+      graduatedAgo: 3 * DAYSEC,
+      statusChangedAt: changedAt,
+    };
+    // Bars from launch: 10 days of history, quiet, so dead; the metrics rule gives the same.
+    const withBars = await coin(1, {
+      ...common,
+      status: 'dead',
+      newestBarAgo: DAYSEC,
+      firstBarAgo: 10 * DAYSEC,
+    });
+    // No pool: the launch time counts, 10 days.
+    const noPool = await coin(2, { ...common, status: 'dead' });
+    // Bars only since graduation: 3 days of history, so unknown, not dead.
+    const lateBars = await coin(3, {
+      ...common,
+      status: 'unknown',
+      newestBarAgo: DAYSEC,
+      firstBarAgo: 3 * DAYSEC,
+    });
+    const quiet = (id: number): RefreshFigure => ({
+      id,
+      priceUsd: 1,
+      marketCapUsd: 1,
+      liquidityUsd: 10,
+      volume24hUsd: 1,
+    });
+    const out = await storeRefresh(t.db, [quiet(withBars), quiet(noPool), quiet(lateBars)], NOW);
+    expect(out.changed).toBe(0);
+    const rows = await t.db
+      .selectFrom('coins')
+      .select(['id', 'status', 'status_changed_at'])
+      .orderBy('id')
+      .execute();
+    expect(rows.map((r) => r.status)).toEqual(['dead', 'dead', 'unknown']);
+    expect(rows.every((r) => r.status_changed_at?.getTime() === changedAt.getTime())).toBe(true);
+    // The metrics side, from the same bars: the first bar 10 days back, or 3 days back.
+    const bar = (t0: number) => ({
+      t: t0,
+      o: 1,
+      h: 1,
+      l: 1,
+      c: 1,
+      volumeUsd: 1,
+      trades: 1,
+      traders: 1,
+      liquidityUsd: 10,
+    });
+    const asOf = Math.floor(NOW.getTime() / 1000);
+    const pools = (first: number) => [
+      {
+        address: 'P',
+        dex: 'PumpSwap',
+        isPrimary: true,
+        bars1m: [],
+        bars1h: [],
+        bars1d: [bar(asOf - first), bar(asOf - DAYSEC)],
+      },
+    ];
+    const fromBars = (first: number) =>
+      statusFromEvidence({
+        rugPattern: false,
+        lastAliveAt: lastAliveFromBars({ pools: pools(first), asOf }),
+        hasWeekOfHistory: hasWeekOfBars({ pools: pools(first), asOf }),
+        now: asOf,
+      });
+    expect(fromBars(10 * DAYSEC)).toBe('dead');
+    expect(fromBars(3 * DAYSEC)).toBe('unknown');
+  });
+
+  const NO_BARS = {
+    athMarketCapUsd: null,
+    athAt: null,
+    athPoolAddress: null,
+    secondsToAth: null,
+    athWickMarketCapUsd: null,
+    athWickAt: null,
+    athWickPoolAddress: null,
+    athLiquidityUsd: null,
+    athHourVolumeUsd: null,
+    athNearVolumeUsd: null,
+    athBackedMarketCapUsd: null,
+    secondsAbove: [0, 0, 0, 0],
+    maxDrawdownPct: null,
+    rugPattern: false,
+    flags: [],
+  };
+
+  /**
+   * Holds the coin's row locked, starts `writer` (which blocks on the lock), lets another writer
+   * store `other` as last_alive_at and commit, then lets `writer` go on: the writes are interleaved.
+   */
+  async function interleaved(
+    id: number,
+    other: Date,
+    writer: () => Promise<unknown>,
+  ): Promise<void> {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let held!: () => void;
+    const holding = new Promise<void>((r) => (held = r));
+    const locker = t.db.transaction().execute(async (trx) => {
+      await sql`select 1 from coins where id = ${id} for update`.execute(trx);
+      held();
+      await gate;
+      await sql`update coins set last_alive_at = ${other} where id = ${id}`.execute(trx);
+    });
+    await holding;
+    let finished = false;
+    const w = writer().then(() => {
+      finished = true;
+    });
+    await new Promise((r) => setTimeout(r, 200));
+    expect(finished).toBe(false); // waiting for the lock
+    release();
+    await locker;
+    await w;
+  }
+
+  it('keeps a later last_alive_at and decides from it when a refresh and a metrics write interleave', async () => {
+    const rowOf = (id: number) =>
+      t.db
+        .selectFrom('coins')
+        .select(['status', 'last_alive_at'])
+        .where('id', '=', id)
+        .executeTakeFirstOrThrow();
+    // The refresh is waiting while another writer stores a last_alive_at one day old.
+    const a = await coin(1, {
+      status: 'unknown',
+      graduatedAgo: 2 * DAYSEC,
+      lastAlive: null,
+      launchedAgo: 2 * DAYSEC,
+    });
+    const quiet = { id: a, priceUsd: 1, marketCapUsd: 1, liquidityUsd: 10, volume24hUsd: 1 };
+    await interleaved(a, ago(DAYSEC), () => storeRefresh(t.db, [quiet], NOW));
+    let r = await rowOf(a);
+    expect(r.last_alive_at).toEqual(ago(DAYSEC));
+    expect(r.status).toBe('alive'); // decided from the stored value, not the null the refresh began with
+
+    // The metrics write is waiting while another writer stores a last_alive_at its bars do not give.
+    const b = await coin(2, {
+      status: 'unknown',
+      graduatedAgo: 2 * DAYSEC,
+      lastAlive: null,
+      launchedAgo: 2 * DAYSEC,
+    });
+    await interleaved(b, ago(DAYSEC), () =>
+      computeAndStoreCoinMetrics(t.db, b, {
+        compute: () => NO_BARS,
+        noBars: NO_BARS,
+        asOf: Math.floor(NOW.getTime() / 1000),
+        computedAt: NOW,
+        metricsVersion: 8,
+      }),
+    );
+    r = await rowOf(b);
+    expect(r.last_alive_at).toEqual(ago(DAYSEC));
+    expect(r.status).toBe('alive');
+
+    // A writer with an older value never lowers a newer stored one.
+    await storeRefresh(
+      t.db,
+      [{ ...quiet, liquidityUsd: 9_000, volume24hUsd: 9_000 }],
+      ago(3 * DAYSEC),
+    );
+    expect((await rowOf(a)).last_alive_at).toEqual(ago(DAYSEC));
+  });
+
+  it('does not select by stale bars a coin whose candles finished within the stale limit, so a top-up that brings no bar is not repeated', async () => {
+    // Bars end 9 days ago. Candles finished 8 days ago: selected. After a top-up that brings no bar
+    // the candles finish again, so the next day it is not selected.
+    const old = await coin(1, {
+      current: 20_000,
+      newestBarAgo: 9 * DAYSEC,
+      candles: { status: 'done', finishedAgo: 8 * DAYSEC },
+    });
+    const retried = await coin(2, {
+      current: 20_000,
+      newestBarAgo: 9 * DAYSEC,
+      candles: { status: 'done', finishedAgo: 2 * DAYSEC },
+    });
+    const justUnder = await coin(3, {
+      current: 20_000,
+      newestBarAgo: 9 * DAYSEC,
+      candles: { status: 'done', finishedAgo: 7 * DAYSEC - 60 },
+    });
+    void [retried, justUnder];
+    expect(await listTopUp(t.db, SPEC, { afterId: 0, limit: 100 })).toEqual([old]);
+    expect(await countTopUp(t.db, SPEC)).toEqual({ total: 1, byMarketCap: 0, byStaleBars: 1 });
+    // Rule 1 is not held back by it: a coin at 75% of its ATH is selected whenever its candles
+    // finished before today.
+    const near = await coin(4, {
+      current: 150_000,
+      newestBarAgo: 9 * DAYSEC,
+      candles: { status: 'done', finishedAgo: 2 * DAYSEC },
+    });
+    expect(await listTopUp(t.db, SPEC, { afterId: 0, limit: 100 })).toEqual([old, near]);
   });
 });
