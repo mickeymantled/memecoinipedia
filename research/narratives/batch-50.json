@@ -1,0 +1,613 @@
+[
+  {
+    "mint": "ANcELMuvmCuHYcMegSfam3qhn6pu4Ucd9KcskA6gpump",
+    "ticker": "GEORGE",
+    "primary_narrative": "animal",
+    "secondary_narratives": [
+      "culture/meme"
+    ],
+    "origin": "On-chain name is 'Friendly Orange Cat', the 2025 trend of listing friendly stray orange cats as Google Maps tourist attractions; the coin's website field links to a Google Maps listing. Which specific cat (or whether it is named George) was not established.",
+    "origin_date": "2025-02-08",
+    "trigger_event": "Viral 2025 Google Maps 'friendly neighbourhood cat' listings (Guardian coverage Feb 2025; Reddit posts of the 'Friendly Orange Cat' listing in May 2025) preceded the coin's launch in May 2025.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/ANcELMuvmCuHYcMegSfam3qhn6pu4Ucd9KcskA6gpump/info",
+      "https://www.theguardian.com/culture/2025/feb/08/why-are-friendly-neighbourhood-cats-appearing-on-google-maps-all-of-a-sudden",
+      "https://www.reddit.com/r/interesting/comments/1ke17zx/cat_listed_as_tourist_attraction_on_google/",
+      "https://storypick.com/bengaluru-friendly-orange-cat/"
+    ],
+    "confidence": 0.6,
+    "notes": "Two or more Friendly Orange Cat listings exist (Sydney, Bengaluru), so which cat the coin means is unknown; origin_date is the Guardian trend article, not a specific cat's date. Ticker GEORGE vs name unexplained. No early X accounts found; X handle in metadata is just 'i'. Guide rule 4 (animal) settles the primary."
+  },
+  {
+    "mint": "5xVr3N7VRUzo5ke7oihxQJLHfSyfAXw6vJ2a5F5CgqRg",
+    "ticker": "SOLLY",
+    "primary_narrative": "other",
+    "secondary_narratives": [],
+    "origin": "Metadata name is 'SoLayer' with no description, website or socials. It may play on Solayer (a Solana restaking protocol) or a mascot, but no evidence ties the coin to either.",
+    "origin_date": "",
+    "trigger_event": "No trigger found.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/5xVr3N7VRUzo5ke7oihxQJLHfSyfAXw6vJ2a5F5CgqRg/info",
+      "https://solayer.org/resources/blog/welcome-layer-tokenomics-and-2nd-distribution",
+      "https://superteam.fun/earn/listing/solayer-character-art-contest-faces-of-the-basement/"
+    ],
+    "confidence": 0.15,
+    "notes": "Could not find any description, socials, X mentions or articles for this mint. Name 'SoLayer' resembles Solayer (real protocol; LAYER airdrop and mascot art contest in Aug-Sep 2025, which the coin launched near) but nothing links them; Solayer links are context only. Possible 'utility'/'derivative-of-a-protocol' reading but unsupported. Taxonomy guide gives no rule for a lookalike of a non-coin protocol name; chose other at very low confidence."
+  },
+  {
+    "mint": "A72tJA8A5Ar4e2yVmBKQcCpgwCdB4kWmXxDU1A8zpump",
+    "ticker": "$BAG",
+    "primary_narrative": "culture/meme",
+    "secondary_narratives": [],
+    "origin": "'Baguette' is billed on its own description as the first meme coin based on the baguette, playing on French culture and humour.",
+    "origin_date": "",
+    "trigger_event": "Launched as a food/French-culture joke; no specific dated trigger found.",
+    "parent_mint": null,
+    "key_accounts": [
+      "solanabaguette"
+    ],
+    "sources": [
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/A72tJA8A5Ar4e2yVmBKQcCpgwCdB4kWmXxDU1A8zpump/info",
+      "https://baguette-crypto.com"
+    ],
+    "confidence": 0.75,
+    "notes": "Subject (baguette bread/French culture) is clear from the on-chain description; no external coverage or early-attention accounts found. Food falls under culture/meme in the guide. The 'first-ever baguette coin' claim is unverified. Only X/Telegram handle from metadata: solanabaguette."
+  },
+  {
+    "mint": "DehUesyqV7jg2RhEbkpprWuCTCNC5BLSdpRfYEtQpump",
+    "ticker": "MWH",
+    "primary_narrative": "derivative",
+    "secondary_narratives": [
+      "political",
+      "culture/meme"
+    ],
+    "origin": "'Melania Wif Hat' riffs on the official MELANIA coin launched by Melania Trump and on the dogwifhat 'wif hat' format, launching the same day as the Trump-family coins.",
+    "origin_date": "2025-01-19",
+    "trigger_event": "Melania Trump launched her official MELANIA coin around 19-20 January 2025 just before the inauguration, and this lookalike launched on 20 January 2025.",
+    "parent_mint": null,
+    "key_accounts": [
+      "melaniawifhat"
+    ],
+    "sources": [
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/DehUesyqV7jg2RhEbkpprWuCTCNC5BLSdpRfYEtQpump/info",
+      "https://www.cnbc.com/2025/01/20/melania-trump-launches-cryptocurrency-ahead-of-donald-trumps-inauguration.html",
+      "https://www.coindesk.com/price/mwh"
+    ],
+    "confidence": 0.55,
+    "notes": "Guide rule 1 would make this a derivative of MELANIA (and 'wif hat' format), but the official MELANIA coin is a Solana token whose mint I did not verify, so parent_mint is null. Alternative reading: political/celebrity (Melania Trump is the First Lady; rule 5 political). Guide does not settle a parody of a politician's official coin. Not an official coin."
+  },
+  {
+    "mint": "DqDnTsZR6sANKxJZ5bYeaKKSsYsMLre8ZpyzLYWspump",
+    "ticker": "GROKDOS",
+    "primary_narrative": "AI",
+    "secondary_narratives": [
+      "tech",
+      "culture/meme"
+    ],
+    "origin": "Name combines 'Grok' (xAI's chatbot) with DOS-era retro computing; no description. Appears to be an unofficial Grok-themed coin, not an xAI product.",
+    "origin_date": "",
+    "trigger_event": "No specific trigger found; launched August 2025 during Grok product news (Grok Imagine launched July 2025).",
+    "parent_mint": null,
+    "key_accounts": [
+      "GROKDOS"
+    ],
+    "sources": [
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/DqDnTsZR6sANKxJZ5bYeaKKSsYsMLre8ZpyzLYWspump/info",
+      "https://web3.bitget.com/how-to-buy/GROKDOS-sol-2XtNJZUoKohppLB8nHar3fT3Yt5Gz6CUkZqS47XkBAGS"
+    ],
+    "confidence": 0.4,
+    "notes": "Third-party pages found were for a different GROKDOS mint (Bitget address ends ...BAGS), so they only loosely support the DOS-branding reading; none confirm this mint. No description or X activity found. AI primary is a reading from the name only. Possible derivative of a Grok-named coin, unproven."
+  },
+  {
+    "mint": "5SEc2JdcAeQPLeASmuXv8cFkVvgekWWEJkQybz19pump",
+    "ticker": "nut",
+    "primary_narrative": "culture/meme",
+    "secondary_narratives": [],
+    "origin": "'hold this in november' is a joke on No Nut November, the annual internet self-restraint challenge (sexual innuendo in the ticker).",
+    "origin_date": "2025-11-01",
+    "trigger_event": "Coin launched 30 Oct 2025, days before No Nut November 2025 began.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/5SEc2JdcAeQPLeASmuXv8cFkVvgekWWEJkQybz19pump/info",
+      "https://phantom.com/tokens/solana/5SEc2JdcAeQPLeASmuXv8cFkVvgekWWEJkQybz19pump",
+      "https://www.xommunity.app/cryptocurrency/hold-this-in-november-1983989937067454552",
+      "https://nutcoin.fun"
+    ],
+    "confidence": 0.8,
+    "notes": "Sensitive: crude sexual innuendo (No Nut November). Date is start of November 2025 for the meme season, not a single event. The X community in metadata is id 1983989937067454552 (key account not identified). Another similarly named coin exists on a different mint; not used."
+  },
+  {
+    "mint": "HAMSg4KM1vqkVAjQ9qtRqaGjBGDC85VGkUQ5fJrWpump",
+    "ticker": "BITPIZZA",
+    "primary_narrative": "culture/meme",
+    "secondary_narratives": [
+      "celebrity",
+      "news event"
+    ],
+    "origin": "Coin about Bitcoin Pizza: Jeremy Sturdivant (jercos) received 10,000 BTC from Laszlo Hanyecz for two pizzas on 22 May 2010, the first known real-world Bitcoin purchase. Description says 'we are onboarding' Sturdivant.",
+    "origin_date": "2010-05-22",
+    "trigger_event": "Launched March 2026 with the community pitched around Sturdivant; no specific trigger event for the run was found.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/HAMSg4KM1vqkVAjQ9qtRqaGjBGDC85VGkUQ5fJrWpump/info",
+      "https://finance.yahoo.com/markets/crypto/articles/bitcoin-pizza-day-recipient-speaks-150000056.html",
+      "https://www.telegraph.co.uk/technology/2018/05/22/inside-story-behind-famous-2010-bitcoin-pizza-purchase-today/",
+      "https://btcpizza2010.xyz"
+    ],
+    "confidence": 0.65,
+    "notes": "Crypto-native in-joke/history, so culture/meme per guide; Sturdivant is a real named private-ish person (celebrity only loosely, famous mostly from this event). Whether Sturdivant is actually involved with the coin is unverified. News event secondary because origin is a dated happening. Telegram: BitPizzaPortal; X community id 2029480088769839148."
+  },
+  {
+    "mint": "7xAinob3Fmi6Sf1zA1kUDkuSuBh4KEVtuKqL6WM1DWKr",
+    "ticker": "BabyU",
+    "primary_narrative": "AI",
+    "secondary_narratives": [
+      "utility",
+      "animal"
+    ],
+    "origin": "BabyUnicorn (BABYU) markets itself as an AI-powered unicorn toy and educational products brand with the token as a payment method; it has a website, YouTube, TikTok, X and Telegram.",
+    "origin_date": "",
+    "trigger_event": "Marketing launch of the project; no distinct trigger event found.",
+    "parent_mint": null,
+    "key_accounts": [
+      "babyunicornai",
+      "babyuofficial"
+    ],
+    "sources": [
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/7xAinob3Fmi6Sf1zA1kUDkuSuBh4KEVtuKqL6WM1DWKr/info",
+      "https://dexscreener.com/solana/3kf857rtylzvrbfqnv5k9snrp56exmvuxezuezyxyvui",
+      "https://x.com/babyunicornai",
+      "https://babyu.tech/"
+    ],
+    "confidence": 0.6,
+    "notes": "Selling point is AI toy product; tie-break 2 gives AI with utility secondary. The mint does not end in 'pump', so may not be a pump.fun launch despite the batch brief. Product claims unverified. Unicorn mascot could also suggest culture/meme or a Baby-X derivative of a unicorn coin; no parent found."
+  },
+  {
+    "mint": "6wBcfuifyZwY15khB9SunzERcQc4Z62thwjexDUnpump",
+    "ticker": "MoMA",
+    "primary_narrative": "culture/meme",
+    "secondary_narratives": [],
+    "origin": "'Museum Of Meme Art' presents memes as art; the coin's metadata links to an X post from 31 Dec 2025 replying to the account BitcoinPooh that says a link 'probably soon'.",
+    "origin_date": "2025-12-31",
+    "trigger_event": "The coin launched 31 Dec 2025, minutes after that X reply, which apparently was the launch announcement.",
+    "parent_mint": null,
+    "key_accounts": [
+      "BitcoinPooh"
+    ],
+    "sources": [
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/6wBcfuifyZwY15khB9SunzERcQc4Z62thwjexDUnpump/info",
+      "https://x.com/i/status/2006445801078403096",
+      "https://www.solflare.com/prices/museum-of-meme-art/6wBcfuifyZwY15khB9SunzERcQc4Z62thwjexDUnpump/"
+    ],
+    "confidence": 0.45,
+    "notes": "The parent post being replied to was not accessible, and I could not confirm what the 'museum' concept ties to or whether BitcoinPooh is the dev. Reply had about 21k views. Subject read from the name only."
+  },
+  {
+    "mint": "13McYiPCfUKjKBsPqsmT4AneDhqYmSnfMzDNdDjNpump",
+    "ticker": "AIRFRYER",
+    "primary_narrative": "culture/meme",
+    "secondary_narratives": [
+      "tech"
+    ],
+    "origin": "Coin named after a 20 Oct 2025 X post by a user saying 'I finally learned how to use my air fryer' with a photo; the coin's metadata links to that post.",
+    "origin_date": "2025-10-20",
+    "trigger_event": "The post went up on 20 Oct 2025 and the coin launched on 11 Nov 2025; no evidence found of why it ran or whether the post went viral.",
+    "parent_mint": null,
+    "key_accounts": [
+      "ResilienceX3"
+    ],
+    "sources": [
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/13McYiPCfUKjKBsPqsmT4AneDhqYmSnfMzDNdDjNpump/info",
+      "https://x.com/i/status/1980315255071994117"
+    ],
+    "confidence": 0.5,
+    "notes": "Verified via the X API: post exists, dated 2025-10-20, text as quoted, author id 1583937672061636608 (handle in metadata: ResilienceX3). Not confirmed that the post was a viral meme; web search found nothing else. Appliance as subject is a household product; culture/meme is a best fit, with tech weak."
+  },
+  {
+    "mint": "DtNJm2tCJtAADgGdFLF4ruNEzYiv9Fjet9hD7kaxpump",
+    "ticker": "DAWG",
+    "primary_narrative": "animal",
+    "secondary_narratives": [
+      "culture/meme"
+    ],
+    "origin": "A dog coin whose on-chain description reads 'This dog is legit the size of a small horse', a common 'giant dog' joke format. No specific viral dog or post was identified.",
+    "origin_date": "",
+    "trigger_event": "Unknown; launched on pump.fun in June 2024 during the dog-coin wave. No trigger event found.",
+    "parent_mint": null,
+    "key_accounts": [
+      "dawgsolmeme"
+    ],
+    "sources": [
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/DtNJm2tCJtAADgGdFLF4ruNEzYiv9Fjet9hD7kaxpump/info"
+    ],
+    "confidence": 0.25,
+    "notes": "Metadata only (name Dawg, X handle dawgsolmeme, Telegram dawgsolportal). X archive search and web search found no origin post. Could not verify the 'small horse' line refers to a specific dog. Taxonomy guide: animal at low confidence for an unresearchable dog coin."
+  },
+  {
+    "mint": "6C5TsUN95ZtEyb3NvaK6KoDKGMrqGnCUMtZysdpwpump",
+    "ticker": "PWH",
+    "primary_narrative": "derivative",
+    "secondary_narratives": [
+      "culture/meme",
+      "gaming"
+    ],
+    "origin": "'Pikachu Wif Hat' is a Pokémon Pikachu take on the dogwifhat 'wif hat' format. The coin's metadata links a CNN article on the Pokémon x Van Gogh Museum collaboration.",
+    "origin_date": "2023-09-28",
+    "trigger_event": "Pokémon x Van Gogh Museum collaboration announced Sept 2023 (the linked article); the coin launched in Sept 2025. No specific trigger for the coin found.",
+    "parent_mint": "EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm",
+    "key_accounts": [
+      "kiraLsama"
+    ],
+    "sources": [
+      "https://www.geckoterminal.com/solana/tokens/6C5TsUN95ZtEyb3NvaK6KoDKGMrqGnCUMtZysdpwpump",
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/6C5TsUN95ZtEyb3NvaK6KoDKGMrqGnCUMtZysdpwpump/info",
+      "https://edition.cnn.com/style/article/pokemon-van-gogh-museum-scli-intl",
+      "https://www.geckoterminal.com/solana/tokens/EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm"
+    ],
+    "confidence": 0.45,
+    "notes": "Parent assumed to be dogwifhat (WIF) from the 'wif hat' pattern; the metadata does not name it, and the parent mint is from my own recall (not re-verified on-chain), so treat parent as probable. The CNN article does not mention a hat, so the link between the article and the coin's image is unverified. Taxonomy section 4 covers 'X wif hat' only loosely: this is a Pokémon-character version of a hat template, so the tie-break between derivative and culture/meme is unsettled."
+  },
+  {
+    "mint": "Bxy4TPMt53cXb9CQjDNvgP38Yk74KZhoTjBGCSyEGqBo",
+    "ticker": "ELON",
+    "primary_narrative": "culture/meme",
+    "secondary_narratives": [
+      "celebrity"
+    ],
+    "origin": "Shock-humour coin whose full name is a string of racial and ethnic slurs followed by 'Inu', with ticker ELON. It seems to riff on the many Elon-themed Inu coins; no intended meaning was found.",
+    "origin_date": "",
+    "trigger_event": "No trigger found; launched June 2024 with no description beyond the name and ticker.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/Bxy4TPMt53cXb9CQjDNvgP38Yk74KZhoTjBGCSyEGqBo/info"
+    ],
+    "confidence": 0.3,
+    "notes": "SENSITIVE: hateful (slurs in name). Mint is not a pump.fun-suffix address. No website, socials or posts found. Celebrity secondary is inferred from the ticker only. Guide says absurd or shock humour is culture/meme, which settles the primary."
+  },
+  {
+    "mint": "7iysot6EF4AmZenKi5mr9yakczbf3HRgHh8GKLuipump",
+    "ticker": "PAWTUS",
+    "primary_narrative": "political",
+    "secondary_narratives": [
+      "animal"
+    ],
+    "origin": "'Pawsident of United States' is a pun on POTUS imagining an animal as US president. No description, image or socials were available to confirm which animal or event.",
+    "origin_date": "",
+    "trigger_event": "Launched June 2024, in the run-up to the US election; no specific trigger found.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/7iysot6EF4AmZenKi5mr9yakczbf3HRgHh8GKLuipump/info",
+      "https://zrt.preview.pump.fun/coin/7iysot6EF4AmZenKi5mr9yakczbf3HRgHh8GKLuipump"
+    ],
+    "confidence": 0.2,
+    "notes": "Only the name was available; X search for the name found nothing. GeckoTerminal lists an odd 'Andrew Tate' category, unexplained and unverified. Political vs animal is unsettled by the guide for pun names like POTUS-with-a-pet; chose political because the name targets the presidency."
+  },
+  {
+    "mint": "Hydc2vZBfBp6yb3ZELgWPQBX9z85UoawCJTXdTmqSB4P",
+    "ticker": "RAD",
+    "primary_narrative": "celebrity",
+    "secondary_narratives": [
+      "culture/meme"
+    ],
+    "origin": "'Riding Ansem's Dick' is a crude joke about Ansem (@blknoiz06), a well-known Solana crypto personality, using the slang 'dick riding' for fawning over him.",
+    "origin_date": "",
+    "trigger_event": "No dated trigger found; launched April 2024. The phrase is still used on X about Ansem's followers.",
+    "parent_mint": null,
+    "key_accounts": [
+      "blknoiz06"
+    ],
+    "sources": [
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/Hydc2vZBfBp6yb3ZELgWPQBX9z85UoawCJTXdTmqSB4P/info",
+      "https://x.com/i/status/2120525409276113083"
+    ],
+    "confidence": 0.5,
+    "notes": "SENSITIVE: sexual in name. Subject identified from the name and description; Ansem's handle blknoiz06 is from my background knowledge and is only loosely confirmed by the sample X posts. The cited post is from 2026, not a launch-era source. Guide places crypto personalities in celebrity."
+  },
+  {
+    "mint": "DqLWFXjWhcuM3NKdUWggYGUZPv8gH8kyBhTKwm1Xpump",
+    "ticker": "CLOUT",
+    "primary_narrative": "utility",
+    "secondary_narratives": [
+      "culture/meme"
+    ],
+    "origin": "Coin for Clout.me, a web project with the tagline 'Believe in someone', apparently a platform for backing people. I could not confirm what the product does.",
+    "origin_date": "",
+    "trigger_event": "Launched January 2025; no trigger found.",
+    "parent_mint": null,
+    "key_accounts": [
+      "cloutdotme"
+    ],
+    "sources": [
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/DqLWFXjWhcuM3NKdUWggYGUZPv8gH8kyBhTKwm1Xpump/info",
+      "https://www.clout.me"
+    ],
+    "confidence": 0.3,
+    "notes": "Website and X handle cloutdotme in metadata; I did not read the site in detail and X search found nothing. Utility is a best reading from the claimed product; could be culture/meme if it is just a slogan coin."
+  },
+  {
+    "mint": "CcbRZQ9cCiiTEGkaTNVkgSaVceXb5LqGQ36PtSRapump",
+    "ticker": "PEPED",
+    "primary_narrative": "culture/meme",
+    "secondary_narratives": [
+      "derivative"
+    ],
+    "origin": "'Pepe Diamond' is a Pepe the Frog themed coin, riding the Pepe meme and the 'diamond' hands motif.",
+    "origin_date": "",
+    "trigger_event": "Launched May 2024 amid the Pepe-themed coin wave; no specific trigger found.",
+    "parent_mint": null,
+    "key_accounts": [
+      "pepedmnd"
+    ],
+    "sources": [
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/CcbRZQ9cCiiTEGkaTNVkgSaVceXb5LqGQ36PtSRapump/info",
+      "https://knowyourmeme.com/memes/pepe-the-frog"
+    ],
+    "confidence": 0.35,
+    "notes": "Metadata: X handle pepedmnd, Telegram PepeDiamondPortal. No parent mint (a Pepe coin on Solana is not identified), so parent_mint null and derivative is only secondary. origin_date left empty as the coin refers to the general Pepe meme. Animal also arguable (a frog); the guide treats Pepe as a meme."
+  },
+  {
+    "mint": "86BMwo29TgobuYTCFU7tf3DBhgNvgeCkNTQXbAvUpump",
+    "ticker": "OPTIM",
+    "primary_narrative": "utility",
+    "secondary_narratives": [
+      "tech"
+    ],
+    "origin": "Optimistic Oracle claims to be a Solana decentralized oracle protocol for data feeds with economic guarantees ('Truth by Default, Verified by Economics').",
+    "origin_date": "",
+    "trigger_event": "Launched late Oct 2025 with a project website; no external trigger found.",
+    "parent_mint": null,
+    "key_accounts": [
+      "OptimOracle"
+    ],
+    "sources": [
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/86BMwo29TgobuYTCFU7tf3DBhgNvgeCkNTQXbAvUpump/info",
+      "https://www.optimisticoracle.com",
+      "https://www.solflare.com/prices/optimistic-oracle/86BMwo29TgobuYTCFU7tf3DBhgNvgeCkNTQXbAvUpump/"
+    ],
+    "confidence": 0.5,
+    "notes": "Claimed product only; I could not verify the protocol works or any team. Possibly named after UMA's Optimistic Oracle; not verified. Utility per the guide's 'claimed product' reading."
+  },
+  {
+    "mint": "8NGpdSE1tZqUrvpUVqsn5Revncc6yUafk8mnAyK9fNCE",
+    "ticker": "Chud",
+    "primary_narrative": "culture/meme",
+    "secondary_narratives": [
+      "other"
+    ],
+    "origin": "Coin of Chudjak, a Wojak variant used to mock far-right /pol/ users, first appearing around 2019-2020.",
+    "origin_date": "2019-08-01",
+    "trigger_event": "Coin launched July 2026 (pool created); no specific trigger found.",
+    "parent_mint": null,
+    "key_accounts": [
+      "ChudCTO",
+      "chudjakog"
+    ],
+    "sources": [
+      "https://knowyourmeme.com/sensitive/memes/chudjak",
+      "https://knowyourmeme.com/editorials/guides/who-is-chudjak-and-what-does-the-meme-mean-exactly-the-contentious-wojak-character-explained",
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/8NGpdSE1tZqUrvpUVqsn5Revncc6yUafk8mnAyK9fNCE/info",
+      "https://api.dexscreener.com/latest/dex/tokens/8NGpdSE1tZqUrvpUVqsn5Revncc6yUafk8mnAyK9fNCE"
+    ],
+    "confidence": 0.6,
+    "notes": "SENSITIVE: meme is tied to far-right/extremist imagery (Know Your Meme marks it sensitive). Mint is non-pump suffix, so launch platform unconfirmed. Two X handles appear in metadata (chudjakog on GeckoTerminal, ChudCTO on DexScreener), suggesting a possible community takeover; unverified. origin_date is approximate (month known, day set to 01). Secondary 'other' is weak; could be empty."
+  },
+  {
+    "mint": "8BuGJvmzrtKg1Pq31pdcabFk5UVdvykAYqNqPfWGpump",
+    "ticker": "Bear",
+    "primary_narrative": "animal",
+    "secondary_narratives": [
+      "culture/meme"
+    ],
+    "origin": "'Nietzschean Brown Bear' is a brown bear coin with a philosophy joke (Nietzsche). Launched through rapidlaunch.io with an X community; no origin post found.",
+    "origin_date": "",
+    "trigger_event": "Launched May 2026; no trigger found.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/8BuGJvmzrtKg1Pq31pdcabFk5UVdvykAYqNqPfWGpump/info",
+      "https://x.com/i/communities/2009051228567642159"
+    ],
+    "confidence": 0.3,
+    "notes": "X archive search for the full name returned nothing; I did not open the community page. The Nietzsche angle is read from the name only."
+  },
+  {
+    "mint": "BxUoAzj8P99cMW26hmf1kmTr32nkcgMPWTiaFuHckFtU",
+    "ticker": "WOJO",
+    "primary_narrative": "culture/meme",
+    "secondary_narratives": [],
+    "origin": "Parody of Gojo Satoru from the anime Jujutsu Kaisen: the token description retells Gojo's 'strongest' persona and the 'Nah, I'd win' line, recast as 'Wojo' reassuring holders in a bear market.",
+    "origin_date": "",
+    "trigger_event": "No specific trigger found; looks like a launch riding the 'Nah, I'd win' Gojo meme format.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://phantom.com/tokens/solana/BxUoAzj8P99cMW26hmf1kmTr32nkcgMPWTiaFuHckFtU",
+      "https://www.solflare.com/de/preise/wojo-satoru/BxUoAzj8P99cMW26hmf1kmTr32nkcgMPWTiaFuHckFtU/kaufen/"
+    ],
+    "confidence": 0.6,
+    "notes": "Reading from the on-chain description only (Phantom page). Gojo/Jujutsu Kaisen link is inferred from the name and quoted text; no external source for the meme's date, so origin_date left empty. Taxonomy: fictional anime character parody -> culture/meme per tie-break 10; the guide's gaming rule does not apply. Live X search not run for this coin; no handle-level attention evidence found."
+  },
+  {
+    "mint": "ernLJ51NnsE8Xe1PZ3DFNSdEdogAoWJ9CCFNJWTpump",
+    "ticker": "GROKHUB",
+    "primary_narrative": "AI",
+    "secondary_narratives": [],
+    "origin": "A coin named after Grok, xAI's chatbot, branded as a 'hub'. No description or origin story could be found.",
+    "origin_date": "",
+    "trigger_event": "None found.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://phantom.com/tokens/solana/ernLJ51NnsE8Xe1PZ3DFNSdEdogAoWJ9CCFNJWTpump"
+    ],
+    "confidence": 0.3,
+    "notes": "Phantom lists creation in Dec 2025 and an empty description. Other coins named Grokhub exist (a Solana mint GJkTAB77... and a Clanker token on Base); no evidence either is this coin's parent, so parent_mint null. Guide doesn't settle whether a bare model-name coin with no stated product is AI vs culture/meme; chose AI by name. Live X search not run for this coin; no handle-level attention evidence found."
+  },
+  {
+    "mint": "4tDsPjxZ51knno8HqXsSAi5m6inmapjSiA5w2fLDpump",
+    "ticker": "SAVIOUR",
+    "primary_narrative": "other",
+    "secondary_narratives": [],
+    "origin": "Token metadata names it 'PUMPFUN SAVIOUR'; no description, image meaning or origin story could be found.",
+    "origin_date": "",
+    "trigger_event": "None found.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://www.solflare.com/prices/pumpfun-saviour/4tDsPjxZ51knno8HqXsSAi5m6inmapjSiA5w2fLDpump/",
+      "https://pump.fun/coin/4tDsPjxZ51knno8HqXsSAi5m6inmapjSiA5w2fLDpump"
+    ],
+    "confidence": 0.15,
+    "notes": "Could not find any description, socials or discussion. Best reading is a generic pump.fun-themed 'saviour' (possibly religious or crypto in-joke) but unverifiable, so 'other' at low confidence. Live X search not run for this coin; no handle-level attention evidence found."
+  },
+  {
+    "mint": "HQSTKbXjNBPGJsAhXijCVu18CGLCHaUnKvuEiZdkbagh",
+    "ticker": "MONKE",
+    "primary_narrative": "animal",
+    "secondary_narratives": [
+      "culture/meme"
+    ],
+    "origin": "A monkey-mascot coin with the description 'Hi I'm Monke!' and its own website, X account and Telegram. No specific meme or event behind it was found.",
+    "origin_date": "",
+    "trigger_event": "None found.",
+    "parent_mint": null,
+    "key_accounts": [
+      "SOLmonke420"
+    ],
+    "sources": [
+      "https://phantom.com/tokens/solana/HQSTKbXjNBPGJsAhXijCVu18CGLCHaUnKvuEiZdkbagh",
+      "https://x.com/SOLmonke420",
+      "https://rugchecker.com/tokens/HQSTKbXjNBPGJsAhXijCVu18CGLCHaUnKvuEiZdkbagh"
+    ],
+    "confidence": 0.5,
+    "notes": "Account handle taken from the on-chain description; its activity was not checked. Generic monkey coin; 'monke' is a common internet meme spelling, hence culture/meme secondary. Mint does not end in 'pump' but rugchecker reports creation via Pump.fun. Live X search not run for this coin; no handle-level attention evidence found."
+  },
+  {
+    "mint": "5uUb6oi5zJNZN7ChksNjmjAve5QdiGaqPGkXazx8FZrg",
+    "ticker": "LBRON",
+    "primary_narrative": "celebrity",
+    "secondary_narratives": [
+      "culture/meme"
+    ],
+    "origin": "A parody of basketball star LeBron James under the name 'Longbron James'. No description or origin story found.",
+    "origin_date": "",
+    "trigger_event": "None found.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://phantom.com/tokens/solana/5uUb6oi5zJNZN7ChksNjmjAve5QdiGaqPGkXazx8FZrg"
+    ],
+    "confidence": 0.4,
+    "notes": "Name-based reading only; description empty. Parody of a real athlete is celebrity per the guide; the 'long' pun is a joke so culture/meme secondary. Search surfaced other LeBron-themed coins with different mints; none shown to be a parent. Live X search not run for this coin; no handle-level attention evidence found."
+  },
+  {
+    "mint": "4qCzvV73b3FQuHEEcJcEdXR47FeG8ji4kwXj6hx4pump",
+    "ticker": "GENIUS",
+    "primary_narrative": "celebrity",
+    "secondary_narratives": [
+      "culture/meme"
+    ],
+    "origin": "Token metadata names it 'GENIUS TATE', apparently referring to influencer Andrew Tate; the description is only an X link and no origin story could be found.",
+    "origin_date": "",
+    "trigger_event": "None found.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://phantom.com/tokens/solana/4qCzvV73b3FQuHEEcJcEdXR47FeG8ji4kwXj6hx4pump"
+    ],
+    "confidence": 0.35,
+    "notes": "The Tate reading is inferred from the name alone, not confirmed by any source. Subject is a controversial figure; flag for possible sensitivity review. Other unrelated GENIUS coins exist (search results show different mints). Live X search not run for this coin; no handle-level attention evidence found."
+  },
+  {
+    "mint": "28a2oQVCPrJB7SLZo4DVMVdHchSXiG8sZy31DohPpump",
+    "ticker": "$PRINT",
+    "primary_narrative": "AI",
+    "secondary_narratives": [
+      "utility"
+    ],
+    "origin": "Token for print.fun, a platform where users create AI hedge funds run by six AI agents that research and trade crypto.",
+    "origin_date": "",
+    "trigger_event": "Platform-linked token; DEX data shows the pair created in Oct 2025. No specific trigger found.",
+    "parent_mint": null,
+    "key_accounts": [
+      "printfun_"
+    ],
+    "sources": [
+      "https://print.fun/",
+      "https://x.com/printfun_",
+      "https://dexscreener.com/solana/28a2oQVCPrJB7SLZo4DVMVdHchSXiG8sZy31DohPpump"
+    ],
+    "confidence": 0.65,
+    "notes": "Site content is product marketing; token-to-product link rests on website/X link in DEX Screener metadata, not independent confirmation. Tie-break 2 (AI product claim) gives AI with utility secondary. origin_date left empty as no dated event is referenced. Live X search not run for this coin; no handle-level attention evidence found."
+  },
+  {
+    "mint": "3YP4dPY8NkSnTbR4vUjxFQNVYmvhR9qcgAK89wowU2EK",
+    "ticker": "Dev",
+    "primary_narrative": "culture/meme",
+    "secondary_narratives": [
+      "tech"
+    ],
+    "origin": "Token named 'Dev Retardio', a crypto in-joke mocking developers using a slur; the description is a mock poem that also references Uganda and ends 'Dev is retardio, we smart' with a Chinese flag.",
+    "origin_date": "",
+    "trigger_event": "None found.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://phantom.com/tokens/solana/3YP4dPY8NkSnTbR4vUjxFQNVYmvhR9qcgAK89wowU2EK",
+      "https://dexscreener.com/solana/3yp4dpy8nksntbr4vujxfqnvymvhr9qcgak89wowu2ek"
+    ],
+    "confidence": 0.4,
+    "notes": "SENSITIVE: ableist slur in name and description, plus a reference to Uganda and Chinese flag that reads as offensive humour. Likely riffs on the 'Retardio' crypto meme but no parent coin confirmed, so parent_mint null. Guide: shock humour -> culture/meme; developer culture -> tech secondary. Live X search not run for this coin; no handle-level attention evidence found."
+  },
+  {
+    "mint": "Dza3Bey5tvyYiPgcGRKoXKU6rNrdoNrWNVmjqePcpump",
+    "ticker": "UNSYS",
+    "primary_narrative": "AI",
+    "secondary_narratives": [
+      "utility"
+    ],
+    "origin": "Token for 'Uncertain Systems', which has a website at uncertain.systems and is described in search summaries as an AI-focused educational project.",
+    "origin_date": "",
+    "trigger_event": "None found.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://www.coingecko.com/en/coins/uncertain-systems",
+      "https://solscan.io/token/Dza3Bey5tvyYiPgcGRKoXKU6rNrdoNrWNVmjqePcpump",
+      "https://holder.io/coins/unsys/"
+    ],
+    "confidence": 0.4,
+    "notes": "The AI-education description comes from a search summary of third-party pages and was not verified on the project's own site; CoinGecko says there is no clear narrative. Fully on-chain launch date not confirmed. Live X search not run for this coin; no handle-level attention evidence found."
+  },
+  {
+    "mint": "66MH83n3jRqZMni87niTyKRoGbh9HxBkTm73sTRKpump",
+    "ticker": "OTCfi",
+    "primary_narrative": "utility",
+    "secondary_narratives": [
+      "tech"
+    ],
+    "origin": "Token for OTCfi, a project of Metavesco, Inc. (OTC: MVCO), linked to its website, X account and Discord; DEX data shows the pair created in Sep 2025.",
+    "origin_date": "",
+    "trigger_event": "None found.",
+    "parent_mint": null,
+    "key_accounts": [
+      "OTCfi"
+    ],
+    "sources": [
+      "https://otcfi.io",
+      "https://x.com/OTCfi",
+      "https://dexscreener.com/solana/66MH83n3jRqZMni87niTyKRoGbh9HxBkTm73sTRKpump",
+      "https://www.otcmarkets.com/stock/MVCO/profile"
+    ],
+    "confidence": 0.5,
+    "notes": "Website only displayed a cookie banner and 'A Project by Metavesco, Inc.', so what OTCfi does is not confirmed; utility is inferred from the project/company framing. Corporate-linked token; guide doesn't cover coins tied to listed companies. Live X search not run for this coin; no handle-level attention evidence found."
+  }
+]
