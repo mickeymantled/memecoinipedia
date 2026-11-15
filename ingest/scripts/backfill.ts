@@ -8,12 +8,14 @@
  *     tsx scripts/backfill.ts run [--min-rough-peak 30000] [--limit N] [--order peak|hash]
  *       [--include-no-price] [--stages candles,metrics,metadata[,metadata_file]]
  *       [--codex-rps 100] [--concurrency 200] [--metrics-concurrency N] [--metadata-concurrency N]
- *       [--db-pool 30] [--queue-pool 8] [--gateway-rps 1] [--max-attempts 3] [--retry-failed]
+ *       [--file-concurrency 3]
+ *       [--file-concurrency 3] [--db-pool 30] [--queue-pool 8] [--gateway-rps 1] [--max-attempts 3] [--retry-failed]
  *       [--max-codex-units N] [--max-helius-credits N] [--confirm]
  *
  *   The metadata file (social links, the creator's own description and image) is a stage of its own,
  *   paced by the gateways and not in the default stages: tsx scripts/backfill.ts run --stages metadata_file
- *   --gateway-rps applies to it only.
+ *   --gateway-rps and --file-concurrency (coins in flight, default 3) apply to it only; a larger
+ *   number makes the gateways time out and rate-limit each other.
  *
  *   What is running, and how far: tsx scripts/backfill-status.ts
  *
@@ -48,7 +50,8 @@ function usage(message?: string): never {
       '       backfill.ts run [--min-rough-peak USD] [--limit N] [--order peak|hash]\n' +
       '                       [--include-no-price] [--stages candles,metrics,metadata[,metadata_file]]\n' +
       '                       [--codex-rps N] [--concurrency N] [--metrics-concurrency N]\n' +
-      '                       [--metadata-concurrency N] [--db-pool N] [--queue-pool N]\n' +
+      '                       [--metadata-concurrency N] [--file-concurrency N]\n' +
+      '                       [--db-pool N] [--queue-pool N]\n' +
       '                       [--gateway-rps N] [--max-attempts N] [--retry-failed]\n' +
       '                       [--max-codex-units N] [--max-helius-credits N] [--confirm]\n',
   );
@@ -82,6 +85,7 @@ async function main(): Promise<void> {
       concurrency: { type: 'string' },
       'metrics-concurrency': { type: 'string' },
       'metadata-concurrency': { type: 'string' },
+      'file-concurrency': { type: 'string' },
       'db-pool': { type: 'string' },
       'queue-pool': { type: 'string' },
       'gateway-rps': { type: 'string' },
@@ -133,6 +137,7 @@ async function main(): Promise<void> {
   const concurrency = positive('--concurrency', values.concurrency);
   const metrics = positive('--metrics-concurrency', values['metrics-concurrency']);
   const metadata = positive('--metadata-concurrency', values['metadata-concurrency']);
+  const fileConcurrency = positive('--file-concurrency', values['file-concurrency']);
   const dbPool = positive('--db-pool', values['db-pool']);
   const queuePool = positive('--queue-pool', values['queue-pool']);
   const rps = positive('--codex-rps', values['codex-rps'], false);
@@ -157,6 +162,7 @@ async function main(): Promise<void> {
     ...(concurrency !== undefined ? { candlesConcurrency: concurrency } : {}),
     ...(metrics !== undefined ? { metricsConcurrency: metrics } : {}),
     ...(metadata !== undefined ? { metadataConcurrency: metadata } : {}),
+    ...(fileConcurrency !== undefined ? { fileConcurrency } : {}),
     ...(dbPool !== undefined ? { dbPoolSize: dbPool } : {}),
     ...(queuePool !== undefined ? { queuePoolSize: queuePool } : {}),
     ...(gatewayRps !== undefined ? { gatewayRps } : {}),

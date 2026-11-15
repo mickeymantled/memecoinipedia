@@ -202,12 +202,20 @@ describeDb('runIngest', () => {
     expect(await tableCounts(db)).toEqual(before);
   }, 60_000);
 
+  // Every gateway answered with a server error: the coin's fault, so every try is charged. (A coin
+  // whose gateways all timed out or rate-limited is charged once a run, issue 90.)
+  const brokenGateway = () => {
+    const r = badResult('unreachable');
+    r.attempts = r.attempts.map((a) => ({ ...a, result: 'server_error' as const, status: 502 }));
+    return r;
+  };
+
   it('leaves coins that used up their retries on a re-run, and retries them with --retry-failed', async () => {
     const flaky = sources();
     let down = true;
     const original = flaky.clients.fetchMetadata;
     flaky.clients.fetchMetadata = async (uri) =>
-      down && uri.includes(mints[2]!) ? badResult('unreachable') : original(uri);
+      down && uri.includes(mints[2]!) ? brokenGateway() : original(uri);
     const out: string[] = [];
     const first = await runIngest({
       ...base(out),

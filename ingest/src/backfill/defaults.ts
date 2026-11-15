@@ -31,6 +31,18 @@ export const DEFAULT_METRICS_CONCURRENCY = 16;
  * to each gateway), and a stage that outlasts its timeout is taken over, so this stays modest.
  */
 export const DEFAULT_METADATA_CONCURRENCY = 40;
+/**
+ * Metadata files fetched at once (`--file-concurrency`). The gateways are slow to answer, not
+ * short of capacity: probed one request at a time, filebase answered 42 of 42 files with a median
+ * of 1.0 s and pinata 42 of 42 with a median of 5.7 s. With 37 coins in flight (the metadata
+ * stage's default) 152 of 260 coins failed their first try in three minutes (filebase timed out
+ * under the pile of open requests, pinata then rate-limited the fallback); with 3 in flight at the
+ * same 1.5 requests a second the stage did 86 coins a minute with no failure and no warning. At
+ * the default gateway rate the limiter, not the number in flight, is what paces the stage (3
+ * coins at 1 s each can ask for 3 requests a second), so 3 loses no speed and keeps few requests
+ * open. Raise it only with a faster gateway rate.
+ */
+export const DEFAULT_METADATA_FILE_CONCURRENCY = 3;
 
 /** Connections in the run's Kysely pool. */
 export const DEFAULT_DB_POOL = 30;

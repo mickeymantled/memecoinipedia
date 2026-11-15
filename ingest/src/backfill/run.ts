@@ -54,6 +54,7 @@ import {
   DEFAULT_CODEX_RPS,
   DEFAULT_DB_POOL,
   DEFAULT_METADATA_CONCURRENCY,
+  DEFAULT_METADATA_FILE_CONCURRENCY,
   DEFAULT_METRICS_CONCURRENCY,
   DEFAULT_QUEUE_POOL,
   FEED_PAGE,
@@ -88,6 +89,8 @@ export interface BackfillOptions {
   candlesConcurrency?: number;
   metricsConcurrency?: number;
   metadataConcurrency?: number;
+  /** Coins whose metadata file is fetched at once. Default `DEFAULT_METADATA_FILE_CONCURRENCY`. */
+  fileConcurrency?: number;
   /** Connections in the run's pool and in the queue's pool; together at most 40. */
   dbPoolSize?: number;
   queuePoolSize?: number;
@@ -219,6 +222,8 @@ export function formatBackfillPlan(
     codexRps: number;
     candlesConcurrency: number;
     gatewayRps?: number;
+    /** Coins in flight for `metadata_file`. */
+    fileConcurrency?: number;
     confirm: boolean;
     maxCodexUnits: number | null;
   },
@@ -258,9 +263,10 @@ export function formatBackfillPlan(
   if (o.stages.includes('metadata_file')) {
     const coins = plan.ready.metadata_file ?? 0;
     const rps = o.gatewayRps ?? DEFAULT_GATEWAY_RPS;
+    const inFlight = o.fileConcurrency ?? DEFAULT_METADATA_FILE_CONCURRENCY;
     lines.push(
       `Metadata file: ${n(coins)} coins ready now, no cost. At ${rps} request a second to each ` +
-        `gateway, one request a coin at the least, that is about ${formatDuration(coins / rps / 60)} ` +
+        `gateway with ${inFlight} coins in flight, one request a coin at the least, that is about ${formatDuration(coins / rps / 60)} ` +
         'of requests, if the gateways keep up.',
     );
   }
@@ -332,6 +338,7 @@ export async function runBackfill(opts: BackfillOptions): Promise<BackfillReport
       codexRps,
       candlesConcurrency,
       gatewayRps: opts.gatewayRps ?? DEFAULT_GATEWAY_RPS,
+      fileConcurrency: opts.fileConcurrency ?? DEFAULT_METADATA_FILE_CONCURRENCY,
       confirm: opts.confirm,
       maxCodexUnits,
     });
@@ -453,7 +460,7 @@ export async function runBackfill(opts: BackfillOptions): Promise<BackfillReport
           candles: candlesConcurrency,
           metrics: opts.metricsConcurrency ?? DEFAULT_METRICS_CONCURRENCY,
           metadata: opts.metadataConcurrency ?? DEFAULT_METADATA_CONCURRENCY,
-          metadata_file: opts.metadataConcurrency ?? DEFAULT_METADATA_CONCURRENCY,
+          metadata_file: opts.fileConcurrency ?? DEFAULT_METADATA_FILE_CONCURRENCY,
         },
         stageBatchSize: BACKFILL_BATCH_SIZE,
         maxAttempts,
