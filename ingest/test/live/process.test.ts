@@ -244,24 +244,39 @@ describeDb('the dry run', () => {
 
 describe('the load model', () => {
   it('predicts the requests and units a day for 1,000 graduates a day', () => {
-    const l = predictLoad({ graduatesPerDay: 1_000, sweepConsumes: true });
+    const l = predictLoad({ graduatesPerDay: 1_000 });
     // Discovery: 288 passes a day, one request each (about 24 rows a pass).
     expect(l.codex.discoveryRequests).toBe(288);
     expect(l.codex.discoveryUnits).toBeGreaterThan(1_400);
     expect(l.codex.discoveryUnits).toBeLessThan(1_600);
-    // Candle fetches: 300 triggered at 23.2 units and 700 screened at 13.5.
+    // First candle fetches: 300 triggered at 23.2 units and 700 screened at 13.5.
     expect(l.codex.candlesUnits).toBe(Math.round(300 * 23.2 + 700 * 13.5));
+    // Last looks: the 700 coins that do not list, one request (4 units) each.
+    expect(l.codex.lastLookUnits).toBe(700 * 4);
+    // Later triggers: one a triggered coin, 12 units each.
+    expect(l.codex.laterUnits).toBe(300 * 12);
+    // The parts are rounded one by one: the total is their sum to within the rounding.
+    expect(
+      Math.abs(
+        l.codex.units -
+          (l.codex.discoveryUnits +
+            l.codex.sweepUnits +
+            l.codex.candlesUnits +
+            l.codex.lastLookUnits +
+            l.codex.laterUnits),
+      ),
+    ).toBeLessThanOrEqual(3);
     // Well inside the 40,000 ceiling, and Jupiter far under its 1 request a second.
     expect(l.codex.units).toBeLessThan(40_000);
     expect(l.codex.units).toBeGreaterThan(15_000);
+    // Every coin is watched for 14 days: 1,000 + 2,000 + 11,000 coins, 5 requests a 30 s pass.
+    expect(l.watched).toEqual({ fresh: 1_000, mid: 2_000, older: 11_000 });
+    expect(l.jupiter.watchRequests).toBe(14_400);
     expect(l.jupiter.requests).toBeLessThan(86_400);
     // Every figure scales with graduates a day.
-    const double = predictLoad({ graduatesPerDay: 2_000, sweepConsumes: true });
+    const double = predictLoad({ graduatesPerDay: 2_000 });
     expect(double.codex.candlesUnits).toBe(2 * l.codex.candlesUnits);
-    // If coins stayed watched for 14 days the watch would cost more Jupiter requests, Codex.io the same.
-    const upper = predictLoad({ graduatesPerDay: 1_000, sweepConsumes: false });
-    expect(upper.jupiter.watchRequests).toBeGreaterThan(l.jupiter.watchRequests);
-    expect(upper.codex.units).toBe(l.codex.units);
+    expect(double.codex.lastLookUnits).toBe(2 * l.codex.lastLookUnits);
     expect(formatLivePlan).toBeTypeOf('function');
   });
 });

@@ -63,6 +63,11 @@ export interface WorldCoin {
   migratedAt: number;
   /** Market cap in USD at a unix second at or after graduation. */
   capAt(t: number): number;
+  /**
+   * Market cap at the close of the 1-minute bar starting at `t`, when it differs from `capAt` (the
+   * price Jupiter shows, which is also the bar's high): a coin whose price wicks above its closes.
+   */
+  closeAt?(t: number): number;
 }
 
 export const poolOf = (mint: string): string => `C${mint.slice(1)}`;
@@ -75,6 +80,8 @@ export interface WorldStats {
   /** Requests the API would have refused: limit above 200 or depth above 10,000. */
   violations: number;
   otherRequests: number;
+  /** Every getBars request: the mint, resolution code and range asked for. */
+  bars: Array<{ mint: string; resolution: string; from: number; to: number }>;
 }
 
 export interface World {
@@ -115,7 +122,13 @@ export function worldCoin(
 export function createWorld(clock: FakeClock): World {
   const coins: WorldCoin[] = [];
   const index = new Map<string, WorldCoin>();
-  const stats: WorldStats = { filterRequests: 0, maxDepth: 0, violations: 0, otherRequests: 0 };
+  const stats: WorldStats = {
+    filterRequests: 0,
+    maxDepth: 0,
+    violations: 0,
+    otherRequests: 0,
+    bars: [],
+  };
   const world: World = {
     coins,
     add(c) {
@@ -185,13 +198,24 @@ export function createWorld(clock: FakeClock): World {
           return b ? mintOfPool(b[1]!) : undefined;
         })();
       const coin = m ? index.get(m) : undefined;
+      const bar = /getBars\(symbol:"[^"]+", from:(\d+), to:(\d+), resolution:"([^"]+)"/.exec(query);
+      if (bar && coin) {
+        stats.bars.push({
+          mint: coin.mint,
+          from: Number(bar[1]),
+          to: Number(bar[2]),
+          resolution: bar[3]!,
+        });
+      }
       if (!coin) throw new Error(`Unexpected query: ${query.slice(0, 100)}`);
       // The trading up to the clock: 1-minute bars from graduation on.
       const first = Math.floor(coin.migratedAt / 60) * 60;
       const last = Math.floor(clock.sec / 60) * 60;
       const minutes = [];
       for (let t = first; t <= last; t += 60) {
-        minutes.push(minute(t, coin.capAt(t) / 1e9, 3_000, 30_000));
+        const bar = minute(t, (coin.closeAt?.(t) ?? coin.capAt(t)) / 1e9, 3_000, 30_000);
+        bar.h = Math.max(bar.h, coin.capAt(t) / 1e9);
+        minutes.push(bar);
       }
       const sim: SimCoin = {
         mint: coin.mint,

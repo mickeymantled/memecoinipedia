@@ -66,6 +66,18 @@ export const WATCH_OLDER_EVERY_SECONDS = HOUR;
  */
 export const TRIGGER_MARKET_CAP_USD = DEFAULT_PLAN_LIMITS.refineFromUsd;
 /**
+ * A coin that was fetched before is fetched again only at a new high: its market cap must reach
+ * the trigger line and this multiple of the larger of its stored ATH and its market cap at the
+ * last trigger. Without the step a coin sitting at $92,000 for a week would be fetched at every
+ * poll; with it, once, and again only at about $96,600 and up.
+ */
+export const RETRIGGER_STEP = 1.05;
+/**
+ * A later fetch waits this long after the candles last finished: the fetch asks only for bars
+ * after what is held, so a second fetch minutes after the first would find almost no new bars.
+ */
+export const RETRIGGER_MIN_SECONDS = 15 * MINUTE;
+/**
  * Mints per Jupiter request (its maximum is 100) and requests per pass. A pass is capped so that
  * after a long stop, with thousands of coins due at once, it hands back to the other loops
  * (Jupiter's own limiter allows about 1 request a second); the rest are due again next pass.
@@ -82,6 +94,13 @@ export const WATCH_PASS_SECONDS = 30;
  * and fell between two polls has a daily bar showing it, and the staged fetch screens on daily bars).
  */
 export const SWEEP_MIN_AGE_SECONDS = DAY;
+/**
+ * The last look: a watched coin this old (13 days, a day before it leaves the window), not listed,
+ * whose candles last finished before it was this old, is fetched once more. With fresh daily bars
+ * the staged fetch screens it cheaply, and a spike that the hourly polls of days 3 to 14 missed
+ * shows in a daily bar.
+ */
+export const LAST_LOOK_AGE_SECONDS = 13 * DAY;
 /** The sweep reads discovery again for this long back: covers a cursor that ran ahead of a late listing, and a short outage. */
 export const SWEEP_REREAD_SECONDS = 2 * DAY;
 /** The sweep runs once per UTC day, not before this many seconds into it: the day's unit budget has just been renewed. */
@@ -128,3 +147,18 @@ export const UNITS_PER_TRIGGERED_COIN = 23.2;
 export const UNITS_PER_SCREENED_COIN = 13.5;
 /** Compute units per request, as the backfill's plan assumes (`FLAT_UNITS`). */
 export const UNITS_PER_REQUEST = 4;
+/**
+ * Cost of one last look: the fetch asks only for bars after what is held, and a coin with nothing
+ * new at hourly or minute scale needs fresh daily bars only: one request. A last look that finds a
+ * spike costs more; those are part of the later-trigger allowance. Every graduate that does not
+ * list (1 minus the trigger share) gets one.
+ */
+export const UNITS_PER_LAST_LOOK = UNITS_PER_REQUEST;
+/**
+ * Allowance for later triggers (a fetched coin reaching a new high, or a screened one crossing the
+ * line after its first fetch): this many a day per triggered coin, each costing three requests
+ * (a new daily bar, a new hourly window, one refinement window). An assumption, not a measurement:
+ * most coins peak in their first day, and the 5% step and the 15 minutes bound the rest.
+ */
+export const ASSUMED_LATER_TRIGGERS_PER_TRIGGERED_COIN = 1;
+export const UNITS_PER_LATER_TRIGGER = 3 * UNITS_PER_REQUEST;

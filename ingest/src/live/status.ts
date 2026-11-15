@@ -43,6 +43,12 @@ export interface LiveStatus {
     triggered: number;
     /** Coins queued by the sweep that had no candles row yet. */
     swept: number;
+    /** Fetched coins queued again for reaching a new high. */
+    retriggered: number;
+    /** Coins fetched once more by the sweep's last look. */
+    lastLook: number;
+    /** Watched coins whose failed candles the sweep retried. */
+    retried: number;
     fetched: number;
     listed: number;
     codexUnits: number;
@@ -60,6 +66,9 @@ interface DayCounters {
   found?: number;
   triggered?: number;
   swept?: number;
+  retriggered?: number;
+  lastlook?: number;
+  retried?: number;
 }
 
 export async function collectLiveStatus(
@@ -102,6 +111,9 @@ export async function collectLiveStatus(
       found: counters.found ?? 0,
       triggered: counters.triggered ?? 0,
       swept: counters.swept ?? 0,
+      retriggered: counters.retriggered ?? 0,
+      lastLook: counters.lastlook ?? 0,
+      retried: counters.retried ?? 0,
       fetched: fetched.fetched,
       listed: fetched.listed,
       codexUnits: codex.units,
@@ -151,6 +163,9 @@ export function formatLiveStatus(s: LiveStatus): string {
   lines.push(
     `  coins found ${n(t.found)}, triggered ${n(t.triggered)}, queued by the sweep ${n(t.swept)}, ` +
       `fetched ${n(t.fetched)}, listed ${n(t.listed)} (ATH of $${n(LISTED_ATH_USD)} or more).`,
+  );
+  lines.push(
+    `  later triggers ${n(t.retriggered)}, last-look fetches ${n(t.lastLook)}, failed candles retried ${n(t.retried)}.`,
   );
   lines.push(
     `  Codex.io ${n(t.codexUnits)} units in ${n(t.codexRequests)} requests` +

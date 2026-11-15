@@ -17,6 +17,7 @@ import {
   createReadOnlyDb,
   createRun,
   finishRun,
+  PipelineLockLostError,
   recordUsageSample,
   setLiveState,
   startRun,
@@ -233,11 +234,19 @@ export async function runLive(opts: LiveOptions): Promise<LiveReport> {
         log: opts.log,
       };
       const loop = new LiveLoop(deps);
+      let lockLost = false;
       while (!opts.signal?.aborted && (opts.maxTicks === undefined || ticks < opts.maxTicks)) {
+        // Every tick, first: a lock that is gone means a second process may already be running,
+        // so no new work is taken. The worker is stopped gracefully below and the jobs in flight finish.
+        if (!(await lock.isHeld())) {
+          lockLost = true;
+          break;
+        }
         await loop.tick();
         ticks++;
         await sleepUnlessAborted((opts.tickSeconds ?? TICK_SECONDS) * 1000, opts.signal);
       }
+      if (lockLost) throw new PipelineLockLostError('live');
     } catch (err) {
       status = 'failed';
       opts.log.error(`live run failed: ${(err as Error).message}`);

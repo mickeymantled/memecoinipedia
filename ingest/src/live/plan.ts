@@ -20,6 +20,7 @@ import { JUPITER_MAX_MINTS_PER_REQUEST } from '../sources/jupiter/client.js';
 import { estimateMetadata } from '../worker/plan.js';
 import {
   ASSUMED_GRADUATES_PER_DAY,
+  ASSUMED_LATER_TRIGGERS_PER_TRIGGERED_COIN,
   ASSUMED_TRIGGER_SHARE,
   DISCOVERY_INTERVAL_SECONDS,
   DISCOVERY_OVERLAP_SECONDS,
@@ -27,6 +28,8 @@ import {
   DISCOVERY_WINDOW_SECONDS,
   STATE_DISCOVERY_CURSOR,
   SWEEP_REREAD_SECONDS,
+  UNITS_PER_LAST_LOOK,
+  UNITS_PER_LATER_TRIGGER,
   UNITS_PER_REQUEST,
   UNITS_PER_SCREENED_COIN,
   UNITS_PER_TRIGGERED_COIN,
@@ -53,6 +56,10 @@ export interface LiveLoad {
     sweepUnits: number;
     candlesRequests: number;
     candlesUnits: number;
+    lastLookRequests: number;
+    lastLookUnits: number;
+    laterRequests: number;
+    laterUnits: number;
     requests: number;
     units: number;
   };
@@ -71,27 +78,21 @@ function discoveryCost(rows: number, windows: number): { requests: number; units
 }
 
 /**
- * The load a day for `graduatesPerDay` graduates.
+ * The load a day for `graduatesPerDay` graduates, at steady state.
  *
- * `sweepConsumes: true` follows the rules as written: the sweep queues every watched coin a day
- * old, and a coin whose candles were attempted is no longer watched, so at any time the watched
- * set is the day's graduates plus, until the next sweep, those a day old and not yet swept (half a
- * day's on average). `false` is the upper bound if coins stayed watched the whole 14 days: the
- * sweep would not take them out.
+ * Every graduate is watched for 14 days, fetched or not: a day's graduates are under 24 hours
+ * old, the previous two days' are 1 to 3 days old, and the 11 days before are older. Each coin is
+ * fetched once (when it reaches the trigger, or at the sweep after 24 hours), then at most once
+ * more by the last look at 13 days (the coins that are not listed), and again whenever it
+ * reaches a new high (the allowance for later triggers).
  */
-export function predictLoad(o: {
-  graduatesPerDay: number;
-  triggerShare?: number;
-  sweepConsumes: boolean;
-}): LiveLoad {
+export function predictLoad(o: { graduatesPerDay: number; triggerShare?: number }): LiveLoad {
   const g = o.graduatesPerDay;
   const share = o.triggerShare ?? ASSUMED_TRIGGER_SHARE;
   const triggered = g * share;
   const screened = g - triggered;
 
-  const watched = o.sweepConsumes
-    ? { fresh: g, mid: g / 2, older: 0 }
-    : { fresh: g, mid: 2 * g, older: 11 * g };
+  const watched = { fresh: g, mid: 2 * g, older: 11 * g };
   // Coins due in one watch pass, by tier, then Jupiter requests (100 mints each) a day.
   const duePerPass =
     (watched.fresh * WATCH_PASS_SECONDS) / WATCH_FRESH_EVERY_SECONDS +
@@ -107,11 +108,22 @@ export function predictLoad(o: {
   const sweep = discoveryCost(2 * g, SWEEP_REREAD_SECONDS / DISCOVERY_WINDOW_SECONDS);
   const candlesUnits = triggered * UNITS_PER_TRIGGERED_COIN + screened * UNITS_PER_SCREENED_COIN;
   const candlesRequests = candlesUnits / UNITS_PER_REQUEST;
+  const lastLookUnits = screened * UNITS_PER_LAST_LOOK;
+  const lastLookRequests = lastLookUnits / UNITS_PER_REQUEST;
+  const laterCount = triggered * ASSUMED_LATER_TRIGGERS_PER_TRIGGERED_COIN;
+  const laterUnits = laterCount * UNITS_PER_LATER_TRIGGER;
+  const laterRequests = laterUnits / UNITS_PER_REQUEST;
 
   // Metadata runs for coins that turn out listed: at most the triggered ones.
   const meta = estimateMetadata(Math.ceil(triggered));
-  const codexRequests = discoveryPasses * pass.requests + sweep.requests + candlesRequests;
-  const codexUnits = discoveryPasses * pass.units + sweep.units + candlesUnits;
+  const codexRequests =
+    discoveryPasses * pass.requests +
+    sweep.requests +
+    candlesRequests +
+    lastLookRequests +
+    laterRequests;
+  const codexUnits =
+    discoveryPasses * pass.units + sweep.units + candlesUnits + lastLookUnits + laterUnits;
   const metadataJupiter = meta.jupiter?.requests ?? 0;
   return {
     graduatesPerDay: g,
@@ -123,6 +135,10 @@ export function predictLoad(o: {
       sweepUnits: Math.round(sweep.units),
       candlesRequests: Math.round(candlesRequests),
       candlesUnits: Math.round(candlesUnits),
+      lastLookRequests: Math.round(lastLookRequests),
+      lastLookUnits: Math.round(lastLookUnits),
+      laterRequests: Math.round(laterRequests),
+      laterUnits: Math.round(laterUnits),
       requests: Math.round(codexRequests),
       units: Math.round(codexUnits),
     },
@@ -142,7 +158,6 @@ export interface LivePlan {
   graduatesPerDay: number;
   graduatesSource: 'database' | 'assumed' | 'given';
   load: LiveLoad;
-  upperBound: LiveLoad;
   maxCodexUnitsPerDay: number;
   /** False when the model's Codex.io units a day are above the ceiling. */
   withinCeiling: boolean;
@@ -177,7 +192,7 @@ export async function planLive(
     ).rows[0]!.n,
   );
   const graduatesPerDay = o.graduatesPerDay ?? (counted > 0 ? counted : ASSUMED_GRADUATES_PER_DAY);
-  const load = predictLoad({ graduatesPerDay, sweepConsumes: true });
+  const load = predictLoad({ graduatesPerDay });
   return {
     watched,
     cursorAt: cursor ? new Date(cursor.at * 1000) : null,
@@ -186,7 +201,6 @@ export async function planLive(
     graduatesSource:
       o.graduatesPerDay !== undefined ? 'given' : counted > 0 ? 'database' : 'assumed',
     load,
-    upperBound: predictLoad({ graduatesPerDay, sweepConsumes: false }),
     maxCodexUnitsPerDay: o.maxCodexUnitsPerDay,
     withinCeiling: load.codex.units <= o.maxCodexUnitsPerDay,
     stateTable,
@@ -231,7 +245,9 @@ export function formatLivePlan(p: LivePlan): string {
     `  Codex.io  ${n(l.codex.requests)} requests, ${n(l.codex.units)} compute units a day: ` +
       `discovery ${n(l.codex.discoveryRequests)} requests / ${n(l.codex.discoveryUnits)} units, ` +
       `sweep re-read ${n(l.codex.sweepRequests)} / ${n(l.codex.sweepUnits)}, ` +
-      `candle fetches ${n(l.codex.candlesRequests)} / ${n(l.codex.candlesUnits)}.`,
+      `first candle fetches ${n(l.codex.candlesRequests)} / ${n(l.codex.candlesUnits)}, ` +
+      `last looks ${n(l.codex.lastLookRequests)} / ${n(l.codex.lastLookUnits)}, ` +
+      `later triggers ${n(l.codex.laterRequests)} / ${n(l.codex.laterUnits)}.`,
   );
   lines.push(
     `  Jupiter   ${n(l.jupiter.requests)} requests a day (watch ${n(l.jupiter.watchRequests)}, metadata ${n(l.jupiter.metadataRequests)}); no units.`,
@@ -244,10 +260,12 @@ export function formatLivePlan(p: LivePlan): string {
       `${p.withinCeiling ? 'the expectation is within it' : 'THE EXPECTATION IS ABOVE IT, so fetches would pause each day'} ` +
       `(${Math.round((l.codex.units / p.maxCodexUnitsPerDay) * 100)}% of it).`,
   );
-  const u = p.upperBound;
   lines.push(
-    `  If coins stayed watched for all 14 days instead (the sweep not taking them out): ` +
-      `Jupiter ${n(u.jupiter.watchRequests)} watch requests a day; Codex.io is unchanged.`,
+    `  Assumptions: every graduate is watched for 14 days (Jupiter figure above is for that steady state). ` +
+      `A last look is one daily-bars request (${UNITS_PER_LAST_LOOK} units) for each graduate that does not list. ` +
+      `The later-trigger allowance is ${ASSUMED_LATER_TRIGGERS_PER_TRIGGERED_COIN} later fetch per triggered coin, ` +
+      `${UNITS_PER_LATER_TRIGGER} units each (3 requests: a daily bar, an hourly window, a refinement window); ` +
+      `it is a guess, bounded by the 5% step and the 15 minutes, not a measurement.`,
   );
   lines.push('Add --confirm to run.');
   return lines.join('\n');

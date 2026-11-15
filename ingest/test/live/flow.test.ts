@@ -111,12 +111,12 @@ describeDb('live loops', () => {
     // The fetch sees the bars up to the minute before it ran, so its ATH is a minute or two behind the poll.
     expect(row.ath_market_cap_usd).toBeGreaterThan(85_000);
     expect(row.discovery_source).toBe('codex-live');
-    expect(row.ticker).toBe('S1');
+    expect(row.ticker).toBeTruthy(); // the metadata stage ran after the second fetch listed the coin
     expect(row.current_market_cap_usd).toBeGreaterThanOrEqual(90_000);
-    // Done coins leave the watched set, and the day's counters say what happened.
+    // A fetched coin stays watched for its 14 days, and the day's counters say what happened.
     const status = await collectLiveStatus(f.db, f.clock.now());
     expect(status.today).toMatchObject({ found: 1, triggered: 1, swept: 0 });
-    expect(status.watched.total).toBe(1); // the known coin, never fetched
+    expect(status.watched.total).toBe(2); // the known coin, never fetched, and the fetched one
   }, 120_000);
 
   it('fetches by the daily sweep a coin that went above the line and back between two polls', async () => {
@@ -356,11 +356,11 @@ describeDb('live loops', () => {
       expect(status.today.codexUnits).toBeGreaterThan(0);
       expect(status.cursorAt).not.toBeNull();
       expect(status.lagSeconds).toBeLessThan(10 * MIN);
-      expect(status.watched.total).toBe(1);
+      expect(status.watched.total).toBe(2);
       expect(status.lastSweep).not.toBeNull();
       const text = formatLiveStatus(status);
       expect(text).toMatch(/Discovery cursor: .* behind/);
-      expect(text).toMatch(/Watched coins: 1 \(under 24 hours 1/);
+      expect(text).toMatch(/Watched coins: 2 \(under 24 hours 2/);
       expect(text).toMatch(
         /coins found 1, triggered 1, queued by the sweep 0, fetched 1, listed 1/,
       );
