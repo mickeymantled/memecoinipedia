@@ -1,0 +1,46 @@
+{
+  "execution_id": "01HKZJ2683PHF9Q9PHHQ8FW4Q1",
+  "query_id": 0,
+  "state": "QUERY_STATE_COMPLETED",
+  "is_execution_finished": true,
+  "submitted_at": "2026-11-15T10:00:00Z",
+  "execution_started_at": "2026-11-15T10:00:05Z",
+  "execution_ended_at": "2026-11-15T10:04:05Z",
+  "expires_at": "2027-02-13T10:04:05Z",
+  "execution_cost_credits": 10,
+  "result_metadata": {
+    "column_names": [
+      "mint",
+      "created_at",
+      "creator",
+      "graduated_at",
+      "graduation_pool",
+      "graduation_venue",
+      "rough_peak_usd",
+      "rough_peak_at",
+      "trade_count",
+      "first_trade_at",
+      "last_trade_at"
+    ],
+    "column_types": [
+      "varchar",
+      "timestamp",
+      "varchar",
+      "timestamp",
+      "varchar",
+      "varchar",
+      "double",
+      "timestamp",
+      "bigint",
+      "timestamp",
+      "timestamp"
+    ],
+    "row_count": 4,
+    "total_row_count": 4,
+    "datapoint_count": 44,
+    "execution_time_millis": 240000,
+    "pending_time_millis": 5000,
+    "result_set_bytes": 1500000,
+    "total_result_set_bytes": 1500000
+  }
+}
