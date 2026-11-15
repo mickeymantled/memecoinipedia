@@ -191,7 +191,7 @@ Gaps:
 ## 8. Decisions (answered 2026-11-14)
 
 1. **Recommendation and probes: approved**, including up to $99 for a DexPaprika Pro month.
-2. **Accounts and keys.** You create the provider accounts and the keys go in a local, git-ignored `.env`. The Codex key is in place, and you bought Codex's Growth plan ($360 a month, 3M compute units, billing period started 2026-11-14). The Helius key arrived on 2026-11-15. Still needed: Dune. DexPaprika and Birdeye are on hold.
+2. **Accounts and keys.** You create the provider accounts and the keys go in a local, git-ignored `.env`. The Codex key is in place, and you bought Codex's Growth plan ($360 a month, 3M compute units, billing period started 2026-11-14). The Helius and Dune keys arrived on 2026-11-15. Dune is on the Analyst plan (4,000 credits a month, billing period from 2026-11-15). DexPaprika and Birdeye are on hold.
 3. **Attribution: accepted.** A visible "Powered by" credit on the site is fine.
 4. **Monetisation: free site, no data sales.** Standard paid API plans with attribution should cover this. Selling data or an API later would need the licences revisited.
 5. **Market cap = price times the fixed 1 billion supply.** Burned supply is ignored.
