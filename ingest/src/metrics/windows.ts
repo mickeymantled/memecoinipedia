@@ -1,4 +1,4 @@
-import { atLeast, SECONDS, type CleanPool, type Window } from './internal.js';
+import { atLeast, barPeak, SECONDS, type CleanPool, type Window } from './internal.js';
 import type { Bar, MetricParams } from './types.js';
 
 type WindowParams = Pick<MetricParams, 'windowMinutes' | 'minWindowVolumeUsd' | 'minWindowTraders'>;
@@ -28,9 +28,11 @@ export function minuteWindows(
     }
     const volume = inWindow.reduce((sum, b) => sum + b.volumeUsd, 0);
     const traders = Math.max(...inWindow.map((b) => b.traders));
+    const price = lowerMedian(inWindow.map((b) => b.c));
     return {
       t: bar.t,
-      price: lowerMedian(inWindow.map((b) => b.c)),
+      price,
+      high: price,
       volume,
       traders,
       strict:
@@ -54,6 +56,7 @@ export function coarseWindow(
   return {
     t: bar.t,
     price: bar.c,
+    high: barPeak(bar),
     volume: bar.volumeUsd,
     traders: bar.traders,
     strict:

@@ -174,7 +174,7 @@ describeDb('the staged fetch on simulated trading', () => {
     expect(row.ath_wick_market_cap_usd).toBeCloseTo(49_900, 3);
     expect(row.ath_wick_at).toEqual(new Date(T0 * 1000)); // the daily bar's start
     expect(row.ath_wick_pool_id).not.toBeNull();
-    expect(row.metrics_version).toBe(2);
+    expect(row.metrics_version).toBe(3);
     expect(row.metrics_as_of).toEqual(new Date(NOW * 1000));
     expect(row.metrics_computed_at).toEqual(new Date(NOW * 1000));
     // The coin traded on its first day and the line (volume, liquidity) was met within the last 7 days.

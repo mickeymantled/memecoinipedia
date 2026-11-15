@@ -190,6 +190,7 @@ describeDb('fetchCandlesForCoin on recorded fixtures', () => {
     // The ATH sits in the refined window, a year after the coin's first days.
     expect(m.result.athAt).toBeGreaterThan(refinement[0]!.from_t);
     expect(m.result.athAt!).toBeLessThanOrEqual(refinement[0]!.to_t);
+    expect(Math.round(m.result.athMarketCapUsd!)).toBe(2_655_370);
   });
 
   it('VANGOAT: a long, sparse life hits the hourly cap, which is recorded once', async () => {

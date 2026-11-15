@@ -45,10 +45,17 @@ describe('findCoveragePeaks', () => {
       bars1d: [bar(T0 + 20 * DAY, 0.003)],
     });
     expect(computeCoinMetrics(i).flags).toContain('peak_outside_minute_coverage');
-    expect(findCoveragePeaks(i)).toEqual([
+    const peaks = findCoveragePeaks(i);
+    expect(peaks.map(({ highUsd: _h, ...rest }) => rest)).toEqual([
       { poolAddress: 'GRAD', t: T0 + 10 * DAY + 6 * HOUR, resolution: 3600 },
       { poolAddress: 'GRAD', t: T0 + 20 * DAY, resolution: 86400 },
       { poolAddress: 'GRAD', t: T0 + 10 * DAY + 5 * HOUR, resolution: 3600 },
+    ]);
+    // Highs as market caps: 0.005, 0.003 and 0.002 times the supply.
+    expect(peaks.map((p) => Math.round(p.highUsd! / 1e3))).toEqual([
+      Math.round((0.005 * i.totalSupply) / 1e3),
+      Math.round((0.003 * i.totalSupply) / 1e3),
+      Math.round((0.002 * i.totalSupply) / 1e3),
     ]);
   });
 

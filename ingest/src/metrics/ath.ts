@@ -93,6 +93,6 @@ export function peakOutsideMinuteCoverage(
   athPrice: number | null,
 ): boolean {
   return points.some(
-    (p) => p.strict && p.resolution !== '1m' && (athPrice === null || p.price > athPrice),
+    (p) => p.strict && p.resolution !== '1m' && (athPrice === null || p.high > athPrice),
   );
 }

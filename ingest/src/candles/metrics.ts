@@ -10,7 +10,7 @@ import { DEFAULT_PLAN_LIMITS } from './plan.js';
 import type { CandleDeps } from './types.js';
 
 /** Stored in `coins.metrics_version`. Raise it when docs/metrics.md or the status rule changes. */
-export const METRICS_VERSION = 2;
+export const METRICS_VERSION = 3;
 
 /** The flag the fetcher sets on a coin it screened out. It is not one of the metric library's flags. */
 export const SCREENED_OUT_FLAG = 'screened_out';

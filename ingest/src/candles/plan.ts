@@ -91,6 +91,8 @@ export interface PlanLimits {
   screenBelowUsd: number;
   /** Staged: W at or above this and the coin takes the full path. Default 1,000,000. */
   fullPathFromUsd: number;
+  /** Refinement skips periods whose high is under this, USD market cap. Default 90,000. Both plans. */
+  refineFromUsd: number;
   /** Staged: hourly bars for days whose daily high is at least this. Default 80,000. */
   hourlyFromUsd: number;
   /** Staged: the curve is fetched when the graduation pool opens at this or more. Default 90,000. */
@@ -114,6 +116,7 @@ export interface PlanLimits {
 export const DEFAULT_PLAN_LIMITS: PlanLimits = {
   staged: true,
   screenBelowUsd: 90_000,
+  refineFromUsd: 90_000,
   fullPathFromUsd: 1_000_000,
   hourlyFromUsd: 80_000,
   curveFromUsd: 90_000,
@@ -209,6 +212,8 @@ export interface PeakTarget {
   t: number;
   /** Resolution of that bucket, 3600 or 86400. */
   resolution: 3600 | 86400;
+  /** The bar's high as a market cap in USD. */
+  highUsd?: number;
 }
 
 export interface RefinementPlan {
