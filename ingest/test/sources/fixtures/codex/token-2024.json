@@ -1,0 +1,25 @@
+{
+  "data": {
+    "token": {
+      "address": "Df6yfrKC8kZE3KNkrHERKzAetSxbrWeniQfyJY4Jpump",
+      "symbol": "CHILLGUY",
+      "name": "Just a chill guy",
+      "createdAt": 1728174672,
+      "creatorAddress": "DTQQf6xhbRFqbSUzHsQ4e1PJroCR3dVKvUnt7sj11HJc",
+      "launchpad": {
+        "launchpadName": "Pump.fun",
+        "migrated": true,
+        "migratedAt": 1731701291,
+        "migratedPoolAddress": null,
+        "completed": true,
+        "completedAt": 1731701291,
+        "poolAddress": "5qM9aAZtM6mCk7dHRL6Frr6oqmKr5hGbaTgFFb9FLUSh"
+      }
+    },
+    "usageData": {
+      "total": {
+        "computeUnits": "4004400"
+      }
+    }
+  }
+}

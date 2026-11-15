@@ -1,0 +1,498 @@
+{
+  "jsonrpc": "2.0",
+  "result": [
+    {
+      "interface": "FungibleToken",
+      "id": "82DC7kRHVwkVEuK8NjbrwDDqbfkTrQWXuCp4T6C9noie",
+      "content": {
+        "$schema": "https://schema.metaplex.com/nft1.0.json",
+        "json_uri": "https://ipfs.io/ipfs/QmVtMnBLF6wgEcuexW43QNDvcT9ud1LYDv3z2JbfYfGJSr",
+        "files": [
+          {
+            "uri": "https://ipfs.io/ipfs/QmTNWvHkup5HUtpwkQ2Hut1z3fGBgBFVD4w9GEaCA8ZNHC",
+            "cdn_uri": "https://cdn.helius-rpc.com/cdn-cgi/image//https://cf-ipfs.com/ipfs/QmTNWvHkup5HUtpwkQ2Hut1z3fGBgBFVD4w9GEaCA8ZNHC",
+            "mime": "image/png"
+          }
+        ],
+        "metadata": {
+          "description": "I'm the greatest of all time, I'm also a goat.\r\n\r\nCheck out my GOATxibit.",
+          "json_name": "Vincent Van Goat",
+          "name": "Vincent Van Goat",
+          "symbol": "VANGOAT",
+          "token_standard": "Fungible"
+        },
+        "links": {
+          "image": "https://ipfs.io/ipfs/QmTNWvHkup5HUtpwkQ2Hut1z3fGBgBFVD4w9GEaCA8ZNHC"
+        }
+      },
+      "authorities": [
+        {
+          "address": "TSLvdd1pWpHVjahSpsvCXUbgwsL3JAcvokwaKt1eokM",
+          "scopes": ["full"]
+        }
+      ],
+      "compression": {
+        "eligible": false,
+        "compressed": false,
+        "data_hash": "",
+        "creator_hash": "",
+        "asset_hash": "",
+        "tree": "",
+        "seq": 0,
+        "leaf_id": 0
+      },
+      "grouping": [],
+      "royalty": {
+        "royalty_model": "creators",
+        "target": null,
+        "percent": 0,
+        "basis_points": 0,
+        "primary_sale_happened": false,
+        "locked": false
+      },
+      "creators": [],
+      "ownership": {
+        "frozen": false,
+        "delegated": false,
+        "delegate": null,
+        "ownership_model": "token",
+        "owner": ""
+      },
+      "supply": null,
+      "mutable": false,
+      "burnt": false,
+      "token_info": {
+        "supply": 968576629725860,
+        "decimals": 6,
+        "token_program": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+      }
+    },
+    {
+      "interface": "FungibleToken",
+      "id": "copJmvZPQayNtCmaEMC9wGwQKvtw16PzHQEhesbsHsq",
+      "content": {
+        "$schema": "https://schema.metaplex.com/nft1.0.json",
+        "json_uri": "https://gateway.ipfs.io/ipfs/QmVMc8FmU8ewYAbVKyWhxv8g7EzX2ou3aNA9tfwqVkAjyJ",
+        "files": [
+          {
+            "uri": "https://gateway.ipfs.io/ipfs/QmTwqWcgDdLfcdkP1fdJmCsWMUxT3XtkneQDooy6vEmseB",
+            "cdn_uri": "https://cdn.helius-rpc.com/cdn-cgi/image//https://gateway.ipfs.io/ipfs/QmTwqWcgDdLfcdkP1fdJmCsWMUxT3XtkneQDooy6vEmseB",
+            "mime": "image/png"
+          }
+        ],
+        "metadata": {
+          "description": "Summer 2024 - New Solana City was in dire need of a hero. What they got was a \"Dirty\" Sanchez. Solana PD Detective \"Dirty\" Sanchez is the first \"comi-fi\" token. Watch as he cleans up New Solana City and join the force. https://x.com/dirtysanchezcop https://dirtysanchez.xyz/ https://t.me/dirtysanchezsol",
+          "json_name": "Dirty Sanchez",
+          "name": "Dirty Sanchez",
+          "symbol": "COP",
+          "token_standard": "Fungible"
+        },
+        "links": {
+          "image": "https://gateway.ipfs.io/ipfs/QmTwqWcgDdLfcdkP1fdJmCsWMUxT3XtkneQDooy6vEmseB"
+        }
+      },
+      "authorities": [
+        {
+          "address": "TSLvdd1pWpHVjahSpsvCXUbgwsL3JAcvokwaKt1eokM",
+          "scopes": ["full"]
+        }
+      ],
+      "compression": {
+        "eligible": false,
+        "compressed": false,
+        "data_hash": "",
+        "creator_hash": "",
+        "asset_hash": "",
+        "tree": "",
+        "seq": 0,
+        "leaf_id": 0
+      },
+      "grouping": [],
+      "royalty": {
+        "royalty_model": "creators",
+        "target": null,
+        "percent": 0,
+        "basis_points": 0,
+        "primary_sale_happened": false,
+        "locked": false
+      },
+      "creators": [],
+      "ownership": {
+        "frozen": false,
+        "delegated": false,
+        "delegate": null,
+        "ownership_model": "token",
+        "owner": ""
+      },
+      "supply": null,
+      "mutable": false,
+      "burnt": false,
+      "token_info": {
+        "supply": 632454494472582,
+        "decimals": 6,
+        "token_program": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+      }
+    },
+    {
+      "interface": "FungibleToken",
+      "id": "DwpnoX1YvBSkRFUJyvgeYamptg7WEb3DvV315dAUpump",
+      "content": {
+        "$schema": "https://schema.metaplex.com/nft1.0.json",
+        "json_uri": "https://ipfs.io/ipfs/QmPxcNgjgc18m8SLTN5rMoEgXpm12BCzt7TPPCthwaM2PC",
+        "files": [
+          {
+            "uri": "https://ipfs.io/ipfs/QmSYv9sWPPexfLC6wrbGk5wSj8BeigFfmCRfSsRi9K3VW1",
+            "cdn_uri": "https://cdn.helius-rpc.com/cdn-cgi/image//https://ipfs.io/ipfs/QmSYv9sWPPexfLC6wrbGk5wSj8BeigFfmCRfSsRi9K3VW1",
+            "mime": "image/png"
+          }
+        ],
+        "metadata": {
+          "description": "the dodge that saved our portfolios",
+          "json_name": "dodge coin",
+          "name": "dodge coin",
+          "symbol": "dodge",
+          "token_standard": "Fungible"
+        },
+        "links": {
+          "image": "https://ipfs.io/ipfs/QmSYv9sWPPexfLC6wrbGk5wSj8BeigFfmCRfSsRi9K3VW1"
+        }
+      },
+      "authorities": [
+        {
+          "address": "TSLvdd1pWpHVjahSpsvCXUbgwsL3JAcvokwaKt1eokM",
+          "scopes": ["full"]
+        }
+      ],
+      "compression": {
+        "eligible": false,
+        "compressed": false,
+        "data_hash": "",
+        "creator_hash": "",
+        "asset_hash": "",
+        "tree": "",
+        "seq": 0,
+        "leaf_id": 0
+      },
+      "grouping": [],
+      "royalty": {
+        "royalty_model": "creators",
+        "target": null,
+        "percent": 0,
+        "basis_points": 0,
+        "primary_sale_happened": false,
+        "locked": false
+      },
+      "creators": [],
+      "ownership": {
+        "frozen": false,
+        "delegated": false,
+        "delegate": null,
+        "ownership_model": "token",
+        "owner": ""
+      },
+      "supply": null,
+      "mutable": false,
+      "burnt": false,
+      "token_info": {
+        "supply": 996852910418076,
+        "decimals": 6,
+        "token_program": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+      }
+    },
+    {
+      "interface": "FungibleToken",
+      "id": "C8T9P27ABMvLHsRKEavFqa9etSsfw8EqkF2XkzT4pump",
+      "content": {
+        "$schema": "https://schema.metaplex.com/nft1.0.json",
+        "json_uri": "https://ipfs.io/ipfs/QmYnn7LKyy3wmMzHPppKcxhFNAirndPZcEtBgF93nuzsK6",
+        "files": [
+          {
+            "uri": "https://ipfs.io/ipfs/QmZeD1PxGrNZmcZy48ezPxp5enB1hKSfqjioF8vqhi9Nxi",
+            "cdn_uri": "https://cdn.helius-rpc.com/cdn-cgi/image//https://ipfs.io/ipfs/QmZeD1PxGrNZmcZy48ezPxp5enB1hKSfqjioF8vqhi9Nxi",
+            "mime": "image/png"
+          }
+        ],
+        "metadata": {
+          "description": "I’m not your average wizard. I’m FART WIZARD—master of aroma, dimensional drifter, and grand blaster of ancient winds. Behind this starry blue robe lies power, pressure, and pure comedy. This isn’t a curse. It’s a gift.",
+          "json_name": "FART WIZARD",
+          "name": "FART WIZARD",
+          "symbol": "WIZARD",
+          "token_standard": "Fungible"
+        },
+        "links": {
+          "image": "https://ipfs.io/ipfs/QmZeD1PxGrNZmcZy48ezPxp5enB1hKSfqjioF8vqhi9Nxi"
+        }
+      },
+      "authorities": [
+        {
+          "address": "TSLvdd1pWpHVjahSpsvCXUbgwsL3JAcvokwaKt1eokM",
+          "scopes": ["full"]
+        }
+      ],
+      "compression": {
+        "eligible": false,
+        "compressed": false,
+        "data_hash": "",
+        "creator_hash": "",
+        "asset_hash": "",
+        "tree": "",
+        "seq": 0,
+        "leaf_id": 0
+      },
+      "grouping": [],
+      "royalty": {
+        "royalty_model": "creators",
+        "target": null,
+        "percent": 0,
+        "basis_points": 0,
+        "primary_sale_happened": false,
+        "locked": false
+      },
+      "creators": [
+        {
+          "address": "Ga41TBxKrAsbaUFdG66sYMqps416TWSQZra8mEE3GGjH",
+          "share": 100,
+          "verified": false
+        }
+      ],
+      "ownership": {
+        "frozen": false,
+        "delegated": false,
+        "delegate": null,
+        "ownership_model": "token",
+        "owner": ""
+      },
+      "supply": null,
+      "mutable": false,
+      "burnt": false,
+      "token_info": {
+        "supply": 999655930384608,
+        "decimals": 6,
+        "token_program": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+      }
+    },
+    {
+      "interface": "FungibleToken",
+      "id": "HfVxfzmAPWER3LQ8VbDcbch6ACchbpuyXv3ujgRtpump",
+      "content": {
+        "$schema": "https://schema.metaplex.com/nft1.0.json",
+        "json_uri": "https://ipfs.io/ipfs/bafkreicauvgfgkzpt66rewh6fih2by3mkqugwcx6zlgkx52gzkzohnreye",
+        "files": [
+          {
+            "uri": "https://ipfs.io/ipfs/bafkreiaf57mqc47cesgwr6cflcofiveupoltj52lzg3uwlyt5a7kh4gyru",
+            "cdn_uri": "https://cdn.helius-rpc.com/cdn-cgi/image//https://ipfs.io/ipfs/bafkreiaf57mqc47cesgwr6cflcofiveupoltj52lzg3uwlyt5a7kh4gyru",
+            "mime": "image/png"
+          }
+        ],
+        "metadata": {
+          "description": "",
+          "json_name": "MissRose",
+          "name": "MissRose",
+          "symbol": "Rose"
+        },
+        "links": {
+          "image": "https://ipfs.io/ipfs/bafkreiaf57mqc47cesgwr6cflcofiveupoltj52lzg3uwlyt5a7kh4gyru"
+        }
+      },
+      "authorities": [],
+      "compression": {
+        "eligible": false,
+        "compressed": false,
+        "data_hash": "",
+        "creator_hash": "",
+        "asset_hash": "",
+        "tree": "",
+        "seq": 0,
+        "leaf_id": 0
+      },
+      "grouping": [],
+      "royalty": {
+        "royalty_model": "creators",
+        "target": null,
+        "percent": 0,
+        "basis_points": 0,
+        "primary_sale_happened": false,
+        "locked": false
+      },
+      "creators": [],
+      "ownership": {
+        "frozen": false,
+        "delegated": false,
+        "delegate": null,
+        "ownership_model": "token",
+        "owner": ""
+      },
+      "supply": null,
+      "mutable": true,
+      "burnt": false,
+      "mint_extensions": {
+        "metadata": {
+          "uri": "https://ipfs.io/ipfs/bafkreicauvgfgkzpt66rewh6fih2by3mkqugwcx6zlgkx52gzkzohnreye",
+          "mint": "HfVxfzmAPWER3LQ8VbDcbch6ACchbpuyXv3ujgRtpump",
+          "name": "MissRose",
+          "symbol": "Rose",
+          "update_authority": null,
+          "additional_metadata": []
+        },
+        "metadata_pointer": {
+          "authority": null,
+          "metadata_address": "HfVxfzmAPWER3LQ8VbDcbch6ACchbpuyXv3ujgRtpump"
+        }
+      },
+      "token_info": {
+        "supply": 999780827180567,
+        "decimals": 6,
+        "token_program": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      }
+    },
+    {
+      "interface": "FungibleToken",
+      "id": "GqmP8uGseERgZYa7NAvzNrFw9qbGzMM6YnpwWiH46TGX",
+      "content": {
+        "$schema": "https://schema.metaplex.com/nft1.0.json",
+        "json_uri": "https://ipfs.io/ipfs/QmNUQJvcEagUKn4ENhFtPNWoDRafy7ejkKK82m7t8Q92ax",
+        "files": [
+          {
+            "uri": "https://replicate.delivery/xezq/btTGg7zS2C4lAlbMRVHx1yjxA4wANOifQieA3vZoDyXDfSHtA/tmp_ugd60ek.jpg",
+            "cdn_uri": "https://cdn.helius-rpc.com/cdn-cgi/image//https://replicate.delivery/xezq/btTGg7zS2C4lAlbMRVHx1yjxA4wANOifQieA3vZoDyXDfSHtA/tmp_ugd60ek.jpg",
+            "mime": "image/jpeg"
+          }
+        ],
+        "metadata": {
+          "json_name": "Dumacrats",
+          "name": "Dumacrats",
+          "symbol": "DUMACRATS"
+        },
+        "links": {
+          "image": "https://replicate.delivery/xezq/btTGg7zS2C4lAlbMRVHx1yjxA4wANOifQieA3vZoDyXDfSHtA/tmp_ugd60ek.jpg"
+        }
+      },
+      "authorities": [],
+      "compression": {
+        "eligible": false,
+        "compressed": false,
+        "data_hash": "",
+        "creator_hash": "",
+        "asset_hash": "",
+        "tree": "",
+        "seq": 0,
+        "leaf_id": 0
+      },
+      "grouping": [],
+      "royalty": {
+        "royalty_model": "creators",
+        "target": null,
+        "percent": 0,
+        "basis_points": 0,
+        "primary_sale_happened": false,
+        "locked": false
+      },
+      "creators": [],
+      "ownership": {
+        "frozen": false,
+        "delegated": false,
+        "delegate": null,
+        "ownership_model": "token",
+        "owner": ""
+      },
+      "supply": null,
+      "mutable": true,
+      "burnt": false,
+      "mint_extensions": {
+        "metadata": {
+          "uri": "https://ipfs.io/ipfs/QmNUQJvcEagUKn4ENhFtPNWoDRafy7ejkKK82m7t8Q92ax",
+          "mint": "GqmP8uGseERgZYa7NAvzNrFw9qbGzMM6YnpwWiH46TGX",
+          "name": "Dumacrats",
+          "symbol": "DUMACRATS",
+          "update_authority": null,
+          "additional_metadata": []
+        },
+        "metadata_pointer": {
+          "authority": null,
+          "metadata_address": "GqmP8uGseERgZYa7NAvzNrFw9qbGzMM6YnpwWiH46TGX"
+        }
+      },
+      "token_info": {
+        "supply": 999338845571696,
+        "decimals": 6,
+        "token_program": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      }
+    },
+    {
+      "interface": "FungibleToken",
+      "id": "9S8edqWxoWz5LYLnxWUmWBJnePg35WfdYQp7HQkUpump",
+      "content": {
+        "$schema": "https://schema.metaplex.com/nft1.0.json",
+        "json_uri": "https://ipfs.io/ipfs/bafkreienh4p5dillfmw6j6unefir7hdwggmepjnx52pm2yqrryjtqy2374",
+        "files": [
+          {
+            "uri": "https://ipfs.io/ipfs/bafkreihh37vb3cz4a422itk3zpmbef3mfkeyvc27ofsui46wa5k5soiktu",
+            "cdn_uri": "https://cdn.helius-rpc.com/cdn-cgi/image//https://ipfs.io/ipfs/bafkreihh37vb3cz4a422itk3zpmbef3mfkeyvc27ofsui46wa5k5soiktu",
+            "mime": "image/png"
+          }
+        ],
+        "metadata": {
+          "description": "Goyim is the most viral word / meme right now - \n",
+          "json_name": "Goyim",
+          "name": "Goyim",
+          "symbol": "Goyim"
+        },
+        "links": {
+          "image": "https://ipfs.io/ipfs/bafkreihh37vb3cz4a422itk3zpmbef3mfkeyvc27ofsui46wa5k5soiktu"
+        }
+      },
+      "authorities": [],
+      "compression": {
+        "eligible": false,
+        "compressed": false,
+        "data_hash": "",
+        "creator_hash": "",
+        "asset_hash": "",
+        "tree": "",
+        "seq": 0,
+        "leaf_id": 0
+      },
+      "grouping": [],
+      "royalty": {
+        "royalty_model": "creators",
+        "target": null,
+        "percent": 0,
+        "basis_points": 0,
+        "primary_sale_happened": false,
+        "locked": false
+      },
+      "creators": [],
+      "ownership": {
+        "frozen": false,
+        "delegated": false,
+        "delegate": null,
+        "ownership_model": "token",
+        "owner": ""
+      },
+      "supply": null,
+      "mutable": true,
+      "burnt": false,
+      "mint_extensions": {
+        "metadata": {
+          "uri": "https://ipfs.io/ipfs/bafkreienh4p5dillfmw6j6unefir7hdwggmepjnx52pm2yqrryjtqy2374",
+          "mint": "9S8edqWxoWz5LYLnxWUmWBJnePg35WfdYQp7HQkUpump",
+          "name": "Goyim",
+          "symbol": "Goyim",
+          "update_authority": null,
+          "additional_metadata": []
+        },
+        "metadata_pointer": {
+          "authority": null,
+          "metadata_address": "9S8edqWxoWz5LYLnxWUmWBJnePg35WfdYQp7HQkUpump"
+        }
+      },
+      "token_info": {
+        "supply": 999856344675484,
+        "decimals": 6,
+        "token_program": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      }
+    },
+    null
+  ],
+  "id": 1
+}

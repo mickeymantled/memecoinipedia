@@ -1,0 +1,25 @@
+{
+  "data": {
+    "token": {
+      "address": "5xczFwu1UcM2H66dn9VGTPHEyXEHYyC97DeWcrev19xC",
+      "symbol": "USOF",
+      "name": "U. S. Oil Fund",
+      "createdAt": 1788220923,
+      "creatorAddress": "2JsLL3xXzpHqh6ExtgZpsspayTnv1hJEAtc6vjuGpWJv",
+      "launchpad": {
+        "launchpadName": "Pump.fun",
+        "migrated": true,
+        "migratedAt": 1788220922,
+        "migratedPoolAddress": "DGDZ7bpMogjUDeHN28ZYzF3jP6p9UzEgFhK7rxGSAS1x",
+        "completed": true,
+        "completedAt": 1788220922,
+        "poolAddress": "4Hn4LjrChtqaSabmHoQoaPvyghzP9D8AjKCbyGYT76VB"
+      }
+    },
+    "usageData": {
+      "total": {
+        "computeUnits": "4004400"
+      }
+    }
+  }
+}
