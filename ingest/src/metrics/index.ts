@@ -5,6 +5,7 @@ import { buildLevelSeries } from './level.js';
 import { buildCoinPoints } from './points.js';
 import { rugPattern } from './rug.js';
 import { secondsAbove } from './timeAbove.js';
+import { athNearVolume, athThinlyTraded } from './athNear.js';
 import { buildWindows } from './windows.js';
 import {
   DEFAULT_METRIC_PARAMS,
@@ -28,6 +29,21 @@ export function mergeParams(params?: Partial<MetricParams>): MetricParams {
   if (!Number.isInteger(result.windowMinutes) || result.windowMinutes < 2) {
     throw new RangeError(
       `windowMinutes must be an integer of 2 or more, got ${result.windowMinutes}`,
+    );
+  }
+  // Section 2: the two version 6 parameters.
+  if (
+    !Number.isFinite(result.nearAthFraction) ||
+    result.nearAthFraction <= 0 ||
+    result.nearAthFraction > 1
+  ) {
+    throw new RangeError(
+      `nearAthFraction must be a finite number above 0 and at most 1, got ${result.nearAthFraction}`,
+    );
+  }
+  if (!Number.isFinite(result.minAthNearVolumeShare) || result.minAthNearVolumeShare < 0) {
+    throw new RangeError(
+      `minAthNearVolumeShare must be a finite number of 0 or more, got ${result.minAthNearVolumeShare}`,
     );
   }
   return result;
@@ -61,10 +77,17 @@ export const computeCoinMetrics: ComputeCoinMetrics = (
   // Sections 7 to 10: level series, time above, drawdown, rug pattern.
   const series = buildLevelSeries(points);
 
+  // Section 6: volume near the ATH and its flag. Nothing below reads them.
+  const athNearVolumeUsd = athNearVolume(cleaned.pools, ath.athPrice, params);
+  if (athThinlyTraded(athNearVolumeUsd, ath.fields.athMarketCapUsd, params)) {
+    flags.add('ath_thinly_traded');
+  }
+
   return {
     ...ath.fields,
     ...wick,
     athHourVolumeUsd: athHourVolume(cleaned.pools, ath.fields.athAt),
+    athNearVolumeUsd,
     secondsAbove: secondsAbove(
       series,
       params.thresholdsUsd,
