@@ -7,7 +7,7 @@
  *   VANGOAT  2024, Raydium, no migrated pool address, curve bars, six pools
  *   WIZARD   2025, PumpSwap, peaked a year after launch (peak refinement)
  *
- *   tsx --env-file=/path/to/.env ingest/scripts/record-candle-fixtures.ts --max-units N [--json out.json]
+ *   tsx --env-file=/path/to/.env ingest/scripts/record-candle-fixtures.ts --max-units N [--only SYMBOL] [--json out.json]
  *
  * Needs TEST_DATABASE_ADMIN_URL (a throwaway `mcp_test_` database is created
  * and dropped). N is a hard ceiling on compute units. After each coin it
@@ -44,6 +44,8 @@ const argv = process.argv.slice(2);
 const maxUnitsArg = argv.indexOf('--max-units');
 const maxUnits = maxUnitsArg >= 0 ? Number(argv[maxUnitsArg + 1]) : NaN;
 const jsonArg = argv.indexOf('--json');
+const onlyArg = argv.indexOf('--only');
+const only = onlyArg >= 0 ? argv[onlyArg + 1] : undefined;
 if (!key) throw new Error('CODEX_API_KEY is not set. Run with --env-file.');
 if (!adminUrl) throw new Error('TEST_DATABASE_ADMIN_URL is not set.');
 if (!(maxUnits > 0)) throw new Error('--max-units N is required.');
@@ -83,7 +85,7 @@ const client = new CodexClient({
 
 const rows: CheckRow[] = [];
 await withThrowawayDb(adminUrl, async (t) => {
-  for (const symbol of SYMBOLS) {
+  for (const symbol of SYMBOLS.filter((x) => only === undefined || x === only)) {
     const mint = mintOf(symbol);
     recording = new Map();
     const asOfDate = new Date();

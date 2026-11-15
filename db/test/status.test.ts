@@ -146,4 +146,46 @@ describe('decideStatus (plan Q3)', () => {
     const p = pool({ bars1h: [bar(T0 + DAY, 80_000, 60_000), bar(asOf + HOUR, 80_000, 60_000)] });
     expect(decideStatus({ pools: [p], asOf }, calm)).toBe('dead');
   });
+
+  describe('bars of different resolutions cover different periods', () => {
+    const asOf = T0 + 120 * DAY;
+    const oldHourly = [
+      bar(T0 + 10 * DAY, 90_000, 60_000),
+      bar(T0 + 10 * DAY + HOUR, 90_000, 60_000),
+    ];
+    const recentDaily = (volume: number, liq: number | null) =>
+      [0, 1, 2, 3, 4, 5, 6].map((k) => bar(asOf - k * DAY - 12 * HOUR, volume, liq));
+
+    it('hourly bars months ago and daily bars since: $2,000 a day with $10,000 liquidity is alive', () => {
+      const p = pool({ bars1h: oldHourly, bars1d: recentDaily(2_000, 10_000) });
+      expect(decideStatus({ pools: [p], asOf }, calm)).toBe('alive');
+    });
+
+    it('the same with $500 a day is dead', () => {
+      const p = pool({ bars1h: oldHourly, bars1d: recentDaily(500, 10_000) });
+      expect(decideStatus({ pools: [p], asOf }, calm)).toBe('dead');
+    });
+
+    it('hourly and daily bars covering the same day are not added together', () => {
+      const p = pool({
+        bars1h: [bar(asOf - 5 * HOUR, 300, 10_000), bar(asOf - 6 * HOUR, 300, 10_000)],
+        bars1d: [bar(asOf - 12 * HOUR, 600, 10_000)],
+      });
+      expect(decideStatus({ pools: [p], asOf }, calm)).not.toBe('alive');
+      // The largest single resolution counts: 600 hourly would still be under the line, 1,200 is not.
+      const q = pool({
+        bars1h: [bar(asOf - 5 * HOUR, 700, 10_000), bar(asOf - 6 * HOUR, 700, 10_000)],
+        bars1d: [bar(asOf - 12 * HOUR, 600, 10_000)],
+      });
+      expect(decideStatus({ pools: [q], asOf }, calm)).toBe('alive');
+    });
+
+    it("a secondary pool's daily bars count only when they pass the liquidity rule", () => {
+      const main = pool({ bars1h: oldHourly, bars1d: recentDaily(10, 20_000) });
+      const dust = pool({ address: 'D', isPrimary: false, bars1d: recentDaily(50_000, 300) });
+      expect(decideStatus({ pools: [main, dust], asOf }, calm)).toBe('dead');
+      const real = pool({ address: 'R', isPrimary: false, bars1d: recentDaily(50_000, 8_000) });
+      expect(decideStatus({ pools: [main, real], asOf }, calm)).toBe('alive');
+    });
+  });
 });

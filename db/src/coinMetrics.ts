@@ -117,14 +117,16 @@ export const STATUS_RULES = {
 
 const DAY = 86_400;
 
-/** Volume source for one pool: hourly bars when there are any, else 1-minute, else daily. */
-function volumeBars(pool: MetricPoolInput): CandleBar[] {
-  if (pool.bars1h.length > 0) return pool.bars1h;
-  if (pool.bars1m.length > 0) return pool.bars1m;
-  return pool.bars1d;
-}
-
-/** 24-hour volume and latest known liquidity at time `e`, from the stored bars. */
+/**
+ * 24-hour volume and latest known liquidity at time `e`, from the stored bars.
+ *
+ * For each pool the volume is summed per resolution (1-minute, hourly, daily bars
+ * in `(e - DAY, e]`) and the largest of the three sums is used. Resolutions are
+ * never added together, because they can cover the same period. They are not
+ * picked once for the whole pool either: under the staged plan a pool holds hourly
+ * bars only for old days and daily bars for the recent ones, so the resolution
+ * that has the last 24 hours differs from the one that has the most bars.
+ */
 function stateAt(
   pools: readonly MetricPoolInput[],
   e: number,
@@ -132,14 +134,20 @@ function stateAt(
   let volume24h = 0;
   let liquidity = 0;
   for (const pool of pools) {
-    for (const bar of volumeBars(pool)) {
-      if (bar.t > e - DAY && bar.t <= e) {
-        const counts =
-          pool.isPrimary ||
-          (bar.liquidityUsd !== null && bar.liquidityUsd >= STATUS_RULES.minLiquidityUsd);
-        if (counts) volume24h += bar.volumeUsd;
+    let best = 0;
+    for (const bars of [pool.bars1m, pool.bars1h, pool.bars1d]) {
+      let sum = 0;
+      for (const bar of bars) {
+        if (bar.t > e - DAY && bar.t <= e) {
+          const counts =
+            pool.isPrimary ||
+            (bar.liquidityUsd !== null && bar.liquidityUsd >= STATUS_RULES.minLiquidityUsd);
+          if (counts) sum += bar.volumeUsd;
+        }
       }
+      best = Math.max(best, sum);
     }
+    volume24h += best;
     let latest: CandleBar | null = null;
     for (const bars of [pool.bars1m, pool.bars1h, pool.bars1d]) {
       for (const bar of bars) {
@@ -162,7 +170,10 @@ function stateAt(
  * - alive: the alive line was met at the end of any of the last 7 days: at least
  *   $1,000 of volume in the 24 hours before and at least $5,000 of liquidity
  *   (primary pools count fully; another pool counts only on bars that pass the
- *   $5,000 liquidity rule).
+ *   $5,000 liquidity rule). Volume is taken per pool from one resolution at a
+ *   time (1-minute, hourly or daily bars in the window, whichever sums highest),
+ *   never added across resolutions, because under the staged plan bars of
+ *   different resolutions cover different periods of a pool's life.
  * - dead: below the line at the end of each of the last 7 days, and bars exist
  *   from at least 7 days before `asOf`.
  * - unknown: no bars are stored, or the coin has under 7 days of history and has
