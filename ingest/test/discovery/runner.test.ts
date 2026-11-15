@@ -1,6 +1,7 @@
 /**
- * Tests for the discovery runner script. Dune is a fake fetch and the clock is fake: nothing is
- * sent anywhere. The status fixture is hand-written from Dune's docs, not recorded.
+ * Tests for the discovery runner script. Dune is a fake: a POST fetch and a GET fetch that keep
+ * count of the requests and of the credits "used". Nothing is sent anywhere, the clock is fake.
+ * The fixtures are hand-written (see ../sources/fixtures/dune/README.md).
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -8,12 +9,13 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   buildPlan,
+  discoveryFile,
   main,
-  monthParams,
-  monthsBetween,
   parseRunnerArgs,
-  runMonths,
+  partFile,
+  runDiscovery,
   sizeAndSample,
+  stateFile,
   UsageError,
   type RunnerArgs,
 } from '../../scripts/dune-discovery.js';
@@ -23,13 +25,11 @@ import { DuneClient } from '../../src/sources/dune/index.js';
 import type { FetchLike } from '../../src/sources/http.js';
 import { RateLimiter } from '../../src/sources/ratelimit.js';
 import { fakeClock } from '../sources/helpers.js';
-import { fakeGetFetch, fixture } from '../sources/net-helpers.js';
+import { fakeGetFetch, fixtureText } from '../sources/net-helpers.js';
 
 const KEY = 'runner-test-key-0d8c41aa9e';
-const A = '9BB6NFEcjBCtnNLFko2FqVQBq8HHM13kCyYcdQbgpump';
-const B = '2qEHjDLDLbuBgRYvsxhc5D6uDWAivNFZGan56P1tpump';
-const TEMPLATE =
-  "select * from t where d >= DATE '{{month_start}}' and d < DATE '{{month_end}}' -- {{window_days}}\n";
+const EXEC = 'exec-test-0001';
+const HEADER = GRADUATE_COLUMNS.join(',');
 
 const dirs: string[] = [];
 function tmp(): string {
@@ -42,254 +42,291 @@ afterEach(() => {
   for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
 });
 
-function csvFor(month: string): string {
-  const mint = month.endsWith('01') ? A : B;
-  const cols = GRADUATE_COLUMNS.map((c) =>
-    c === 'mint'
-      ? mint
-      : c === 'created_at'
-        ? `${month}-10 00:00:00`
-        : c === 'rough_peak_usd'
-          ? '150000'
-          : '',
-  );
-  return `${GRADUATE_COLUMNS.join(',')}\n${cols.join(',')}\n`;
+/** A valid base58 mint for row i. */
+const mint = (i: number) => 'Z' + i.toString(2).replace(/0/g, '2').padStart(40, '3');
+const HALF_YEAR_START = 1_706_745_600; // 2024-02-01T00:00:00Z, in seconds
+
+/** Row i: created in 2024, peak 40k, 70k, 500k, 5M or 50M in turn, hours 100 + i. */
+function csvRow(i: number): string {
+  const peaks = [40_000, 70_000, 500_000, 5_000_000, 50_000_000];
+  const created = HALF_YEAR_START + i * 3600;
+  return [
+    mint(i),
+    created,
+    '',
+    created + 1800,
+    100 + i,
+    (peaks[i % 5] as number) * 2,
+    peaks[i % 5],
+    created + 7200,
+    created + 86_400,
+  ].join(',');
+}
+
+interface WorldOptions {
+  rows?: number;
+  execCost?: number;
+  /** Credits one page adds to the usage figure. */
+  pageCost?: number;
+  executeReply?: { status: number; body: string };
+  statusFixture?: string;
+  csvReply?: (offset: number) => { status: number; body: string } | null;
+  usageBroken?: boolean;
 }
 
 interface World {
   args: RunnerArgs;
-  client: DuneClient;
-  budget: UnitBudget;
-  posts: Array<{ url: string; body: unknown }>;
-  gets: string[];
+  client: () => DuneClient;
+  posts: string[];
+  executes: () => number;
+  csvOffsets: number[];
   logs: string[];
   log: (l: string) => void;
+  used: () => number;
 }
 
-function world(
-  over: Partial<RunnerArgs> = {},
-  opts: { cost?: number; failMonth?: string; template?: string } = {},
-): World {
+function world(over: Partial<RunnerArgs> = {}, opts: WorldOptions = {}): World {
   const dir = tmp();
-  const sql = path.join(dir, 'graduates.sql');
-  fs.writeFileSync(sql, opts.template ?? TEMPLATE);
+  const sql = path.join(dir, 'discovery.sql');
+  fs.writeFileSync(sql, 'select 1\n');
   const args: RunnerArgs = {
-    from: '2024-01',
-    to: '2024-03',
-    windowDays: 90,
-    maxCredits: 1000,
-    exportRate: 10,
-    performance: 'medium',
-    out: path.join(dir, 'out'),
     sql,
+    out: path.join(dir, 'out'),
+    maxCredits: 1000,
+    performance: 'medium',
     probes: path.join(dir, 'probes.json'),
-    minHeadroom: 50,
+    timeLimitMinutes: 10,
+    executionId: null,
+    columns: null,
+    filter: null,
+    pageRows: 100,
     confirm: true,
     ...over,
   };
-  const clock = fakeClock();
-  const posts: World['posts'] = [];
-  const executions = new Map<string, string>(); // execution id -> month
-  const post: FetchLike = async (url, init) => {
-    const body = JSON.parse(init.body) as { sql?: string };
-    posts.push({ url, body });
+  const rows = opts.rows ?? 250;
+  let used = 1000;
+  const posts: string[] = [];
+  const csvOffsets: number[] = [];
+  const post: FetchLike = async (url) => {
+    posts.push(new URL(url).pathname);
+    let status = 200;
     let reply = '{}';
     if (url.endsWith('/sql/execute')) {
-      const month = /DATE '(\d{4}-\d{2})-01' and/.exec(body.sql ?? '')?.[1] ?? 'x';
-      const id = `exec-${month}`;
-      executions.set(id, month);
-      reply = JSON.stringify({ execution_id: id, state: 'QUERY_STATE_PENDING' });
+      if (opts.executeReply) {
+        status = opts.executeReply.status;
+        reply = opts.executeReply.body;
+      } else {
+        used += opts.execCost ?? 0.35;
+        reply = JSON.stringify({ execution_id: EXEC, state: 'QUERY_STATE_PENDING' });
+      }
+    } else if (url.endsWith('/usage')) {
+      if (opts.usageBroken) {
+        status = 500;
+      } else {
+        reply = JSON.stringify({
+          billing_periods: [
+            {
+              start_date: '2026-11-01',
+              end_date: '2026-12-01',
+              credits_used: used,
+              credits_included: 4000,
+            },
+          ],
+        });
+      }
     }
-    return { status: 200, ok: true, headers: { get: () => null }, text: async () => reply };
+    return { status, ok: status < 300, headers: { get: () => null }, text: async () => reply };
   };
   const get = fakeGetFetch((req) => {
-    const id = /execution\/([^/]+)\//.exec(req.url)?.[1] ?? '';
-    const month = executions.get(id) ?? '';
     if (req.url.endsWith('/status')) {
-      const s = fixture('dune', opts.failMonth === month ? 'status-failed' : 'status-completed');
-      s.execution_id = id;
-      if (opts.cost !== undefined && s.state === 'QUERY_STATE_COMPLETED')
-        s.execution_cost_credits = opts.cost;
-      if (s.result_metadata) s.result_metadata.total_result_set_bytes = 1000;
+      const s = JSON.parse(opts.statusFixture ?? fixtureText('dune', 'status-completed'));
+      s.execution_id = EXEC;
+      if (s.result_metadata) s.result_metadata.total_row_count = rows;
       return { body: JSON.stringify(s) };
     }
-    return { body: csvFor(month) };
+    const u = new URL(req.url);
+    const limit = Number(u.searchParams.get('limit'));
+    const offset = Number(u.searchParams.get('offset'));
+    csvOffsets.push(offset);
+    const custom = opts.csvReply?.(offset);
+    if (custom) return custom;
+    const n = Math.max(0, Math.min(limit, rows - offset));
+    used += opts.pageCost ?? 0.5;
+    const body =
+      HEADER + '\n' + Array.from({ length: n }, (_, i) => csvRow(offset + i) + '\n').join('');
+    const more = offset + n < rows;
+    return {
+      body,
+      headers: (more ? { 'x-dune-next-offset': String(offset + n) } : {}) as Record<string, string>,
+    };
   });
-  const budget = new UnitBudget({ ceilingUnits: args.maxCredits ?? undefined });
-  const client = new DuneClient({
-    apiKey: KEY,
-    fetch: post,
-    getFetch: get.fetch,
-    budget,
-    exportCreditsPerMb: args.exportRate,
-    limiter: new RateLimiter({
-      maxPerSecond: 1000,
-      burst: 1000,
-      now: clock.now,
-      sleep: clock.sleep,
-    }),
-    now: clock.now,
-    sleep: clock.sleep,
-    http: { sleep: clock.sleep, random: () => 0.5, baseDelayMs: 1 },
-  });
+  const clock = fakeClock();
+  const budget = () => new UnitBudget({ ceilingUnits: args.maxCredits ?? undefined });
   const logs: string[] = [];
   return {
     args,
-    client,
-    budget,
+    client: () =>
+      new DuneClient({
+        apiKey: KEY,
+        fetch: post,
+        getFetch: get.fetch,
+        budget: budget(),
+        limiter: new RateLimiter({
+          maxPerSecond: 1000,
+          burst: 1000,
+          now: clock.now,
+          sleep: clock.sleep,
+        }),
+        now: clock.now,
+        sleep: clock.sleep,
+        http: { sleep: clock.sleep, random: () => 0.5, baseDelayMs: 1, maxRetries: 1 },
+      }),
     posts,
-    gets: get.requests.map((r) => r.url),
+    executes: () => posts.filter((p) => p.endsWith('/sql/execute')).length,
+    csvOffsets,
     logs,
     log: (l) => logs.push(l),
+    used: () => used,
   };
 }
 
-const run = (w: World) => runMonths({ args: w.args, client: w.client, log: w.log });
-const files = (w: World) => (fs.existsSync(w.args.out) ? fs.readdirSync(w.args.out).sort() : []);
+const run = (w: World, client = w.client()) => runDiscovery({ args: w.args, client, log: w.log });
+const readOut = (w: World, name: string) => fs.readFileSync(path.join(w.args.out, name), 'utf8');
+const exists = (w: World, name: string) => fs.existsSync(path.join(w.args.out, name));
+const expectedCsv = (n: number) =>
+  HEADER + '\n' + Array.from({ length: n }, (_, i) => csvRow(i) + '\n').join('');
 
 describe('parseRunnerArgs', () => {
   it('applies the defaults', () => {
-    const a = parseRunnerArgs(['--from', '2024-01', '--to', '2026-10']);
+    const a = parseRunnerArgs([]);
     expect(a).toMatchObject({
-      windowDays: 90,
       maxCredits: null,
-      exportRate: 10,
       performance: 'medium',
-      minHeadroom: 50,
+      timeLimitMinutes: 10,
+      executionId: null,
+      columns: null,
+      filter: null,
+      pageRows: 32_000,
       confirm: false,
     });
     expect(a.out.endsWith(path.join('data', 'dune'))).toBe(true);
-    expect(a.sql.endsWith(path.join('ingest', 'sql', 'dune', 'graduates.sql'))).toBe(true);
+    expect(a.sql.endsWith(path.join('ingest', 'sql', 'dune', 'discovery.sql'))).toBe(true);
+    expect(a.probes.endsWith(path.join('probes', 'coins.json'))).toBe(true);
   });
 
   it('reads every option', () => {
     const a = parseRunnerArgs([
-      '--from',
-      '2024-01',
-      '--to',
-      '2024-02',
-      '--window-days',
-      '30',
-      '--max-credits',
-      '200.5',
-      '--export-rate',
-      '2',
-      '--performance',
-      'large',
+      '--sql',
+      '/x/q.sql',
       '--out',
       '/x/y',
-      '--min-headroom',
-      '5',
+      '--max-credits',
+      '200.5',
+      '--performance',
+      'large',
+      '--probes',
+      '/x/p.json',
+      '--time-limit-minutes',
+      '3',
+      '--execution-id',
+      'abc12345',
+      '--columns',
+      'mint,created_at,graduated_at',
+      '--filter',
+      'hours >= 10',
+      '--page-rows',
+      '5000',
       '--confirm',
     ]);
     expect(a).toMatchObject({
-      windowDays: 30,
-      maxCredits: 200.5,
-      exportRate: 2,
-      performance: 'large',
+      sql: '/x/q.sql',
       out: '/x/y',
-      minHeadroom: 5,
+      maxCredits: 200.5,
+      performance: 'large',
+      probes: '/x/p.json',
+      timeLimitMinutes: 3,
+      executionId: 'abc12345',
+      columns: ['mint', 'created_at', 'graduated_at'],
+      filter: 'hours >= 10',
+      pageRows: 5000,
       confirm: true,
     });
   });
 
   it.each([
-    [[]],
-    [['--from', '2024-01']],
-    [['--from', '2024-13', '--to', '2024-14']],
-    [['--from', '2024-05', '--to', '2024-01']],
-    [['--from', '2024-01', '--to', '2024-02', '--max-credits', '0']],
-    [['--from', '2024-01', '--to', '2024-02', '--max-credits', 'abc']],
-    [['--from', '2024-01', '--to', '2024-02', '--window-days', '1.5']],
-    [['--from', '2024-01', '--to', '2024-02', '--performance', 'huge']],
-    [['--from', '2024-01', '--to', '2024-02', '--bogus', '1']],
-    [['--from', '2024-01', '--to']],
-    [['--from', '2024-01', '--to', '2024-02', '--confirm']], // no --max-credits
+    [['--max-credits', '0']],
+    [['--max-credits', 'abc']],
+    [['--performance', 'huge']],
+    [['--page-rows', '32001']],
+    [['--page-rows', '1.5']],
+    [['--execution-id', 'a b']],
+    [['--columns', 'mint;drop']],
+    [['--time-limit-minutes', '-1']],
+    [['--bogus', '1']],
+    [['--sql']],
+    [['--confirm']], // no --max-credits
+    [['--from', '2024-01']], // the old month arguments are gone
   ])('rejects %j', (argv) => {
     expect(() => parseRunnerArgs(argv)).toThrow(UsageError);
-  });
-});
-
-describe('months and parameters', () => {
-  it('lists months across a year end, both ends included', () => {
-    expect(monthsBetween('2024-11', '2025-02')).toEqual([
-      '2024-11',
-      '2024-12',
-      '2025-01',
-      '2025-02',
-    ]);
-    expect(monthsBetween('2024-05', '2024-05')).toEqual(['2024-05']);
-  });
-
-  it('fills only the placeholders the template uses, and rejects any other', () => {
-    expect(
-      monthParams('2024-12', 90, ['month_start', 'month_end', 'window_end', 'window_days']),
-    ).toEqual({
-      month_start: '2024-12-01',
-      month_end: '2025-01-01',
-      window_end: '2025-04-01',
-      window_days: 90,
-    });
-    expect(monthParams('2024-02', 30, ['month_end'])).toEqual({ month_end: '2024-03-01' });
-    expect(() => monthParams('2024-02', 30, ['month_start', 'wallet'])).toThrow(/wallet/);
   });
 });
 
 describe('without --confirm', () => {
   it('prints the plan, exits 0, builds no client and calls nothing', async () => {
     const w = world({ confirm: false });
-    fs.mkdirSync(w.args.out, { recursive: true });
-    fs.writeFileSync(path.join(w.args.out, 'graduates-2024-02.csv'), 'x');
     const fetchSpy = vi.fn(() => {
       throw new Error('network call');
     });
     vi.stubGlobal('fetch', fetchSpy);
     const out: string[] = [];
     const spy = vi.spyOn(console, 'log').mockImplementation((l: string) => void out.push(l));
-    const code = await main(
-      [
-        '--from',
-        '2024-01',
-        '--to',
-        '2024-03',
-        '--out',
-        w.args.out,
-        '--sql',
-        w.args.sql,
-        '--max-credits',
-        '100',
-      ],
-      { DUNE_API_KEY: KEY },
-    );
+    const code = await main(['--out', w.args.out, '--sql', w.args.sql, '--max-credits', '100'], {
+      DUNE_API_KEY: KEY,
+    });
     spy.mockRestore();
     expect(code).toBe(0);
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(w.posts).toHaveLength(0);
     const text = out.join('\n');
-    expect(text).toContain('Already on disk (skipped): 2024-02');
-    expect(text).toContain('Would run: 2024-01, 2024-03');
-    expect(text).toContain('SQL template renders for 2024-01');
+    expect(text).toContain('Nothing was sent to Dune');
+    expect(text).toContain('1.6 credits per 1,000 rows');
+    expect(text).toContain('Execution: run the SQL once');
     expect(text).not.toContain(KEY);
-    expect(files(w)).toEqual(['graduates-2024-02.csv']); // nothing written
+    expect(fs.existsSync(w.args.out)).toBe(false); // nothing written
   });
 
-  it('works without a key and says so when the SQL file is missing', async () => {
+  it('says what it would resume, reuse or skip', () => {
     const w = world({ confirm: false });
-    const plan = buildPlan({ ...w.args, sql: path.join(path.dirname(w.args.sql), 'nope.sql') });
-    expect(plan.sqlExists).toBe(false);
-    expect(plan.text).toContain('MISSING');
-    expect(
-      await main(['--from', '2024-01', '--to', '2024-01', '--sql', '/nonexistent/x.sql'], {}),
-    ).toBe(0);
+    fs.mkdirSync(w.args.out, { recursive: true });
+    fs.writeFileSync(
+      stateFile(w.args.out),
+      JSON.stringify({ executionId: EXEC, nextOffset: 300, partBytes: 10, rows: 300, pages: 3 }),
+    );
+    expect(buildPlan(w.args).text).toContain('resume the saved one (next offset 300, 300 rows');
+    expect(buildPlan({ ...w.args, executionId: 'abc12345' }).text).toContain(
+      'reuse the given execution',
+    );
+    fs.writeFileSync(discoveryFile(w.args.out), HEADER + '\n');
+    const plan = buildPlan(w.args);
+    expect(plan.csvExists).toBe(true);
+    expect(plan.text).toContain('Dune would be skipped');
+  });
+
+  it('reports a missing SQL file and a template with placeholders', () => {
+    const w = world({ confirm: false });
+    expect(buildPlan({ ...w.args, sql: '/nonexistent/x.sql' }).text).toContain('MISSING');
+    fs.writeFileSync(w.args.sql, 'select {{month_start}}');
+    expect(buildPlan(w.args).text).toContain('must have none');
   });
 
   it('with --confirm but no key, stops before any call', async () => {
+    const w = world();
     const fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
     const err = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     const code = await main(
-      ['--from', '2024-01', '--to', '2024-01', '--max-credits', '10', '--confirm'],
+      ['--out', w.args.out, '--sql', w.args.sql, '--max-credits', '10', '--confirm'],
       {},
     );
     err.mockRestore();
@@ -299,198 +336,288 @@ describe('without --confirm', () => {
   });
 });
 
-describe('runMonths', () => {
-  it('runs each month, saves its file, and prints rows, bytes, credits and the running total', async () => {
+describe('runDiscovery', () => {
+  it('executes once, downloads page by page into one file, and cleans up', async () => {
     const w = world();
     const s = await run(w);
-    expect(s).toMatchObject({
-      status: 'complete',
-      ran: ['2024-01', '2024-02', '2024-03'],
-      skipped: [],
-      totalCredits: 60,
-    });
-    expect(files(w)).toEqual([
-      'graduates-2024-01.csv',
-      'graduates-2024-02.csv',
-      'graduates-2024-03.csv',
-    ]);
-    expect(fs.readFileSync(path.join(w.args.out, 'graduates-2024-02.csv'), 'utf8')).toBe(
-      csvFor('2024-02'),
-    );
-    expect(w.logs).toHaveLength(3);
-    expect(w.logs[0]).toMatch(
-      /^2024-01: rows 4, bytes \d+, execution credits 10, export credits 10, running total 20$/,
-    );
-    expect(w.logs[2]).toMatch(/running total 60$/);
-    const executes = w.posts.filter((p) => p.url.endsWith('/sql/execute'));
-    expect(executes).toHaveLength(3);
-    expect((executes[0]!.body as { sql: string }).sql).toBe(
-      "select * from t where d >= DATE '2024-01-01' and d < DATE '2024-02-01' -- 90\n",
-    );
-    expect((executes[0]!.body as { performance: string }).performance).toBe('medium');
+    expect(s).toMatchObject({ status: 'complete', pages: 3, rows: 250 });
+    expect(w.executes()).toBe(1);
+    expect(w.csvOffsets).toEqual([0, 100, 200]);
+    expect(readOut(w, 'discovery.csv')).toBe(expectedCsv(250)); // one header row only
+    expect(exists(w, 'discovery.csv.part')).toBe(false);
+    expect(exists(w, 'discovery.csv.part.state.json')).toBe(false);
+    // The ledger holds the execution cost and the measured page costs (the usage difference).
+    expect(s.totalCredits).toBeCloseTo(0.35 + 3 * 0.5, 5);
+    expect(
+      w.logs.some((l) =>
+        /^page 1: offset 0, rows 100, bytes \d+, credits 0\.5 \(measured\)/.test(l),
+      ),
+    ).toBe(true);
+    expect(w.logs.some((l) => /^page 3: offset 200, rows 50,/.test(l))).toBe(true);
+    expect(
+      w.logs.some((l) => l.startsWith('Credits used this billing period before the run: 1000')),
+    ).toBe(true);
+    expect(
+      w.logs.some((l) =>
+        l.includes('Usage endpoint: 1.85 credits used during the run. Ledger: 1.85.'),
+      ),
+    ).toBe(true);
   });
 
-  it('is resumable: months already on disk are skipped and cost nothing', async () => {
+  it('sends the page size and tier, and the columns and filter when given', async () => {
+    const w = world({ columns: ['mint', 'created_at', 'graduated_at'], filter: 'hours >= 10' });
+    const seen: string[] = [];
+    const client = w.client();
+    const orig = client.downloadCsv.bind(client);
+    client.downloadCsv = (id, p, o) => {
+      seen.push(JSON.stringify([o?.limit, o?.offset, o?.columns, o?.filters]));
+      return orig(id, p, o);
+    };
+    await run(w, client);
+    expect(seen[0]).toBe('[100,0,["mint","created_at","graduated_at"],"hours >= 10"]');
+  });
+
+  it('records the state after every page and removes it when the last page is in', async () => {
     const w = world();
-    await run(w);
-    const before = { posts: w.posts.length, gets: w.gets.length };
-    const again = await run(w);
-    expect(again).toMatchObject({
-      status: 'complete',
-      ran: [],
-      skipped: ['2024-01', '2024-02', '2024-03'],
-    });
-    expect(w.posts.length).toBe(before.posts);
-    expect(w.gets.length).toBe(before.gets);
+    const states: unknown[] = [];
+    const client = w.client();
+    const orig = client.downloadCsv.bind(client);
+    client.downloadCsv = async (id, p, o) => {
+      if (fs.existsSync(stateFile(w.args.out))) {
+        states.push(JSON.parse(fs.readFileSync(stateFile(w.args.out), 'utf8')));
+      }
+      return orig(id, p, o);
+    };
+    await run(w, client);
+    expect(states).toMatchObject([
+      { executionId: EXEC, nextOffset: 0, rows: 0, pages: 0 },
+      { executionId: EXEC, nextOffset: 100, rows: 100, pages: 1, lastPageCredits: 0.5 },
+      { executionId: EXEC, nextOffset: 200, rows: 200, pages: 2 },
+    ]);
   });
 
-  it('after a partial run, only the missing months run; a stale .part file is replaced', async () => {
+  it('stops before a page when the credits left are below the previous page cost, and resumes without paying twice', async () => {
+    const w = world({ maxCredits: 100, pageRows: 50 }, { rows: 250, pageCost: 30 });
+    const first = await run(w);
+    // 100 - 0.35 - 3 x 30 leaves 9.65, below the 30 the last page cost.
+    expect(first.status).toBe('stopped_budget');
+    expect(first.message).toMatch(/Stopped before offset 150: 9\.65 credits left, below 30/);
+    expect(w.csvOffsets).toEqual([0, 50, 100]);
+    expect(JSON.parse(readOut(w, 'discovery.csv.part.state.json'))).toMatchObject({
+      nextOffset: 150,
+      rows: 150,
+    });
+    expect(exists(w, 'discovery.csv')).toBe(false);
+
+    // A second run with more budget continues from the next page: no new execution, no repeated page.
+    w.args.maxCredits = 1000;
+    const second = await run(w);
+    expect(second).toMatchObject({ status: 'complete', pages: 5, rows: 250 });
+    expect(w.executes()).toBe(1);
+    expect(w.csvOffsets).toEqual([0, 50, 100, 150, 200]);
+    expect(readOut(w, 'discovery.csv')).toBe(expectedCsv(250));
+    expect(exists(w, 'discovery.csv.part.state.json')).toBe(false);
+  });
+
+  it('needs 60 credits left before the first page', async () => {
+    const w = world({ maxCredits: 50 });
+    const s = await run(w);
+    expect(s.status).toBe('stopped_budget');
+    expect(s.message).toMatch(/below 60 \(the first-page headroom\)/);
+    expect(w.csvOffsets).toEqual([]);
+  });
+
+  it('after a crash in the middle of a page, drops the partial page and does not repeat saved ones', async () => {
     const w = world();
     fs.mkdirSync(w.args.out, { recursive: true });
-    fs.writeFileSync(path.join(w.args.out, 'graduates-2024-01.csv'), csvFor('2024-01'));
-    fs.writeFileSync(path.join(w.args.out, 'graduates-2024-02.csv.part'), 'half a file');
-    const s = await run(w);
-    expect(s).toMatchObject({
-      status: 'complete',
-      ran: ['2024-02', '2024-03'],
-      skipped: ['2024-01'],
-    });
-    expect(files(w)).toEqual([
-      'graduates-2024-01.csv',
-      'graduates-2024-02.csv',
-      'graduates-2024-03.csv',
-    ]);
-    expect(fs.readFileSync(path.join(w.args.out, 'graduates-2024-02.csv'), 'utf8')).toBe(
-      csvFor('2024-02'),
-    );
-  });
-
-  it('enforces --max-credits: stops before a month when the credits left are below the largest month', async () => {
-    const w = world({ maxCredits: 45, minHeadroom: 10 });
-    const s = await run(w);
-    // Months cost 20 each. After two, 5 are left, below the largest month (20).
-    expect(s).toMatchObject({
-      status: 'stopped_budget',
-      ran: ['2024-01', '2024-02'],
-      totalCredits: 40,
-    });
-    expect(s.message).toMatch(/Stopped before 2024-03: 5 credits left, below 20/);
-    expect(files(w)).toEqual(['graduates-2024-01.csv', 'graduates-2024-02.csv']);
-    expect(w.posts.filter((p) => p.url.endsWith('/sql/execute'))).toHaveLength(2);
-    expect(w.budget.summary('dune').units).toBeLessThanOrEqual(45);
-  });
-
-  it('uses --min-headroom before the first month has run', async () => {
-    const w = world({ maxCredits: 30, minHeadroom: 50 });
-    const s = await run(w);
-    expect(s.status).toBe('stopped_budget');
-    expect(s.message).toMatch(/below 50 \(--min-headroom\)/);
-    expect(w.posts).toHaveLength(0);
-    expect(files(w)).toEqual([]);
-  });
-
-  it('stops and names the execution when the export does not fit what is left', async () => {
-    // The execution costs 20, so 5 credits are left, and the export needs 10.
-    const w = world({ maxCredits: 25, minHeadroom: 10 }, { cost: 20 });
-    const s = await run(w);
-    expect(s.status).toBe('stopped_budget');
-    expect(s.message).toContain('exec-2024-01');
-    expect(s.ran).toEqual([]);
-    expect(files(w)).toEqual([]); // no file, and no .part file left behind
-    expect(w.gets.some((u) => u.endsWith('/results/csv'))).toBe(false);
-    expect(w.budget.summary('dune').units).toBe(20);
-  });
-
-  it('stops on a failed execution without writing a file', async () => {
-    const w = world({}, { failMonth: '2024-02' });
-    const s = await run(w);
-    expect(s.status).toBe('failed');
-    expect(s.ran).toEqual(['2024-01']);
-    expect(s.message).toMatch(/2024-02: execution exec-2024-02 failed: .*Column 'x'/);
-    expect(files(w)).toEqual(['graduates-2024-01.csv']);
-  });
-
-  it('fails with a clear message, before any call, when the SQL file is missing', async () => {
-    const w = world();
-    fs.rmSync(w.args.sql);
-    const s = await run(w);
-    expect(s).toMatchObject({ status: 'failed', ran: [] });
-    expect(s.message).toContain('SQL file not found');
-    expect(w.posts).toHaveLength(0);
-  });
-
-  it('fails before spending when the template uses a placeholder it cannot fill', async () => {
-    const w = world({}, { template: 'select {{wallet}}' });
-    const s = await run(w);
-    expect(s.status).toBe('failed');
-    expect(s.message).toMatch(/wallet/);
-    expect(w.posts).toHaveLength(0);
-  });
-
-  it('writes a header-only file for a month with no rows, without an export', async () => {
-    const w = world();
-    const get = vi.spyOn(w.client, 'downloadCsv');
-    // Rewire the status to say zero rows.
-    const client2 = new DuneClient({
-      apiKey: KEY,
-      budget: w.budget,
-      fetch: async (url) => ({
-        status: 200,
-        ok: true,
-        headers: { get: () => null },
-        text: async () =>
-          url.endsWith('/sql/execute')
-            ? '{"execution_id":"e1","state":"QUERY_STATE_PENDING"}'
-            : '{}',
+    const firstPage = expectedCsv(100);
+    fs.writeFileSync(partFile(w.args.out), firstPage + 'half,a,page');
+    fs.writeFileSync(
+      stateFile(w.args.out),
+      JSON.stringify({
+        executionId: EXEC,
+        nextOffset: 100,
+        partBytes: Buffer.byteLength(firstPage),
+        rows: 100,
+        pages: 1,
+        lastPageCredits: 0.5,
+        columns: null,
+        filter: null,
       }),
-      getFetch: fakeGetFetch(() => ({
-        body: JSON.stringify({
-          state: 'QUERY_STATE_COMPLETED',
-          execution_cost_credits: 3,
-          result_metadata: {
-            total_row_count: 0,
-            total_result_set_bytes: 0,
-            column_names: ['mint', 'created_at'],
-          },
-        }),
-      })).fetch,
-      limiter: new RateLimiter({ maxPerSecond: 1000, burst: 1000 }),
-    });
-    const s = await runMonths({ args: { ...w.args, to: '2024-01' }, client: client2, log: w.log });
-    expect(s).toMatchObject({ status: 'complete', ran: ['2024-01'], totalCredits: 3 });
-    expect(fs.readFileSync(path.join(w.args.out, 'graduates-2024-01.csv'), 'utf8')).toBe(
-      'mint,created_at\n',
     );
-    expect(get).not.toHaveBeenCalled();
+    const s = await run(w);
+    expect(s).toMatchObject({ status: 'complete', rows: 250, pages: 3 });
+    expect(w.executes()).toBe(0);
+    expect(w.csvOffsets).toEqual([100, 200]);
+    expect(readOut(w, 'discovery.csv')).toBe(expectedCsv(250));
+  });
+
+  it('fails when the part file is shorter than the state says', async () => {
+    const w = world();
+    fs.mkdirSync(w.args.out, { recursive: true });
+    fs.writeFileSync(partFile(w.args.out), 'tiny');
+    fs.writeFileSync(
+      stateFile(w.args.out),
+      JSON.stringify({ executionId: EXEC, nextOffset: 100, partBytes: 5000 }),
+    );
+    const s = await run(w);
+    expect(s.status).toBe('failed');
+    expect(s.message).toMatch(/shorter than the state says/);
+    expect(w.csvOffsets).toEqual([]);
+  });
+
+  it('reuses an execution given by --execution-id and does not run the SQL', async () => {
+    const w = world({ executionId: EXEC });
+    const s = await run(w);
+    expect(s).toMatchObject({ status: 'complete', rows: 250 });
+    expect(w.executes()).toBe(0);
+    expect(s.totalCredits).toBeCloseTo(3 * 0.5, 5); // the execution was not paid for by this run
+  });
+
+  it('refuses a saved state that belongs to another execution or other columns', async () => {
+    const w = world({ executionId: 'other-id-0002' });
+    fs.mkdirSync(w.args.out, { recursive: true });
+    fs.writeFileSync(
+      stateFile(w.args.out),
+      JSON.stringify({ executionId: EXEC, nextOffset: 100, partBytes: 0 }),
+    );
+    expect((await run(w)).message).toMatch(/different execution/);
+    w.args.executionId = null;
+    w.args.columns = ['mint'];
+    expect((await run(w)).message).toMatch(/other --columns or --filter/);
+    expect(w.posts).toHaveLength(0);
+  });
+
+  it('shows Dune message when the performance tier is not available', async () => {
+    const w = world(
+      {},
+      { executeReply: { status: 400, body: fixtureText('dune', 'execute-tier-400') } },
+    );
+    const s = await run(w);
+    expect(s.status).toBe('failed');
+    expect(s.message).toBe(
+      'HTTP 400: This performance tier is not available with your subscription. Please upgrade your subscription plan here: https://dune.com/pricing',
+    );
+    expect(w.csvOffsets).toEqual([]);
+  });
+
+  it('stops on a failed execution with its error text and drops the state', async () => {
+    const w = world({}, { statusFixture: fixtureText('dune', 'status-failed') });
+    const s = await run(w);
+    expect(s.status).toBe('failed');
+    expect(s.message).toMatch(/The execution failed: value must be finite; was Infinity/);
+    expect(exists(w, 'discovery.csv.part.state.json')).toBe(false);
+    expect(w.csvOffsets).toEqual([]);
+  });
+
+  it('stops with Dune message on a 402, keeps what was saved, and can continue later', async () => {
+    const w = world(
+      {},
+      {
+        csvReply: (offset) =>
+          offset === 100 && !w.args.executionId
+            ? { status: 402, body: fixtureText('dune', 'results-csv-402') }
+            : null,
+      },
+    );
+    const s = await run(w);
+    expect(s.status).toBe('failed');
+    expect(s.message).toMatch(
+      /Download stopped before offset 100: .*exceed your configured credits limit/,
+    );
+    expect(JSON.parse(readOut(w, 'discovery.csv.part.state.json'))).toMatchObject({
+      nextOffset: 100,
+    });
+    expect(w.csvOffsets).toEqual([0, 100]); // the refused page was asked for once, not retried
+  });
+
+  it('fails before any call when the SQL file is missing or has placeholders', async () => {
+    const w = world();
+    fs.writeFileSync(w.args.sql, 'select {{month_start}}');
+    const s1 = await run(w);
+    expect(s1.status).toBe('failed');
+    expect(s1.message).toMatch(/placeholders \(month_start\)/);
+    fs.rmSync(w.args.sql);
+    const s2 = await run(w);
+    expect(s2.message).toContain('SQL file not found');
+    expect(w.posts).toHaveLength(0);
+  });
+
+  it('still runs when the usage endpoint fails, and records estimated page costs', async () => {
+    const w = world({}, { usageBroken: true });
+    const s = await run(w);
+    expect(s.status).toBe('complete');
+    expect(w.logs.some((l) => l.includes('(estimated)'))).toBe(true);
+    expect(w.logs.some((l) => l.startsWith('Usage endpoint'))).toBe(false);
+  });
+
+  it('does nothing when discovery.csv already exists', async () => {
+    const w = world();
+    fs.mkdirSync(w.args.out, { recursive: true });
+    fs.writeFileSync(discoveryFile(w.args.out), expectedCsv(5));
+    const s = await run(w);
+    expect(s.status).toBe('complete');
+    expect(w.posts).toHaveLength(0);
+    expect(w.csvOffsets).toEqual([]);
   });
 
   it('never prints the key', async () => {
-    const w = world({}, { failMonth: '2024-02' });
-    await run(w);
-    expect(w.logs.join('\n')).not.toContain(KEY);
+    const w = world({}, { statusFixture: fixtureText('dune', 'status-failed') });
+    const s = await run(w);
+    expect(w.logs.join('\n') + (s.message ?? '')).not.toContain(KEY);
   });
 });
 
 describe('sizeAndSample', () => {
-  it('reads the month files, prints the table and writes sample.csv with the probes', async () => {
-    const w = world({ to: '2024-02' });
-    await run(w);
+  function setup(rowsN: number) {
+    const w = world();
+    fs.mkdirSync(w.args.out, { recursive: true });
+    fs.writeFileSync(
+      discoveryFile(w.args.out),
+      expectedCsv(rowsN) + csvRow(1).replace(mint(1), 'bad mint') + '\n',
+    );
     fs.writeFileSync(
       w.args.probes,
       JSON.stringify([
-        { mint: A },
+        { mint: mint(3) },
         { mint: 'GoneGoneGoneGoneGoneGoneGoneGoneGone1' },
         { symbol: 'no mint' },
       ]),
     );
-    await sizeAndSample({ ...w.args, to: '2024-02' }, w.log);
+    return w;
+  }
+
+  it('reads discovery.csv, reports rejected rows, prints the table with totals, and writes sample.csv', async () => {
+    const w = setup(100);
+    await sizeAndSample(w.args, w.log);
     const text = w.logs.join('\n');
-    expect(text).toContain('Read 2 rows from 2 files: 2 kept, 0 bad, 0 duplicates.');
-    expect(text).toContain('month\tgrad');
-    expect(text).toMatch(/Sample: 3 coins \(2 probes, 1 missing from the list\)/);
-    const sample = fs.readFileSync(path.join(w.args.out, 'sample.csv'), 'utf8').trim().split('\n');
-    expect(sample[0]).toBe('mint,half_year,cell,probe,probe_missing,created_at,rough_peak_usd');
-    expect(sample).toHaveLength(1 + 3);
-    expect(sample[1]!.startsWith(`${A},2024-H1,100k-1M,true,false,`)).toBe(true);
+    expect(text).toContain('Read 101 rows: 100 kept, 1 rejected.');
+    expect(text).toContain('rejected, line 102: mint');
+    expect(text).toMatch(/\ntotal\t100\t/);
+    expect(text).toMatch(/Sample: \d+ coins \(2 probes, 1 missing from the list\)/);
+    const sample = readOut(w, 'sample.csv').trim().split('\n');
+    expect(sample[0]).toBe(
+      'mint,half_year,cell,probe,probe_missing,created_at,creator,graduated_at,hours,peak_max_usd,peak_p999_usd,peak_at',
+    );
+    expect(sample[1]!.startsWith(`${mint(3)},2024-H1,`)).toBe(true);
+    expect(sample[1]).toContain(',true,false,');
+    // Per cell: 5 of 20 (30k), 10 of 20 (50k), 20 of 20 (500k), 19 of 20 (5M, one is the probe),
+    // 15 of 20 (50M): 69 drawn, plus the 2 probes and the header.
+    expect(sample).toHaveLength(1 + 69 + 2);
+  });
+
+  it('runs from main with --confirm and an existing discovery.csv, needing no key and no network', async () => {
+    const w = setup(40);
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const code = await main(
+      ['--out', w.args.out, '--probes', w.args.probes, '--max-credits', '10', '--confirm'],
+      {},
+    );
+    log.mockRestore();
+    expect(code).toBe(0);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(exists(w, 'sample.csv')).toBe(true);
   });
 });
