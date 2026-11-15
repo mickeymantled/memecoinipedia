@@ -1,5 +1,7 @@
 import pg from 'pg';
+import { sql, type Kysely } from 'kysely';
 import { createDb } from './client.js';
+import type { Database } from './types.js';
 
 /**
  * One pipeline process per database.
@@ -77,6 +79,21 @@ export const PIPELINE_LOCK_CHECK_SECONDS = 15;
 /** pg_locks lists a bigint advisory key as two int4 halves. */
 const LOCK_CLASSID = Math.floor(PIPELINE_LOCK_KEY / 2 ** 32);
 const LOCK_OBJID = PIPELINE_LOCK_KEY % 2 ** 32;
+
+/**
+ * True when some session holds the pipeline lock. A read of `pg_locks`: it takes nothing, so it
+ * works beside the process that holds the lock, and inside a read-only transaction.
+ */
+export async function isPipelineLockHeld(db: Kysely<Database>): Promise<boolean> {
+  const r = await sql<{ held: boolean }>`
+    select exists (select 1 from pg_locks
+      where locktype = 'advisory'
+        and database = (select oid from pg_database where datname = current_database())
+        and classid = ${LOCK_CLASSID}::oid
+        and objid = ${LOCK_OBJID}::oid and objsubid = 1) as held
+  `.execute(db);
+  return r.rows[0]?.held === true;
+}
 
 /**
  * Takes the lock or throws `PipelineLockError`. The connection that holds it is opened here

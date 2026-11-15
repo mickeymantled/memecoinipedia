@@ -2,6 +2,7 @@ export * from './constants.js';
 export * from './deps.js';
 export * from './discover.js';
 export * from './gate.js';
+export * from './health.js';
 export * from './loop.js';
 export * from './plan.js';
 export * from './run.js';
