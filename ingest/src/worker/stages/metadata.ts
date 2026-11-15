@@ -12,7 +12,7 @@
  * stage (see metadataFile.ts). The image reference has no gateway host (see image.ts).
  *
  * Social links from Jupiter's token answer are stored (cleaned like a file's links) only for coins
- * whose `metadata_file` stage is not done, with `socials_source` = `jupiter`; `decideSocials`
+ * whose file was not read (`socials_source` is not `metadata_file`), with source `jupiter`; `decideSocials`
  * (socials.ts) is the one rule, shared with the file stage.
  *
  * Description and image from Helius are written only while `metadata_file` is not done for the
@@ -216,19 +216,17 @@ export function createMetadataStage(deps: MetadataStageDeps): MetadataStage {
       }
       await replaceCoinIssues(ctx.db, coin.id, METADATA_ISSUE_KINDS, issues);
 
-      // 4. Social links from Jupiter, unless the coin's own file has been read (the record of launch).
+      // 4. Social links from Jupiter, unless the coin's own file was read (the record of launch).
       if (price.found && !price.invalid) {
-        const file = await ctx.db
-          .selectFrom('coin_stages')
-          .select('status')
-          .where('coin_id', '=', coin.id)
-          .where('stage', '=', 'metadata_file')
+        const stored = await ctx.db
+          .selectFrom('coins')
+          .select('socials_source')
+          .where('id', '=', coin.id)
           .executeTakeFirst();
         const decision = decideSocials({
           from: 'jupiter',
           links: { website: price.website, twitter: price.twitter, telegram: price.telegram },
-          fileStageDone: file?.status === 'done',
-          currentSource: null,
+          currentSource: stored?.socials_source ?? null,
         });
         if (decision) {
           // The condition is part of the UPDATE, so a file stage finishing in between is not undone.
@@ -240,17 +238,12 @@ export function createMetadataStage(deps: MetadataStageDeps): MetadataStage {
               updated_at: ctx.now(),
             })
             .where('id', '=', coin.id)
+            // The column is the guard: a file read in between has set `metadata_file`.
             .where((eb) =>
-              eb.not(
-                eb.exists(
-                  eb
-                    .selectFrom('coin_stages as f')
-                    .select(sql.lit(1).as('one'))
-                    .where('f.coin_id', '=', coin.id)
-                    .where('f.stage', '=', 'metadata_file')
-                    .where('f.status', '=', 'done'),
-                ),
-              ),
+              eb.or([
+                eb('socials_source', 'is', null),
+                eb('socials_source', '<>', 'metadata_file'),
+              ]),
             )
             .executeTakeFirst();
           if (Number(res.numUpdatedRows) === 1) {

@@ -16,7 +16,7 @@ describeDb('migration 0019 (socials_source)', () => {
     await t.drop();
   });
 
-  it('marks metadata_file for coins whose file stage is done, whatever their links, and leaves the rest null', async () => {
+  it('marks metadata_file for coins whose file stage is done and whose file was read (raw JSON stored), whatever their links, and leaves the rest null', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'mcp-mig-'));
     const before = (await readdir(DEFAULT_MIGRATIONS_DIR))
       .filter((f) => f.endsWith('.sql') && f < '0019')
@@ -24,12 +24,13 @@ describeDb('migration 0019 (socials_source)', () => {
     for (const f of before) await copyFile(join(DEFAULT_MIGRATIONS_DIR, f), join(dir, f));
     await migrate(t.url, { migrationsDir: dir });
 
-    const coin = async (addr: string, socials: object) =>
+    const coin = async (addr: string, socials: object, raw: object | null = { name: 'x' }) =>
       Number(
         (
           await sql<{ id: string }>`
-            insert into coins (chain, address, socials)
-            values ('solana', ${addr}, ${JSON.stringify(socials)}::jsonb)
+            insert into coins (chain, address, socials, metadata_raw)
+            values ('solana', ${addr}, ${JSON.stringify(socials)}::jsonb,
+              ${raw === null ? null : JSON.stringify(raw)}::jsonb)
             returning id::text as id`.execute(t.db)
         ).rows[0]!.id,
       );
@@ -42,10 +43,13 @@ describeDb('migration 0019 (socials_source)', () => {
     const failed = await coin('C', {});
     const skipped = await coin('D', {});
     const noStage = await coin('E', {});
+    // Done, but the file was never read (not found, invalid, too large, unsupported URI): no raw JSON.
+    const doneNotRead = await coin('F', {}, null);
     await stage(withLinks, 'done');
     await stage(noLinks, 'done');
     await stage(failed, 'failed');
     await stage(skipped, 'skipped');
+    await stage(doneNotRead, 'done');
 
     const result = await migrate(t.url);
     expect(result.applied).toEqual(['0019_socials_source']);
@@ -60,6 +64,7 @@ describeDb('migration 0019 (socials_source)', () => {
       `${failed}:null`,
       `${skipped}:null`,
       `${noStage}:null`,
+      `${doneNotRead}:null`,
     ]);
     // Only the two names are accepted.
     await expect(

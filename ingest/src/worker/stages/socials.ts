@@ -3,10 +3,13 @@
  *
  * The coin's own metadata file is the record of what the creator published at launch. Jupiter's
  * token answer carries the same three links as they stand now, possibly edited since. So:
- *   - a coin whose `metadata_file` stage is done keeps what the file gave, also when that is
- *     nothing (`socials_source` = `metadata_file`); Jupiter never overwrites it;
- *   - otherwise Jupiter's links are stored (`socials_source` = `jupiter`);
- *   - a file that arrives later replaces Jupiter's links.
+ *   - `socials_source` = `metadata_file` means the file was read (outcome `ok`): the coin keeps
+ *     what the file gave, also when that is nothing, and Jupiter never overwrites it;
+ *   - a file stage that ends done without reading the file (not found, invalid, too large,
+ *     unsupported URI) changes neither the links nor the source;
+ *   - Jupiter's links are stored (`socials_source` = `jupiter`) for every coin whose source is
+ *     not `metadata_file`;
+ *   - a file read later replaces Jupiter's links.
  * Both sources go through the same cleaning (`normalizeSocialUrl`) and the same record of what was
  * dropped (`droppedSocialLinks`).
  */
@@ -40,13 +43,14 @@ export function droppedSocialLinks(
 }
 
 export interface SocialsInput {
-  /** Who is asking: the file stage (its fetch finished) or the metadata stage (Jupiter's answer). */
+  /** Who is asking: the file stage (it read the file) or the metadata stage (Jupiter's answer). */
   from: SocialsSource;
-  /** The source's links as given, uncleaned. Null: the source gave nothing (a file that could not be read). */
+  /**
+   * The source's links as given, uncleaned. Null: the source had nothing to read (a file that was
+   * not found, invalid, too large or not fetchable; a mint Jupiter has no row for).
+   */
   links: Record<string, unknown> | null;
-  /** True when the coin's `metadata_file` stage is done, as the asker saw it. */
-  fileStageDone: boolean;
-  /** What the coin has stored now. */
+  /** What the coin has stored now: `metadata_file` means its file was read. */
   currentSource: SocialsSource | null;
 }
 
@@ -58,16 +62,11 @@ export interface SocialsDecision {
 
 /** The links to store, or null to leave the coin as it is. */
 export function decideSocials(i: SocialsInput): SocialsDecision | null {
-  if (i.links === null) {
-    // Jupiter had no row to read: nothing to add. A file that gave nothing (not found, invalid):
-    // the coin has no links from it, unless the file already gave some.
-    if (i.from === 'jupiter') return null;
-    return i.currentSource === 'metadata_file'
-      ? null
-      : { socials: {}, source: 'metadata_file', dropped: [] };
-  }
-  // The file is the record: once its stage is done, Jupiter is not asked to add to it.
-  if (i.from === 'jupiter' && i.fileStageDone) return null;
+  // Nothing was read: nothing is learned, so neither the links nor the source change.
+  if (i.links === null) return null;
+  // `metadata_file` means the file was read: the record of launch, whatever links it held, also
+  // none. Jupiter never overwrites it; a file read later replaces Jupiter's links.
+  if (i.from === 'jupiter' && i.currentSource === 'metadata_file') return null;
   const links = i.links;
   const kept = {
     twitter: normalizeSocialUrl(links['twitter']),

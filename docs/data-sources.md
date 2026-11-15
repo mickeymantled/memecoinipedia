@@ -218,9 +218,9 @@ Jupiter documents 0.5 requests a second without a key and 1 with a free key. A m
 
 A coin has up to three links in `coins.socials` (`website`, `twitter`, `telegram`), and `coins.socials_source` says where they came from: `metadata_file` or `jupiter`.
 
-1. **The coin's own metadata file** (`metadata_file` stage, one gateway request a coin) is the record of what the creator published at launch. It is the most trusted source. A coin whose file stage is done keeps the file's links, also when the file gave none, and its source is `metadata_file`. Jupiter never overwrites them.
-2. **Jupiter's token answer** (`metadata` stage, 100 coins a request, no extra request) carries the same three fields. It fills only coins whose file stage is not done, with source `jupiter`. Jupiter's links are what the token page shows now, and a token's owner can edit them after launch, so they say where the coin is today, not what it said at launch.
-3. **Order.** When a file arrives for a coin that holds Jupiter's links, the file's links replace them and the source becomes `metadata_file`.
+1. **The coin's own metadata file** (`metadata_file` stage, one gateway request a coin) is the record of what the creator published at launch. It is the most trusted source. `socials_source = metadata_file` means the file was read (outcome `ok`): the coin keeps the file's links, also when the file held none, and Jupiter never overwrites them. A file stage that ends done without reading the file (not found, invalid, too large, unsupported URI) learns nothing, so it changes neither the links nor the source.
+2. **Jupiter's token answer** (`metadata` stage, 100 coins a request, no extra request) carries the same three fields. It fills every coin whose source is not `metadata_file`, with source `jupiter`. Jupiter's links are what the token page shows now, and a token's owner can edit them after launch, so they say where the coin is today, not what it said at launch.
+3. **Order.** When a file is read for a coin that holds Jupiter's links, the file's links replace them and the source becomes `metadata_file`.
 
 Both sources go through the same link cleaning (a link is kept only as a full http(s) URL without credentials; anything else is dropped and recorded in the `social_links_dropped` issue, with its source). One function decides which links a coin ends up with, and both stages call it.
 

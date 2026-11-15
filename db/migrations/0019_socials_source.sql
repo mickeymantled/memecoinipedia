@@ -4,9 +4,13 @@
 ALTER TABLE coins ADD COLUMN socials_source text
   CHECK (socials_source IN ('metadata_file', 'jupiter'));
 
--- A coin whose file stage is done keeps what the file gave, also when that is nothing.
+-- `metadata_file` means the file was read. The stage ends done for outcomes that read nothing (not
+-- found, invalid, too large, unsupported URI) and stores the raw JSON only when it read the file, so a
+-- coin whose file stage is done and whose raw JSON is stored was read, whatever links it held (the same
+-- marker migration 0014 used to mark coins done).
 UPDATE coins SET socials_source = 'metadata_file'
-WHERE EXISTS (
-  SELECT 1 FROM coin_stages s
-  WHERE s.coin_id = coins.id AND s.stage = 'metadata_file' AND s.status = 'done'
-);
+WHERE metadata_raw IS NOT NULL
+  AND EXISTS (
+    SELECT 1 FROM coin_stages s
+    WHERE s.coin_id = coins.id AND s.stage = 'metadata_file' AND s.status = 'done'
+  );

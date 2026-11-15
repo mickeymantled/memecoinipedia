@@ -81,21 +81,6 @@ export function createMetadataFileStage(deps: MetadataFileStageDeps): Stage {
       }
 
       const issues: NewIssue[] = [];
-      // The file is the record of launch: whatever links it gave, including none, replace
-      // Jupiter's (`decideSocials`, shared with the metadata stage).
-      const stored = await ctx.db
-        .selectFrom('coins')
-        .select('socials_source')
-        .where('id', '=', coin.id)
-        .executeTakeFirst();
-      const decide = (links: Record<string, unknown> | null) =>
-        decideSocials({
-          from: 'metadata_file',
-          links,
-          // This stage is finishing now.
-          fileStageDone: true,
-          currentSource: stored?.socials_source ?? null,
-        });
       if (result.outcome !== 'ok') {
         issues.push({
           kind: `metadata_${result.outcome}`,
@@ -110,21 +95,16 @@ export function createMetadataFileStage(deps: MetadataFileStageDeps): Stage {
             })),
           },
         });
-        const none = decide(null);
-        if (none)
-          await ctx.db
-            .updateTable('coins')
-            .set({
-              socials: JSON.stringify(none.socials),
-              socials_source: none.source,
-              updated_at: ctx.now(),
-            })
-            .where('id', '=', coin.id)
-            .execute();
+        // The file was not read: neither the links nor their source change.
       } else {
         const meta = result.metadata!;
         const raw = result.raw;
-        const links = decide(raw ?? {})!;
+        // The file was read: its links, also none, are the record of launch and replace Jupiter's.
+        const links = decideSocials({
+          from: 'metadata_file',
+          links: raw ?? {},
+          currentSource: null,
+        })!;
         if (links.dropped.length > 0)
           issues.push({
             kind: 'social_links_dropped',

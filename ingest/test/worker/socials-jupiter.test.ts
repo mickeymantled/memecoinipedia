@@ -8,6 +8,7 @@ import { createRun, type Database } from '@memecoinipedia/db';
 import { createTestDatabase, type TestDatabase } from '@memecoinipedia/db/testing';
 import { sql, type Kysely } from 'kysely';
 import type { JupiterToken } from '../../src/sources/jupiter/client.js';
+import type { MetadataResult } from '../../src/sources/metadata/fetch.js';
 import { executeStage, type ExecuteOptions } from '../../src/worker/execute.js';
 import { StageRegistry } from '../../src/worker/stage.js';
 import { discoveredStage } from '../../src/worker/stages/discovered.js';
@@ -21,6 +22,7 @@ import { decideSocials } from '../../src/worker/stages/socials.js';
 import {
   adminUrl,
   asset,
+  badResult,
   describeDb,
   mintN,
   okResult,
@@ -39,40 +41,40 @@ const JUP = {
 const FILE = { website: 'https://file.example/', twitter: 'https://x.com/file_coin' };
 
 describe('decideSocials', () => {
-  const base = { fileStageDone: false, currentSource: null } as const;
-  it('stores Jupiter links for a coin whose file is not done, cleaned, with what was dropped', () => {
+  it('stores Jupiter links for a coin whose file was not read, cleaned, with what was dropped', () => {
     const d = decideSocials({
-      ...base,
       from: 'jupiter',
       links: { website: 'http://a.example/x', twitter: '@handle', telegram: null },
+      currentSource: null,
     });
     expect(d).toEqual({
       socials: { website: 'https://a.example/x' },
       source: 'jupiter',
       dropped: [{ field: 'twitter', value: '@handle' }],
     });
+    // Jupiter also refreshes its own earlier links.
+    expect(decideSocials({ from: 'jupiter', links: JUP, currentSource: 'jupiter' })).toMatchObject({
+      source: 'jupiter',
+    });
   });
-  it('leaves a coin with a finished file alone', () => {
-    expect(decideSocials({ ...base, from: 'jupiter', links: JUP, fileStageDone: true })).toBeNull();
-  });
-  it('does nothing when Jupiter gave no row', () => {
-    expect(decideSocials({ ...base, from: 'jupiter', links: null })).toBeNull();
-  });
-  it('lets the file replace, also with nothing; a second empty file does not wipe links the file gave', () => {
+  it('leaves a coin whose file was read alone', () => {
     expect(
-      decideSocials({ ...base, from: 'metadata_file', links: {}, currentSource: 'jupiter' }),
-    ).toEqual({ socials: {}, source: 'metadata_file', dropped: [] });
-    expect(
-      decideSocials({ ...base, from: 'metadata_file', links: null, currentSource: 'jupiter' }),
-    ).toEqual({ socials: {}, source: 'metadata_file', dropped: [] });
-    expect(
-      decideSocials({
-        ...base,
-        from: 'metadata_file',
-        links: null,
-        currentSource: 'metadata_file',
-      }),
+      decideSocials({ from: 'jupiter', links: JUP, currentSource: 'metadata_file' }),
     ).toBeNull();
+  });
+  it('does nothing when there was nothing to read, from either source', () => {
+    expect(decideSocials({ from: 'jupiter', links: null, currentSource: null })).toBeNull();
+    expect(
+      decideSocials({ from: 'metadata_file', links: null, currentSource: 'jupiter' }),
+    ).toBeNull();
+    expect(decideSocials({ from: 'metadata_file', links: null, currentSource: null })).toBeNull();
+  });
+  it('lets a file that was read replace Jupiter, also with nothing', () => {
+    expect(decideSocials({ from: 'metadata_file', links: {}, currentSource: 'jupiter' })).toEqual({
+      socials: {},
+      source: 'metadata_file',
+      dropped: [],
+    });
   });
 });
 
@@ -83,6 +85,8 @@ describeDb('social links from Jupiter', () => {
   let runId: number;
   let jupiterFor: (mint: string) => JupiterToken;
   let fileJson: Record<string, unknown>;
+  /** What the file fetch answers; the ok answer from `fileJson` when null. */
+  let fileResult: MetadataResult | null;
 
   const opts = (): ExecuteOptions => ({
     db,
@@ -99,7 +103,7 @@ describeDb('social links from Jupiter', () => {
       )
       .register(
         createMetadataFileStage({
-          fetchMetadata: async () => okResult(fileJson),
+          fetchMetadata: async () => fileResult ?? okResult(fileJson),
         }),
       ),
     now: () => new Date(),
@@ -148,6 +152,7 @@ describeDb('social links from Jupiter', () => {
     coinId = (await seedCoins(db, [M])).get(M)!;
     jupiterFor = (m) => token(m, JUP);
     fileJson = { ...FILE, description: 'From the file' };
+    fileResult = null;
   });
 
   it('a coin with no file gets Jupiter links, source jupiter', async () => {
@@ -221,6 +226,30 @@ describeDb('social links from Jupiter', () => {
     await runMeta();
     expect(await coin()).toMatchObject({ socials: {}, socials_source: 'jupiter' });
   });
+
+  describe.each(['not_found', 'invalid', 'too_large', 'unsupported_uri'] as const)(
+    'a file stage that ends done without reading the file (%s)',
+    (outcome) => {
+      it('changes neither the links nor the source of a coin that holds Jupiter links', async () => {
+        await runMeta();
+        fileResult = badResult(outcome);
+        expect(await runFile()).toMatchObject({ kind: 'done' });
+        expect(await coin()).toMatchObject({ socials: JUP, socials_source: 'jupiter' });
+      });
+
+      it('leaves the source null on a coin with no links, and a later metadata run fills it from Jupiter', async () => {
+        fileResult = badResult(outcome);
+        await runFile();
+        expect(await coin()).toMatchObject({ socials: {}, socials_source: null });
+        await runMeta();
+        expect(await coin()).toMatchObject({ socials: JUP, socials_source: 'jupiter' });
+        // And still fills it after the stage has been through the metadata stage already done.
+        await rerun();
+        await runMeta();
+        expect(await coin()).toMatchObject({ socials: JUP, socials_source: 'jupiter' });
+      });
+    },
+  );
 
   it('the rerun of a coin already done asks Jupiter once per 100 coins and Helius once per 1,000, and no gateway', async () => {
     await db.deleteFrom('coins').execute();
