@@ -14,7 +14,16 @@ export interface ParentCoin {
   description?: string | null;
   launched_at: number | null;
   ath_market_cap_usd: number | null;
-  ath_at: number | null;
+  /** Backed high (a manufactured spike cannot inflate it); null where not computed. */
+  ath_backed_market_cap_usd?: number | null;
+}
+
+/** The coin's size for ranking: the backed high when it is not null, else the stored ATH. */
+export function parentSize(c: {
+  ath_market_cap_usd: number | null;
+  ath_backed_market_cap_usd?: number | null;
+}): number {
+  return c.ath_backed_market_cap_usd ?? c.ath_market_cap_usd ?? 0;
 }
 
 // ---- Constants: every number that shapes the ranking lives here --------------------------------
@@ -69,8 +78,6 @@ export const W_WORD_IN_NAME = 35;
 export const W_WORD_IN_DESC = 25;
 /** Scaled by similarity (0.5 to 1): the weakest evidence, text overlap only. */
 export const W_NAME_SIMILARITY = 20;
-/** Its peak was over before this coin launched: a finished parent is likelier than a live rival. */
-export const W_ATH_BEFORE_LAUNCH = 8;
 /** Places in the returned list reserved by kind of evidence (the rest go to the best remaining).
  * One kind cannot take all ten: short fragments of a long ticker all contain, but only some of
  * them are the parent. Taken in this order, each kind's best by rank. */
@@ -198,6 +205,13 @@ export function usableTicker(t: string): boolean {
   return t.length >= MIN_TICKER_CHARS && !STOP_WORDS.has(t);
 }
 
+/** A multi-word name with the spaces removed, when that is usable as one word; else ''. */
+export function joinedName(normalisedName: string): string {
+  if (!normalisedName.includes(' ')) return '';
+  const j = normalisedName.replaceAll(' ', '');
+  return usableTicker(j) && coreName(normalisedName) !== '' ? j : '';
+}
+
 /** True when a normalised name may be matched as a whole phrase. */
 export function usableName(n: string): boolean {
   return n.length >= MIN_NAME_CHARS && coreName(n) !== '';
@@ -240,6 +254,9 @@ export function evidenceFor(
     parent.name.split(' ').length <= MAX_NAME_WORDS
   )
     needles.push(` ${parent.name} `);
+  // A description may write a two-word name as one word ("Moodeng" for "Moo Deng").
+  const joined = joinedName(parent.name);
+  if (joined !== '' && joined !== parent.ticker) needles.push(` ${joined} `);
   const wordInName = needles.some((n) => child.nameHay.includes(n));
   const wordInDescription = needles.some((n) => child.descHay.includes(n));
   let nameSimilarity = 0;
@@ -261,11 +278,7 @@ export function evidenceFor(
  * Score one possible parent for one coin, or null when there is no evidence at all. Does not
  * check eligibility (chain, listing, launch order): that is the pool's job.
  */
-export function scoreParent(
-  child: PreparedCoin,
-  parent: PreparedCoin,
-  facts: { childLaunchedAt: number | null; parentAthAt: number | null },
-): ParentScore | null {
+export function scoreParent(child: PreparedCoin, parent: PreparedCoin): ParentScore | null {
   const { coverage, ...evidence } = evidenceFor(child, parent);
   if (
     !evidence.tickerContains &&
@@ -279,12 +292,6 @@ export function scoreParent(
   if (evidence.wordInName) score += W_WORD_IN_NAME;
   else if (evidence.wordInDescription) score += W_WORD_IN_DESC;
   score += W_NAME_SIMILARITY * evidence.nameSimilarity;
-  if (
-    facts.childLaunchedAt !== null &&
-    facts.parentAthAt !== null &&
-    facts.parentAthAt < facts.childLaunchedAt
-  )
-    score += W_ATH_BEFORE_LAUNCH;
   return { score, evidence };
 }
 

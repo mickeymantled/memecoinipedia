@@ -100,28 +100,127 @@ describe('ParentIndex on planted families', () => {
       [...list.map((c) => c.ath_market_cap_usd!)].sort((a, b) => b - a),
     );
   });
+});
 
-  it('ATH before the coin launched ranks above ATH after, all else equal', () => {
-    const mk = (address: string, athDay: number): SyntheticCoin => ({
-      address,
-      ticker: 'FROOT',
-      name: 'Froot',
-      description: null,
-      launched_at: Date.UTC(2025, 0, 1),
-      ath_market_cap_usd: 500_000,
-      ath_at: Date.UTC(2025, 0, athDay),
+describe('ranking by size, one place per parent (#91)', () => {
+  const DAY = 86_400_000;
+  const D = (day: number) => Date.UTC(2025, 0, 1) + day * DAY;
+  const mk = (
+    address: string,
+    ticker: string,
+    name: string,
+    over: Partial<SyntheticCoin> = {},
+  ): SyntheticCoin => ({
+    address,
+    ticker,
+    name,
+    description: null,
+    launched_at: D(0),
+    ath_market_cap_usd: 1_000_000,
+    ath_at: D(1),
+    ...over,
+  });
+
+  it('a parent that peaks after the child launches beats copies that peaked before', () => {
+    const coins = [
+      // The real parent: launched 17 days before the child, peaks 3 days after it.
+      mk('REAL', 'ANSEM', 'Ansem', {
+        launched_at: D(0),
+        ath_market_cap_usd: 439_000_000,
+        ath_at: D(20),
+      }),
+      // Eight smaller copies that all peaked before the child launched, one named exactly alike.
+      ...Array.from({ length: 8 }, (_, i) =>
+        mk(`COPY${i}`, 'ANSEM', i === 0 ? 'Ansem' : `ansem ${i}`, {
+          ath_market_cap_usd: 1_400_000 + i * 600_000,
+          ath_at: D(2),
+        }),
+      ),
+      // Other, different possible parents the freed places can go to.
+      mk('OTHER1', 'BABYAN', 'zz1', { ath_market_cap_usd: 300_000 }),
+      mk('OTHER2', 'ANSE', 'zz2', { ath_market_cap_usd: 200_000 }),
+    ];
+    const kid = mk('KID', 'BABYANSEM', 'The Black Calf', { launched_at: D(17) });
+    const list = new ParentIndex(coins).candidatesFor(kid).map((c) => c.address);
+    expect(list[0]).toBe('REAL');
+    // Eight copies are one place, and the places they would have taken go to others.
+    expect(list.filter((a) => a.startsWith('COPY') || a === 'REAL')).toEqual(['REAL']);
+    expect(list).toEqual(expect.arrayContaining(['OTHER1', 'OTHER2']));
+  });
+
+  it('coins with the same name (different tickers) are one place, the larger kept', () => {
+    const coins = [
+      mk('BIG', 'GOATSEUS', 'Goatseus Maximus', { ath_market_cap_usd: 1_358_000_000 }),
+      mk('SMALL', 'GOATSEUSM', 'Goatseus Maximus', { ath_market_cap_usd: 770_000 }),
+      mk('TINY', 'GOATSXX', 'Goatseus Maximus', { ath_market_cap_usd: 110_000 }),
+    ];
+    const kid = mk('KID', 'BABYGOATSEUS', 'Baby Goatseus Maximus', { launched_at: D(30) });
+    expect(new ParentIndex(coins).candidatesFor(kid).map((c) => c.address)).toEqual(['BIG']);
+  });
+
+  it('a real second coin with the same ticker is not lost when it is the larger one', () => {
+    const coins = [
+      mk('OLDSMALL', 'ZAPP', 'Zapp old', { ath_market_cap_usd: 200_000 }),
+      mk('NEWBIG', 'ZAPP', 'Zapp new', { launched_at: D(5), ath_market_cap_usd: 90_000_000 }),
+    ];
+    const kid = mk('KID', 'BABYZAPP', 'Baby Zapp', { launched_at: D(10) });
+    expect(new ParentIndex(coins).candidatesFor(kid).map((c) => c.address)).toEqual(['NEWBIG']);
+  });
+
+  it('size is the backed high where it is filled, else the stored ATH', () => {
+    // Same evidence for all (same length, each inside the child's ticker).
+    const coins = [
+      mk('SPIKE', 'ZIGZAG', 'sp1', {
+        ath_market_cap_usd: 14_500_000,
+        ath_backed_market_cap_usd: 800_000,
+      }),
+      mk('REALONE', 'IGZAGM', 'rl2', {
+        ath_market_cap_usd: 3_000_000,
+        ath_backed_market_cap_usd: 2_000_000,
+      }),
+      mk('NOBACK', 'GZAGMA', 'nb3', { ath_market_cap_usd: 1_000_000 }),
+    ];
+    const kid = mk('KID', 'ZIGZAGMAX', 'child', { launched_at: D(9) });
+    const list = new ParentIndex(coins).candidatesFor(kid);
+    expect(list.map((c) => c.address)).toEqual(['REALONE', 'NOBACK', 'SPIKE']);
+    // The reported size is the one ranked on.
+    expect(list[2]!.ath_market_cap_usd).toBe(800_000);
+    // A coin is still listed by its stored ATH: stored under $100k stays out, backed or not.
+    const unlisted = mk('LOW', 'ZIGZAGM', 'lw', {
+      ath_market_cap_usd: 50_000,
+      ath_backed_market_cap_usd: 5_000_000,
     });
-    const i = new ParentIndex([mk('LATEATH', 20), mk('EARLYATH', 2)]);
-    const kid: SyntheticCoin = {
-      address: 'KID',
-      ticker: 'FROOT2',
-      name: 'x',
-      description: null,
-      launched_at: Date.UTC(2025, 0, 10),
-      ath_market_cap_usd: 1,
-      ath_at: null,
-    };
-    expect(i.candidatesFor(kid).map((c) => c.address)).toEqual(['EARLYATH', 'LATEATH']);
+    expect(new ParentIndex([unlisted]).candidatesFor(kid)).toEqual([]);
+  });
+
+  it('"Moo Tun": the real parent is not crowded out by BROTHER and MOO copies', () => {
+    const coins = [
+      mk('REAL', 'MOODENG', 'Moo Deng', { ath_market_cap_usd: 600_000_000, ath_at: D(40) }),
+      ...Array.from({ length: 4 }, (_, i) =>
+        mk(`BRO${i}`, 'BROTHER', `bro ${i}`, { ath_market_cap_usd: 2_000_000 + i }),
+      ),
+      ...Array.from({ length: 5 }, (_, i) =>
+        mk(`MOO${i}`, 'MOO', `moo ${i}`, { ath_market_cap_usd: 3_000_000 + i }),
+      ),
+    ];
+    const kid = mk('KID', 'MOOTUN', 'Moo Tun', {
+      launched_at: D(30),
+      description: 'The beloved brother of Moodeng',
+    });
+    const list = new ParentIndex(coins).candidatesFor(kid).map((c) => c.address);
+    // Returned (the evidence weights are unchanged: a MOO ticker inside MOOTUN still scores higher).
+    expect(list).toContain('REAL');
+    expect(list.filter((a) => a.startsWith('BRO'))).toHaveLength(1);
+    expect(list.filter((a) => a.startsWith('MOO'))).toHaveLength(1);
+  });
+
+  it('"Moo Tun" with another ticker: the description writes the two-word name as one word', () => {
+    const coins = [mk('REAL', 'MD', 'Moo Deng', { ath_market_cap_usd: 600_000_000 })];
+    const kid = mk('KID', 'QQQQ', 'Qqqq', {
+      launched_at: D(30),
+      description: 'The beloved brother of Moodeng',
+    });
+    expect(new ParentIndex(coins).candidatesFor(kid).map((c) => c.address)).toEqual(['REAL']);
   });
 });
 
@@ -279,6 +378,7 @@ async function insert(t: TestDb, coins: SyntheticCoin[], chain = 'solana'): Prom
           launched_at: c.launched_at === null ? null : new Date(c.launched_at),
           ath_market_cap_usd: c.ath_market_cap_usd,
           ath_at: c.ath_at === null ? null : new Date(c.ath_at),
+          ath_backed_market_cap_usd: c.ath_backed_market_cap_usd ?? null,
         })),
       )
       .execute();
@@ -327,6 +427,43 @@ describeDb('provider and evaluation on a throwaway database', () => {
     });
     const other = await ids(t, ['OTHER_PNUT']);
     expect(out.get(other[0]!.id)?.parent_candidates ?? []).toEqual([]);
+  });
+
+  it('ranks by the backed high from the database column, else the stored ATH', async () => {
+    const base = { description: null, launched_at: Date.UTC(2025, 5, 1), ath_at: null };
+    await insert(t, [
+      {
+        ...base,
+        address: 'BK_SPIKE',
+        ticker: 'QZIGZAG',
+        name: 'bk1',
+        ath_market_cap_usd: 14_500_000,
+        ath_backed_market_cap_usd: 800_000,
+      },
+      {
+        ...base,
+        address: 'BK_REAL',
+        ticker: 'ZIGZAGQ',
+        name: 'bk2',
+        ath_market_cap_usd: 3_000_000,
+        ath_backed_market_cap_usd: 2_000_000,
+      },
+      {
+        ...base,
+        address: 'BK_KID',
+        ticker: 'QZIGZAGQ',
+        name: 'bk kid',
+        launched_at: Date.UTC(2025, 6, 1),
+        ath_market_cap_usd: 1_000,
+        ath_backed_market_cap_usd: null,
+      },
+    ]);
+    const rows = await ids(t, ['BK_KID']);
+    const out = await createParentCandidateProvider(t.db)(rows);
+    expect(out.get(rows[0]!.id)!.parent_candidates!.map((c) => c.address)).toEqual([
+      'BK_REAL',
+      'BK_SPIKE',
+    ]);
   });
 
   it('is deterministic across providers and across calls', async () => {

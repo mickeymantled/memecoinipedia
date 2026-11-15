@@ -3,7 +3,6 @@ import {
   NAME_SIMILARITY_MIN,
   STOP_WORDS,
   TIE_BUCKET,
-  W_ATH_BEFORE_LAUNCH,
   W_NAME_SIMILARITY,
   W_TICKER_CONTAINS,
   W_TICKER_COVERAGE,
@@ -18,15 +17,10 @@ import {
   trigrams,
 } from '../src/classify/parent-score.js';
 
-const none: { childLaunchedAt: number | null; parentAthAt: number | null } = {
-  childLaunchedAt: null,
-  parentAthAt: null,
-};
 const score = (
   child: Parameters<typeof prepareCoin>[0],
   parent: Parameters<typeof prepareCoin>[0],
-  facts = none,
-) => scoreParent(prepareCoin(child), prepareCoin(parent), facts);
+) => scoreParent(prepareCoin(child), prepareCoin(parent));
 
 describe('normalisation', () => {
   it('tickers: NFKC, upper case, leading $ dropped, only letters and digits', () => {
@@ -147,11 +141,26 @@ describe('scoreParent evidence', () => {
   });
 });
 
+describe('joined names', () => {
+  it('a description may write a two-word name as one word', () => {
+    const s = score(
+      { ticker: 'MOOTUN', name: 'Moo Tun', description: 'The beloved brother of Moodeng' },
+      { ticker: 'MD', name: 'Moo Deng' },
+    );
+    expect(s?.evidence.wordInDescription).toBe(true);
+    // Only as a whole word: "moodengs" is another word.
+    const no = score(
+      { ticker: 'QQQ', name: 'Qqq', description: 'brother of moodengs' },
+      { ticker: 'MD', name: 'Moo Deng' },
+    );
+    expect(no).toBeNull();
+  });
+});
+
 describe('scoreParent weights', () => {
   it('weights keep the order: containment > whole word > similarity', () => {
     expect(W_TICKER_CONTAINS).toBeGreaterThan(W_WORD_IN_NAME + W_NAME_SIMILARITY);
     expect(W_WORD_IN_NAME).toBeGreaterThan(W_WORD_IN_DESC);
-    expect(W_ATH_BEFORE_LAUNCH).toBeLessThan(W_WORD_IN_DESC);
   });
 
   it('computes the score from the evidence, exactly', () => {
@@ -176,17 +185,6 @@ describe('scoreParent weights', () => {
       { ticker: 'PNUT', name: null },
     );
     expect(close!.score).toBeGreaterThan(loose!.score);
-  });
-
-  it('ATH before the coin launched adds a bonus; unknown times add nothing', () => {
-    const c = { ticker: 'BABYPNUT', name: null };
-    const p = { ticker: 'PNUT', name: null };
-    const base = score(c, p)!.score;
-    expect(score(c, p, { childLaunchedAt: 1000, parentAthAt: 500 })!.score).toBe(
-      base + W_ATH_BEFORE_LAUNCH,
-    );
-    expect(score(c, p, { childLaunchedAt: 1000, parentAthAt: 1500 })!.score).toBe(base);
-    expect(score(c, p, { childLaunchedAt: 1000, parentAthAt: null })!.score).toBe(base);
   });
 
   it('is a pure function: same input, same output', () => {

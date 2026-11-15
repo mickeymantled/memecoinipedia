@@ -21,6 +21,8 @@ import {
   usableTicker,
   words,
   coreName,
+  joinedName,
+  parentSize,
   type Evidence,
   type ParentCoin,
   type PreparedCoin,
@@ -63,12 +65,13 @@ export class ParentIndex {
   private readonly nameN: string[] = [];
   private readonly launch: number[] = [];
   private readonly ath: number[] = [];
-  private readonly athAt: (number | null)[] = [];
 
   /** Normalised ticker (usable ones only) to coins: forward containment and whole-word ticker. */
   private readonly byTicker: Postings = new Map();
   /** Normalised full name (usable ones only) to coins: whole-word name. */
   private readonly byName: Postings = new Map();
+  /** A multi-word name with the spaces removed (usable ones only): "Moodeng" for "Moo Deng". */
+  private readonly byJoined: Postings = new Map();
   /** 3-character runs of every ticker: finds tickers that contain a given one. */
   private readonly tickerTri: Postings = new Map();
   /** Name trigrams of the stop-word-stripped name: name similarity. */
@@ -84,11 +87,11 @@ export class ParentIndex {
     // coin and any set of positions sorts into rank order with a plain numeric sort. The result
     // does not depend on the order the coins arrive in.
     const kept = [...coins].filter(
-      (c) => c.launched_at !== null && (c.ath_market_cap_usd ?? -1) >= minAthUsd,
+      (c) => c.launched_at !== null && (c.ath_market_cap_usd ?? -1) >= minAthUsd, // listing: stored ATH
     );
     kept.sort(
       (a, b) =>
-        (b.ath_market_cap_usd ?? 0) - (a.ath_market_cap_usd ?? 0) ||
+        parentSize(b) - parentSize(a) ||
         a.launched_at! - b.launched_at! ||
         (a.address < b.address ? -1 : a.address > b.address ? 1 : 0),
     );
@@ -102,10 +105,11 @@ export class ParentIndex {
       this.tickerN.push(ticker);
       this.nameN.push(name);
       this.launch.push(c.launched_at!);
-      this.ath.push(c.ath_market_cap_usd ?? 0);
-      this.athAt.push(c.ath_at);
+      this.ath.push(parentSize(c));
       if (usableTicker(ticker)) add(this.byTicker, ticker, i);
       if (usableName(name) && words(name).length <= MAX_NAME_WORDS) add(this.byName, name, i);
+      const joined = joinedName(name);
+      if (joined !== '' && joined !== ticker) add(this.byJoined, joined, i);
       if (ticker.length >= MIN_TICKER_CHARS)
         for (const g of ticker3grams(ticker)) add(this.tickerTri, g, i);
       for (const g of trigrams(coreName(name))) add(this.nameTri, g, i);
@@ -180,7 +184,10 @@ export class ParentIndex {
       [p.descWords, inDesc],
     ] as const) {
       for (const word of w)
-        if (usableTicker(word)) this.addAll(into, this.byTicker.get(word), child);
+        if (usableTicker(word)) {
+          this.addAll(into, this.byTicker.get(word), child);
+          this.addAll(into, this.byJoined.get(word), child);
+        }
       for (let a = 0; a < w.length; a++)
         for (let n = 1; n <= MAX_NAME_WORDS && a + n <= w.length; n++)
           this.addAll(into, this.byName.get(w.slice(a, a + n).join(' ')), child);
@@ -226,6 +233,36 @@ export class ParentIndex {
     };
   }
 
+  /**
+   * One place per distinct parent. Candidates with the same normalised ticker are one group and
+   * the largest (by size, then earlier launch, then address) is kept; then the same for the same
+   * normalised name among the survivors. A coin with an empty ticker (or name) is in no group.
+   * Input is in rank order and the output keeps that order.
+   */
+  private distinctParents<T extends RankKey & { i: number }>(ranked: T[]): T[] {
+    const keepLargest = (items: T[], key: (i: number) => string): T[] => {
+      const best = new Map<string, T>();
+      for (const r of items) {
+        const k = key(r.i);
+        if (k === '') continue;
+        const cur = best.get(k);
+        if (!cur || this.largerThan(r, cur)) best.set(k, r);
+      }
+      return items.filter((r) => {
+        const k = key(r.i);
+        return k === '' || best.get(k) === r;
+      });
+    };
+    const byTicker = keepLargest(ranked, (i) => this.tickerN[i]!);
+    return keepLargest(byTicker, (i) => this.nameN[i]!);
+  }
+
+  private largerThan(a: RankKey, b: RankKey): boolean {
+    if (a.ath !== b.ath) return a.ath > b.ath;
+    if (a.launchedAt !== b.launchedAt) return a.launchedAt < b.launchedAt;
+    return a.address < b.address;
+  }
+
   /** Up to MAX_CANDIDATES earlier listed coins on this chain that could be the parent, best first. */
   candidatesFor(child: ChildCoin): ParentCandidate[] {
     if (child.launched_at === null) return [];
@@ -233,10 +270,7 @@ export class ParentIndex {
     if (p.ticker === '' && p.name === '') return [];
     const ranked: Array<RankKey & { i: number; evidence: Evidence }> = [];
     for (const i of this.select(this.gather(child, p))) {
-      const s = scoreParent(p, this.preparedAt(i), {
-        childLaunchedAt: child.launched_at,
-        parentAthAt: this.athAt[i] ?? null,
-      });
+      const s = scoreParent(p, this.preparedAt(i));
       if (s)
         ranked.push({
           i,
@@ -248,11 +282,12 @@ export class ParentIndex {
         });
     }
     ranked.sort(compareRanked);
+    const distinct = this.distinctParents(ranked);
     // Reserved places by kind of evidence, then the best of the rest; returned in rank order.
-    const chosen = new Set<(typeof ranked)[number]>();
+    const chosen = new Set<(typeof distinct)[number]>();
     const reserve = (places: number, has: (e: Evidence) => boolean): void => {
       let n = 0;
-      for (const r of ranked) {
+      for (const r of distinct) {
         if (n >= places) break;
         if (!chosen.has(r) && has(r.evidence)) {
           chosen.add(r);
@@ -263,11 +298,11 @@ export class ParentIndex {
     reserve(RESERVED_CONTAINMENT, (e) => e.tickerContains);
     reserve(RESERVED_WHOLE_WORD, (e) => e.wordInName || e.wordInDescription);
     reserve(RESERVED_SIMILARITY, (e) => e.nameSimilarity > 0);
-    for (const r of ranked) {
+    for (const r of distinct) {
       if (chosen.size >= MAX_CANDIDATES) break;
       chosen.add(r);
     }
-    return ranked
+    return distinct
       .filter((r) => chosen.has(r))
       .map(({ i }) => ({
         address: this.addr[i]!,
@@ -298,7 +333,15 @@ export async function loadParentIndexes(
 ): Promise<Map<string, ParentIndex>> {
   const rows = await db
     .selectFrom('coins')
-    .select(['chain', 'address', 'ticker', 'name', 'launched_at', 'ath_market_cap_usd', 'ath_at'])
+    .select([
+      'chain',
+      'address',
+      'ticker',
+      'name',
+      'launched_at',
+      'ath_market_cap_usd',
+      'ath_backed_market_cap_usd',
+    ])
     .where('ath_market_cap_usd', '>=', minAthUsd)
     .where('launched_at', 'is not', null)
     .orderBy('id')
@@ -311,7 +354,7 @@ export async function loadParentIndexes(
       name: r.name,
       launched_at: ms(r.launched_at),
       ath_market_cap_usd: r.ath_market_cap_usd,
-      ath_at: ms(r.ath_at),
+      ath_backed_market_cap_usd: r.ath_backed_market_cap_usd,
     };
     const l = byChain.get(r.chain);
     if (l) l.push(c);
@@ -360,7 +403,7 @@ export function createParentCandidateProvider(
           'description',
           'launched_at',
           'ath_market_cap_usd',
-          'ath_at',
+          'ath_backed_market_cap_usd',
         ])
         .where('id', 'in', ids.slice(s, s + 1000))
         .execute();
@@ -375,7 +418,7 @@ export function createParentCandidateProvider(
                 description: r.description,
                 launched_at: ms(r.launched_at),
                 ath_market_cap_usd: r.ath_market_cap_usd,
-                ath_at: ms(r.ath_at),
+                ath_backed_market_cap_usd: r.ath_backed_market_cap_usd,
               })
             : [],
         });
