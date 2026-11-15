@@ -214,6 +214,16 @@ Found against the live API while writing the Codex.io client (task A2a), with 14
 
 Jupiter documents 0.5 requests a second without a key and 1 with a free key. A metadata run sent about 1,250 requests at exactly that rate and met HTTP 429 after half an hour, so the client paces at 80% of the documented rate. A 429 pauses every Jupiter request of the process until `Retry-After` (capped at 5 minutes; 60 seconds when the header is absent), and the request that met it is sent again afterwards. Five pauses in a row with no answer between them stop the run with one message, and the coins are retried later with no attempt spent. Pauses and the seconds paused are counted in the usage tally and shown by the status reports.
 
+### Social links: where they come from and whom to trust
+
+A coin has up to three links in `coins.socials` (`website`, `twitter`, `telegram`), and `coins.socials_source` says where they came from: `metadata_file` or `jupiter`.
+
+1. **The coin's own metadata file** (`metadata_file` stage, one gateway request a coin) is the record of what the creator published at launch. It is the most trusted source. A coin whose file stage is done keeps the file's links, also when the file gave none, and its source is `metadata_file`. Jupiter never overwrites them.
+2. **Jupiter's token answer** (`metadata` stage, 100 coins a request, no extra request) carries the same three fields. It fills only coins whose file stage is not done, with source `jupiter`. Jupiter's links are what the token page shows now, and a token's owner can edit them after launch, so they say where the coin is today, not what it said at launch.
+3. **Order.** When a file arrives for a coin that holds Jupiter's links, the file's links replace them and the source becomes `metadata_file`.
+
+Both sources go through the same link cleaning (a link is kept only as a full http(s) URL without credentials; anything else is dropped and recorded in the `social_links_dropped` issue, with its source). One function decides which links a coin ends up with, and both stages call it.
+
 ## 9. Sources
 
 - Dune Spellbook, Solana DEX trades model: https://github.com/duneanalytics/spellbook/tree/main/dbt_subprojects/solana/models/_sector/dex
