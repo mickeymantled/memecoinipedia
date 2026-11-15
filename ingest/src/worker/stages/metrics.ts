@@ -5,7 +5,7 @@
  *
  * The stage version is `METRICS_VERSION` from the candle module, so a change to the
  * metric rules (which raises that number) runs coins that are done again, with no edit here.
- * A coin with no stored bar is `done` too, with a null ATH and the flag `no_candles`
+ * A coin with no bar in any pool that counts is `done` too, with a null ATH and the flag `no_candles`
  * (`noCandlesResult`). The stage requires `candles` (see `STAGE_REQUIRES`): a coin whose
  * candles failed is not given metrics.
  *
@@ -48,7 +48,7 @@ export const metricsStage: Stage = {
   async run(ctx, coin) {
     const result = await computeMetricsForCoin({ db: ctx.db, clock: ctx.now }, { id: coin.id });
     if (!result.ok) return failed(`${result.reason}: ${result.message}`, result.retry);
-    // A coin with no stored bar ends `done` with a null ATH and the `no_candles` flag:
+    // A coin with no bar in any pool that counts ends `done` with a null ATH and the `no_candles` flag:
     // retrying cannot make bars appear, so it is neither failed nor retried.
     const leftOut =
       result.sidePoolsLeftOut > 0 ? { sidePoolsLeftOut: result.sidePoolsLeftOut } : {};

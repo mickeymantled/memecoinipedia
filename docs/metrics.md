@@ -155,7 +155,7 @@ This is a price pattern, not proof of intent. Graduated pump.fun pools cannot ha
 | `rugPattern` | boolean |
 | `flags` | list of flag names, each at most once, sorted alphabetically |
 
-Flags: `ath_before_launch`, `bad_bar`, `duplicate_bar`, `implausible_market_cap`, `no_candles` (set by the metrics stage for a coin with no stored bar at all; every metric is then null), `no_qualifying_window`, `peak_outside_minute_coverage`, `screened_out` (set by the fetcher, not by the metric library).
+Flags: `ath_before_launch`, `bad_bar`, `duplicate_bar`, `implausible_market_cap`, `no_candles` (set by the metrics stage for a coin with no bar in any pool that counts, section 1: a coin whose only bars sit on left-out side pools gets it too; every metric is then null), `no_qualifying_window`, `peak_outside_minute_coverage`, `screened_out` (set by the fetcher, not by the metric library).
 
 The exact TypeScript shapes are in `/ingest/src/metrics/types.ts`.
 

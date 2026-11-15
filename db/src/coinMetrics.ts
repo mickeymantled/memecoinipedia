@@ -296,7 +296,7 @@ export type StoreMetricsOutcome =
  * Reads the stored bars, runs `compute` (the metric library's
  * `computeCoinMetrics`) and writes the result and status to the coin. Returns a
  * failure, writing nothing, when the coin is unknown or has no launch time. A coin
- * with no stored bars is a `no_candles` failure too, unless the caller gives
+ * with no bars in any pool that counts is a `no_candles` failure too, unless the caller gives
  * `noBars`: then that result is written (status `unknown`, as `decideStatus` says for
  * no bars) and the outcome is a success with a `barCount` of 0.
  */
