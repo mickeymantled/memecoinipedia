@@ -28,8 +28,9 @@ export interface SampleCell {
 }
 
 export const DEFAULT_CELLS: readonly SampleCell[] = [
+  { name: '30k-50k', minUsd: 30_000, maxUsd: 50_000, quota: 5 },
   { name: '50k-100k', minUsd: 50_000, maxUsd: 100_000, quota: 10 },
-  { name: '100k-1M', minUsd: 100_000, maxUsd: 1_000_000, quota: 35 },
+  { name: '100k-1M', minUsd: 100_000, maxUsd: 1_000_000, quota: 30 },
   { name: '1M-10M', minUsd: 1_000_000, maxUsd: 10_000_000, quota: 20 },
   { name: '10M+', minUsd: 10_000_000, maxUsd: null, quota: 15 },
 ];
@@ -187,9 +188,14 @@ const csvCell = (v: string | number | boolean | null): string => {
   return /[",\n\r]/.test(t) ? `"${t.replaceAll('"', '""')}"` : t;
 };
 
-/** The sample as CSV text, one row per coin. */
+const isoOrNull = (ms: number | null | undefined): string | null =>
+  ms === null || ms === undefined ? null : new Date(ms).toISOString();
+
+export const SAMPLE_CSV_HEADER =
+  'mint,half_year,cell,probe,probe_missing,created_at,creator,graduated_at,hours,peak_max_usd,peak_p999_usd,peak_at';
+
+/** The sample as CSV text, one row per coin, times as ISO 8601. */
 export function sampleToCsv(sample: readonly SampleRow[]): string {
-  const header = 'mint,half_year,cell,probe,probe_missing,created_at,rough_peak_usd';
   const lines = sample.map((s) =>
     [
       s.mint,
@@ -197,11 +203,16 @@ export function sampleToCsv(sample: readonly SampleRow[]): string {
       s.cell,
       s.probe,
       s.probeMissing,
-      s.row ? new Date(s.row.createdAtMs).toISOString() : null,
-      s.row?.roughPeakUsd ?? null,
+      isoOrNull(s.row?.createdAtMs),
+      s.row?.creator ?? null,
+      isoOrNull(s.row?.graduatedAtMs),
+      s.row?.hours ?? null,
+      s.row?.peakMaxUsd ?? null,
+      s.row?.peakP999Usd ?? null,
+      isoOrNull(s.row?.peakAtMs),
     ]
       .map(csvCell)
       .join(','),
   );
-  return [header, ...lines].join('\n') + '\n';
+  return [SAMPLE_CSV_HEADER, ...lines].join('\n') + '\n';
 }

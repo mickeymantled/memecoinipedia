@@ -7,31 +7,29 @@ import {
   GRADUATE_COLUMNS,
   MAX_BAD_ROW_REASONS,
   parseCsvRecords,
-  parseTimestampMs,
   readGraduates,
   readGraduatesFile,
   readGraduatesFiles,
 } from '../../src/discovery/index.js';
 
 const HEADER = GRADUATE_COLUMNS.join(',');
-const A = '9BB6NFEcjBCtnNLFko2FqVQBq8HHM13kCyYcdQbgpump';
-const B = '2qEHjDLDLbuBgRYvsxhc5D6uDWAivNFZGan56P1tpump';
-const POOL = 'HfVxfzmAPWER3LQ8VbDcbch6ACchbpuyXv3ujgRtpump';
+const A = 'DtgDZb83TqywcuBuWE89jx4k5Y7b6nQ4GYJq3Wd61JQQ';
+const B = 'B13ZCbbvAR8f8uF4rv627CYKfLzub6tzHusynAMsVTuE';
+const C = '2YiCXUoCvJVhSSk1USLcW8o5RioKzLsz3RCWPa9Vpump';
+const CREATOR = '9JRuyRU2wbe9CVHobQ54Yvcaxjzsy3wtpd89snn63a2D';
 
-/** A row with the 11 columns in header order; `over` replaces fields by column name. */
+/** A row with the 9 columns in header order; `over` replaces fields by column name. */
 function line(over: Partial<Record<(typeof GRADUATE_COLUMNS)[number], string>> = {}): string {
   const base: Record<string, string> = {
     mint: A,
-    created_at: '2024-10-17 12:00:00',
+    created_at: '1710511110',
     creator: '',
-    graduated_at: '',
-    graduation_pool: '',
-    graduation_venue: '',
-    rough_peak_usd: '',
-    rough_peak_at: '',
-    trade_count: '',
-    first_trade_at: '',
-    last_trade_at: '',
+    graduated_at: '1710535885',
+    hours: '',
+    peak_max_usd: '',
+    peak_p999_usd: '',
+    peak_at: '',
+    last_hour: '',
     ...over,
   };
   return GRADUATE_COLUMNS.map((c) => base[c]).join(',');
@@ -105,128 +103,152 @@ describe('parseCsvRecords', () => {
   });
 });
 
-describe('parseTimestampMs', () => {
-  const t = Date.UTC(2024, 9, 17, 12, 0, 0);
-  it.each([
-    ['2024-10-17 12:00:00', t],
-    ['2024-10-17 12:00:00 UTC', t],
-    ['2024-10-17 12:00:00.123', t + 123],
-    ['2024-10-17 12:00:00.123456 UTC', t + 123],
-    ['2024-10-17 12:00:00.5', t + 500],
-    ['2024-10-17T12:00:00', t],
-    ['2024-10-17T12:00:00Z', t],
-    ['2024-10-17T12:00:00.250Z', t + 250],
-    ['2024-10-17T14:00:00+02:00', t],
-    ['2024-10-17T07:30:00-04:30', t],
-    ['2024-02-29 00:00:00', Date.UTC(2024, 1, 29)],
-  ])('reads %s', (text, ms) => {
-    expect(parseTimestampMs(text)).toBe(ms);
-  });
-
-  it.each([
-    [''],
-    ['2024-10-17'],
-    ['2023-02-29 00:00:00'],
-    ['2024-13-01 00:00:00'],
-    ['2024-10-17 24:00:00'],
-    ['2024-10-17 12:60:00'],
-    ['2024-10-17 12:00:60'],
-    ['2024-10-17 12:00:00 PST'],
-    ['2024-10-17T12:00:00+25:00'],
-    ['2024-10-17T12:00:00+0200'],
-    ['yesterday'],
-    ['1729166400'],
-    ['2024-10-17 12:00:00; drop'],
-  ])('rejects %j', (text) => {
-    expect(parseTimestampMs(text)).toBeNull();
-  });
-});
-
 describe('readGraduates', () => {
-  it('reads the hand-written fixture, including an all-empty optional row', async () => {
+  it('reads the live-format fixture: exponent-form whole numbers, and a coin with no prices', async () => {
     const r = await readGraduatesFile(
-      new URL('../sources/fixtures/dune/graduates.csv', import.meta.url).pathname,
+      new URL('../sources/fixtures/dune/discovery-page.csv', import.meta.url).pathname,
     );
     expect(r.bad.count).toBe(0);
-    expect(r.rows).toHaveLength(2);
-    expect(r.rows[0]).toMatchObject({
+    expect(r.rows).toHaveLength(3);
+    expect(r.rows[0]).toEqual({
       mint: A,
-      createdAtMs: Date.UTC(2024, 9, 17, 12),
-      graduationVenue: 'pumpswap',
-      roughPeakUsd: 2578681053.5,
-      tradeCount: 2_500_000,
-      firstTradeAtMs: Date.UTC(2024, 9, 17, 12, 1),
+      createdAtMs: 1_710_511_110_000,
+      creator: CREATOR,
+      graduatedAtMs: 1_710_535_885_000,
+      hours: 6453,
+      peakMaxUsd: 2_842_978,
+      peakP999Usd: 2_423_294,
+      peakAtMs: 1_711_926_000_000,
+      lastHourMs: 1_793_145_600_000,
+      roughPeakUsd: 2_423_294,
     });
-    expect(r.rows[1]).toMatchObject({
-      mint: B,
-      createdAtMs: Date.UTC(2024, 10, 3, 8, 30, 0, 123),
-      creator: null,
-      graduatedAtMs: null,
+    expect(r.rows[1]).toMatchObject({ mint: B, hours: 360, roughPeakUsd: 275_398 });
+    expect(r.rows[2]).toMatchObject({
+      mint: C,
+      hours: 0,
+      peakMaxUsd: null,
+      peakP999Usd: null,
       roughPeakUsd: null,
-      tradeCount: null,
+      peakAtMs: null,
+      lastHourMs: null,
     });
   });
 
-  it('accepts the columns in any order and ignores extra columns', async () => {
-    const cols = [...GRADUATE_COLUMNS].reverse();
-    const text = `${[...cols, 'extra'].join(',')}\n${cols.map((c) => (c === 'mint' ? A : c === 'created_at' ? '2024-01-02 03:04:05' : '')).join(',')},zzz\n`;
+  it('parses exponent-form numbers exactly and as whole numbers', async () => {
+    const text = [
+      HEADER,
+      line({ created_at: '1.71051111e+09', graduated_at: '1.710535885E+9', hours: '6.453e+03' }),
+    ].join('\n');
+    const r = await readGraduates(chunks(text));
+    expect(r.rows[0]).toMatchObject({
+      createdAtMs: 1_710_511_110_000,
+      graduatedAtMs: 1_710_535_885_000,
+      hours: 6453,
+    });
+  });
+
+  it('needs only mint, created_at and graduated_at in the header, in any order', async () => {
+    const text = `graduated_at,peak_p999_usd,mint,created_at\n1710535885,150000,${A},1710511110\n`;
     const r = await readGraduates(chunks(text));
     expect(r.rows).toHaveLength(1);
-    expect(r.rows[0]!.mint).toBe(A);
+    expect(r.rows[0]).toMatchObject({
+      mint: A,
+      roughPeakUsd: 150_000,
+      hours: null,
+      creator: null,
+    });
   });
 
-  it('reports bad rows with their line numbers and goes on', async () => {
+  it('ignores extra columns', async () => {
+    const r = await readGraduates(chunks(`${HEADER},extra\n${line()},zzz\n`));
+    expect(r.rows).toHaveLength(1);
+  });
+
+  it('rejects a row without created_at or graduated_at, with the line number, and goes on', async () => {
     const text = [
       HEADER,
       line(), // line 2: good
-      line({ mint: 'not a mint' }), // 3
-      line({ created_at: '' }), // 4
-      line({ created_at: 'soon' }), // 5
-      line({ rough_peak_usd: 'NaN' }), // 6
-      line({ rough_peak_usd: '1e999' }), // 7
-      line({ rough_peak_usd: '-5' }), // 8
-      line({ rough_peak_usd: '0x10' }), // 9
-      line({ trade_count: '1.5' }), // 10
-      line({ trade_count: '-1' }), // 11
-      line({ graduation_venue: 'a b; drop' }), // 12
-      line({ creator: 'zz' }), // 13
-      `${A},2024-01-01 00:00:00,too,few`, // 14
-      line() + ',extra', // 15
-      `${line()}`.replace(A, `"${A}`), // 16: unterminated quote swallows the rest
+      line({ created_at: '' }), // 3
+      line({ graduated_at: '' }), // 4
+      line({ mint: 'not a mint' }), // 5
+      line({ mint: B }), // 6: good
     ].join('\n');
     const r = await readGraduates(chunks(text));
-    expect(r.rows).toHaveLength(1);
-    expect(r.records).toBe(15);
-    expect(r.bad.count).toBe(14);
-    expect(r.bad.stored.map((b) => b.line)).toEqual([
-      3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+    expect(r.rows.map((x) => x.mint)).toEqual([A, B]);
+    expect(r.records).toBe(5);
+    expect(r.bad.stored.map((b) => [b.line, b.reason.split(':')[0]])).toEqual([
+      [3, 'created_at'],
+      [4, 'graduated_at'],
+      [5, 'mint'],
     ]);
-    const byLine = Object.fromEntries(r.bad.stored.map((b) => [b.line, b.reason]));
-    expect(byLine[3]).toMatch(/^mint/);
-    expect(byLine[4]).toMatch(/^created_at/);
-    expect(byLine[5]).toMatch(/^created_at/);
-    expect(byLine[6]).toMatch(/^rough_peak_usd/);
-    expect(byLine[7]).toMatch(/^rough_peak_usd/);
-    expect(byLine[8]).toMatch(/negative/);
-    expect(byLine[9]).toMatch(/^rough_peak_usd/);
-    expect(byLine[10]).toMatch(/^trade_count/);
-    expect(byLine[11]).toMatch(/^trade_count/);
-    expect(byLine[12]).toMatch(/^graduation_venue/);
-    expect(byLine[13]).toMatch(/^creator/);
-    expect(byLine[14]).toMatch(/expected 11 columns, found 4/);
-    expect(byLine[15]).toMatch(/expected 11 columns, found 12/);
-    expect(byLine[16]).toMatch(/malformed quoting/);
   });
 
-  it('accepts plain, signed-free decimals and exponent notation for the peak', async () => {
+  it('rejects values that are not strict numbers or not whole where a whole number is needed', async () => {
     const text = [
       HEADER,
-      line({ mint: A, rough_peak_usd: '1.2E7' }),
-      line({ mint: B, rough_peak_usd: '125000' }),
-      line({ mint: POOL, rough_peak_usd: '0' }),
+      line({ created_at: '1710511110.5' }), // 2: not whole
+      line({ created_at: 'soon' }), // 3
+      line({ created_at: '0' }), // 4
+      line({ created_at: '1e12' }), // 5: not epoch seconds
+      line({ created_at: '2024-03-15 12:00:00' }), // 6: not seconds
+      line({ hours: '1.5' }), // 7
+      line({ hours: '-1' }), // 8
+      line({ hours: 'NaN' }), // 9
+      line({ peak_p999_usd: 'Infinity' }), // 10
+      line({ peak_p999_usd: '1e999' }), // 11
+      line({ peak_p999_usd: '-5' }), // 12
+      line({ peak_max_usd: '0x10' }), // 13
+      line({ peak_at: '1710511110.25' }), // 14
+      line({ last_hour: 'x' }), // 15
+      line({ creator: 'zz' }), // 16
     ].join('\n');
     const r = await readGraduates(chunks(text));
-    expect(r.rows.map((x) => x.roughPeakUsd)).toEqual([12_000_000, 125_000, 0]);
+    expect(r.rows).toHaveLength(0);
+    expect(r.bad.count).toBe(15);
+    const byLine = Object.fromEntries(r.bad.stored.map((b) => [b.line, b.reason.split(':')[0]]));
+    expect(byLine).toEqual({
+      2: 'created_at',
+      3: 'created_at',
+      4: 'created_at',
+      5: 'created_at',
+      6: 'created_at',
+      7: 'hours',
+      8: 'hours',
+      9: 'hours',
+      10: 'peak_p999_usd',
+      11: 'peak_p999_usd',
+      12: 'peak_p999_usd',
+      13: 'peak_max_usd',
+      14: 'peak_at',
+      15: 'last_hour',
+      16: 'creator',
+    });
+  });
+
+  it('rejects a row with the wrong column count and a row with bad quoting', async () => {
+    const text = [
+      HEADER,
+      `${A},1710511110,too,few`,
+      line() + ',extra',
+      line().replace(A, `"${A}`),
+    ].join('\n');
+    const r = await readGraduates(chunks(text));
+    expect(r.rows).toHaveLength(0);
+    const byLine = Object.fromEntries(r.bad.stored.map((b) => [b.line, b.reason]));
+    expect(byLine[2]).toMatch(/expected 9 columns, found 4/);
+    expect(byLine[3]).toMatch(/expected 9 columns, found 10/);
+    expect(byLine[4]).toMatch(/malformed quoting/);
+  });
+
+  it('sets roughPeakUsd to peak_p999_usd, not to the maximum', async () => {
+    const r = await readGraduates(
+      chunks([HEADER, line({ peak_max_usd: '9e+09', peak_p999_usd: '120000' })].join('\n')),
+    );
+    expect(r.rows[0]).toMatchObject({
+      peakMaxUsd: 9e9,
+      peakP999Usd: 120_000,
+      roughPeakUsd: 120_000,
+    });
   });
 
   it('stores at most 100 reasons but counts every bad row', async () => {
@@ -261,7 +283,7 @@ describe('readGraduates', () => {
   it('throws on a bad header or an empty file', async () => {
     await expect(readGraduates(chunks(''))).rejects.toBeInstanceOf(CsvHeaderError);
     await expect(readGraduates(chunks('mint,created_at\n'))).rejects.toThrow(
-      /missing columns: creator/,
+      /missing columns: graduated_at/,
     );
     await expect(readGraduates(chunks(`${HEADER},mint\n`))).rejects.toThrow(/repeats/);
   });

@@ -4,6 +4,7 @@ import {
   nearestRank,
   PEAK_THRESHOLDS_USD,
   sizeTargetSet,
+  sizeTotals,
 } from '../../src/discovery/index.js';
 import { row, shuffled } from './helpers.js';
 
@@ -30,7 +31,13 @@ describe('nearestRank', () => {
   });
 });
 
-describe('sizeTargetSet thresholds', () => {
+describe('thresholds', () => {
+  it('are $30k, $50k, $80k, $100k, $125k, $1M, $10M and $100M', () => {
+    expect([...PEAK_THRESHOLDS_USD]).toEqual([
+      30_000, 50_000, 80_000, 100_000, 125_000, 1_000_000, 10_000_000, 100_000_000,
+    ]);
+  });
+
   const at = (peak: number | null, i: number) => row(`m${i}`, JAN, peak);
 
   it('counts a coin at a threshold, and not one cent below it', () => {
@@ -38,7 +45,6 @@ describe('sizeTargetSet thresholds', () => {
       const [m] = sizeTargetSet([at(t, 1), at(t - 0.01, 2)]);
       expect(m!.graduated).toBe(2);
       expect(m!.reached[String(t)]).toBe(1);
-      // The coin one cent below does not reach this threshold, but the coin at it does.
       for (const other of PEAK_THRESHOLDS_USD) {
         if (other < t) expect(m!.reached[String(other)]).toBeGreaterThanOrEqual(1);
         if (other > t) expect(m!.reached[String(other)]).toBe(0);
@@ -48,6 +54,8 @@ describe('sizeTargetSet thresholds', () => {
 
   it('counts the exact boundary values in every cumulative bucket', () => {
     const peaks = [
+      29_999.99,
+      30_000,
       49_999.99,
       50_000,
       79_999,
@@ -62,8 +70,9 @@ describe('sizeTargetSet thresholds', () => {
       1e8,
     ];
     const [m] = sizeTargetSet(peaks.map(at));
-    expect(m!.graduated).toBe(12);
+    expect(m!.graduated).toBe(14);
     expect(m!.reached).toEqual({
+      '30000': 13,
       '50000': 11,
       '80000': 9,
       '100000': 7,
@@ -77,7 +86,9 @@ describe('sizeTargetSet thresholds', () => {
   it('counts a coin with no rough peak as graduated and below every threshold', () => {
     const [m] = sizeTargetSet([at(null, 1), at(0, 2), at(60_000, 3)]);
     expect(m!.graduated).toBe(3);
+    expect(m!.reached['30000']).toBe(1);
     expect(m!.reached['50000']).toBe(1);
+    expect(m!.reached['80000']).toBe(0);
   });
 
   it('returns nothing for an empty list', () => {
@@ -85,7 +96,7 @@ describe('sizeTargetSet thresholds', () => {
   });
 });
 
-describe('sizeTargetSet months', () => {
+describe('months', () => {
   it('uses the UTC month of created_at, at the boundary to the second', () => {
     const sizes = sizeTargetSet([
       row('a', '2024-01-31T23:59:59Z', 1),
@@ -109,83 +120,82 @@ describe('sizeTargetSet months', () => {
       ['2025-01', 0],
       ['2025-02', 1],
     ]);
-    expect(sizes[1]!.tradesPerCoin).toBeNull();
+    expect(sizes[1]!.hours).toBeNull();
     expect(sizes[1]!.reached['50000']).toBe(0);
   });
 });
 
-describe('sizeTargetSet statistics', () => {
-  const DAY = 86_400_000;
-  const big = (i: number, trades: number | null, days: number | null, peak = 100_000) =>
-    row(`m${i}`, JAN, peak, {
-      tradeCount: trades,
-      firstTradeAtMs: days === null ? null : Date.parse(JAN),
-      lastTradeAtMs: days === null ? null : Date.parse(JAN) + days * DAY,
-    });
+describe('hours statistics', () => {
+  const big = (i: number, hours: number | null, peak: number | null = 100_000) =>
+    row(`m${i}`, JAN, peak, { hours });
 
-  it('uses nearest-rank percentiles over coins at $100k or more only', () => {
+  it('uses nearest-rank percentiles of hours over coins at $100k or more only', () => {
     const rows = [
-      ...Array.from({ length: 10 }, (_, i) => big(i, (i + 1) * 100, i + 1)),
-      big(50, 5_000_000, 900, 99_999.99), // under $100k: not in the statistics
-      big(51, 5_000_000, 900, null as unknown as number), // no peak: not in the statistics
+      ...Array.from({ length: 10 }, (_, i) => big(i, (i + 1) * 100)),
+      big(50, 5_000_000, 99_999.99), // under $100k: not in the statistic
+      big(51, 5_000_000, null), // no peak: not in the statistic
     ];
     const [m] = sizeTargetSet(rows);
-    expect(m!.tradesPerCoin).toEqual({ n: 10, median: 500, p90: 900, p99: 1000, max: 1000 });
-    expect(m!.daysBetweenFirstAndLastTrade).toEqual({ n: 10, median: 5, p90: 9, p99: 10, max: 10 });
+    expect(m!.hours).toEqual({ n: 10, median: 500, p90: 900, p99: 1000, max: 1000 });
   });
 
-  it('leaves out coins with missing or inconsistent data, per statistic', () => {
-    const [m] = sizeTargetSet([
-      big(1, 10, 2),
-      big(2, null, 4), // no trade count: only in the days statistic
-      big(3, 30, null), // no times: only in the trades statistic
-      row('m4', JAN, 200_000, {
-        tradeCount: 40,
-        firstTradeAtMs: Date.parse(JAN) + DAY,
-        lastTradeAtMs: Date.parse(JAN), // last before first: left out of days
-      }),
-    ]);
-    expect(m!.tradesPerCoin).toMatchObject({ n: 3, max: 40, median: 30 });
-    expect(m!.daysBetweenFirstAndLastTrade).toMatchObject({ n: 2, max: 4, median: 2 });
+  it('leaves out coins with no hours value, and says how many were used', () => {
+    const [m] = sizeTargetSet([big(1, 10), big(2, null), big(3, 30), big(4, 0)]);
+    expect(m!.hours).toMatchObject({ n: 3, max: 30, median: 10 });
   });
 
-  it('keeps fractional days', () => {
-    const [m] = sizeTargetSet([
-      row('a', JAN, 1e6, { tradeCount: 1, firstTradeAtMs: 0, lastTradeAtMs: DAY / 2 }),
-    ]);
-    expect(m!.daysBetweenFirstAndLastTrade!.median).toBe(0.5);
-  });
-
-  it('gives null statistics when no coin reaches $100k', () => {
-    const [m] = sizeTargetSet([big(1, 10, 2, 99_999)]);
-    expect(m!.tradesPerCoin).toBeNull();
-    expect(m!.daysBetweenFirstAndLastTrade).toBeNull();
+  it('is null when no coin reaches $100k', () => {
+    const [m] = sizeTargetSet([big(1, 10, 99_999)]);
+    expect(m!.hours).toBeNull();
   });
 });
 
-describe('sizeTargetSet order', () => {
+describe('sizeTotals', () => {
+  it('counts every coin across months and takes the statistic over all of them', () => {
+    const rows = [
+      row('a', '2024-01-10T00:00:00Z', 150_000, { hours: 10 }),
+      row('b', '2024-05-10T00:00:00Z', 2_000_000, { hours: 30 }),
+      row('c', '2025-01-10T00:00:00Z', 40_000, { hours: 99 }),
+      row('d', '2025-01-11T00:00:00Z', null),
+    ];
+    const t = sizeTotals(rows);
+    expect(t.month).toBe('total');
+    expect(t.graduated).toBe(4);
+    expect(t.reached).toMatchObject({ '30000': 3, '100000': 2, '1000000': 1, '10000000': 0 });
+    expect(t.hours).toEqual({ n: 2, median: 10, p90: 30, p99: 30, max: 30 });
+    // The month rows add up to the totals row.
+    const months = sizeTargetSet(rows);
+    expect(months.reduce((s, m) => s + m.graduated, 0)).toBe(t.graduated);
+    expect(months.reduce((s, m) => s + (m.reached['100000'] as number), 0)).toBe(
+      t.reached['100000'],
+    );
+  });
+
+  it('is zeros for an empty list', () => {
+    expect(sizeTotals([])).toMatchObject({ graduated: 0, hours: null });
+  });
+});
+
+describe('order', () => {
   it('gives the same output in any row order', () => {
     const rows = Array.from({ length: 200 }, (_, i) =>
       row(`m${i}`, `2024-${String((i % 12) + 1).padStart(2, '0')}-10T00:00:00Z`, i * 7_000, {
-        tradeCount: i * 3,
-        firstTradeAtMs: 0,
-        lastTradeAtMs: i * 3_600_000,
+        hours: i * 3,
       }),
     );
     const base = sizeTargetSet(rows);
     for (const seed of [1, 2, 3]) expect(sizeTargetSet(shuffled(rows, seed))).toEqual(base);
+    expect(sizeTotals(shuffled(rows, 9))).toEqual(sizeTotals(rows));
   });
 });
 
 describe('formatSizingTable', () => {
-  it('prints one line per month under a header', () => {
-    const text = formatSizingTable(
-      sizeTargetSet([
-        row('a', JAN, 1e6, { tradeCount: 5, firstTradeAtMs: 0, lastTradeAtMs: 86_400_000 }),
-      ]),
-    );
-    const lines = text.split('\n');
-    expect(lines).toHaveLength(2);
+  it('prints one line per month under a header, and the totals row last', () => {
+    const rows = [row('a', JAN, 1e6, { hours: 5 })];
+    const lines = formatSizingTable(sizeTargetSet(rows), sizeTotals(rows)).split('\n');
+    expect(lines).toHaveLength(3);
+    expect(lines[0]).toContain('>=30k');
     expect(lines[1]!.startsWith('2025-01\t1\t')).toBe(true);
+    expect(lines[2]!.startsWith('total\t1\t')).toBe(true);
   });
 });

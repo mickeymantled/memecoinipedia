@@ -1,18 +1,24 @@
 /**
- * Reader for the CSV that `graduates.sql` returns: one row per graduated coin.
+ * Reader for the CSV that `discovery.sql` returns: one row per graduated coin.
  *
- * Columns: mint, created_at, creator, graduated_at, graduation_pool, graduation_venue,
- * rough_peak_usd, rough_peak_at, trade_count, first_trade_at, last_trade_at. Any column but
- * `mint` and `created_at` may be empty. The header must name all eleven (any order).
+ * Columns, in this order: mint, created_at, creator, graduated_at, hours, peak_max_usd,
+ * peak_p999_usd, peak_at, last_hour. The four time columns are epoch seconds (UTC), whole
+ * numbers. `hours` is the number of hours with a price in Dune's hourly table; 0 when the coin has
+ * none, and then the peak columns and the two hour columns are empty. `peak_p999_usd` (the 99.9th
+ * percentile of the hourly prices times one billion) is the rough peak used for sizing and the
+ * sample; `peak_max_usd` can be a bad print.
+ *
+ * Required in the header and in every row: `mint`, `created_at`, `graduated_at`. The other
+ * columns may be empty, or absent from the header (a download with `columns=` leaves some out).
+ * Header order does not matter.
+ *
+ * Dune writes whole numbers in exponent form (`1.71051111e+09`). They are exact: numbers are
+ * parsed as numbers, and a whole number is required where one is expected.
  *
  * The parse is streaming: input chunks are turned into records one at a time, so a large file is
  * never held as text. Quoted fields (with `""` escapes and embedded newlines) are handled even
  * though no column holds free text. A bad row is collected with its line number and a reason
  * and the read goes on; at most 100 reasons are stored, and the count is always exact.
- *
- * Timestamps become epoch milliseconds (UTC): `YYYY-MM-DD HH:MM:SS[.fff]` with an optional
- * ` UTC` suffix, or ISO 8601 (`YYYY-MM-DDTHH:MM:SS[.fff]` with `Z`, an offset, or none, which
- * is read as UTC). Numbers are parsed strictly: plain decimal or exponent notation, finite.
  */
 import fs from 'node:fs';
 
@@ -21,28 +27,33 @@ export const GRADUATE_COLUMNS = [
   'created_at',
   'creator',
   'graduated_at',
-  'graduation_pool',
-  'graduation_venue',
-  'rough_peak_usd',
-  'rough_peak_at',
-  'trade_count',
-  'first_trade_at',
-  'last_trade_at',
+  'hours',
+  'peak_max_usd',
+  'peak_p999_usd',
+  'peak_at',
+  'last_hour',
 ] as const;
+
+export const REQUIRED_COLUMNS = ['mint', 'created_at', 'graduated_at'] as const;
+
+type Column = (typeof GRADUATE_COLUMNS)[number];
 
 export interface GraduateRow {
   mint: string;
   /** Epoch milliseconds, UTC. */
   createdAtMs: number;
   creator: string | null;
-  graduatedAtMs: number | null;
-  graduationPool: string | null;
-  graduationVenue: string | null;
+  graduatedAtMs: number;
+  /** Hours with a price in Dune's hourly table. Null when the column is empty or absent. */
+  hours: number | null;
+  /** Highest hourly price times one billion. Can be a bad print. */
+  peakMaxUsd: number | null;
+  /** 99.9th percentile of the hourly prices times one billion. */
+  peakP999Usd: number | null;
+  peakAtMs: number | null;
+  lastHourMs: number | null;
+  /** The rough peak used for sizing and the sample: always `peakP999Usd`. */
   roughPeakUsd: number | null;
-  roughPeakAtMs: number | null;
-  tradeCount: number | null;
-  firstTradeAtMs: number | null;
-  lastTradeAtMs: number | null;
 }
 
 export interface BadRow {
@@ -183,44 +194,18 @@ export async function* parseCsvRecords(source: AsyncIterable<Chunk>): AsyncGener
 // Field parsers -----------------------------------------------------------
 
 const BASE58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
-const VENUE = /^[A-Za-z0-9_.-]{1,40}$/;
 const NUMBER = /^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$/;
-const INTEGER = /^\d{1,15}$/;
-const SQL_TS = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(?: UTC)?$/;
-const ISO_TS =
-  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(Z|[+-]\d{2}:\d{2})?$/;
-
-/** Epoch ms for a timestamp string, or null when it is not one of the accepted forms. */
-export function parseTimestampMs(text: string): number | null {
-  const m = ISO_TS.exec(text) ?? SQL_TS.exec(text);
-  if (!m) return null;
-  const [y, mo, d, h, mi, s] = m.slice(1, 7).map(Number) as [
-    number,
-    number,
-    number,
-    number,
-    number,
-    number,
-  ];
-  if (h > 23 || mi > 59 || s > 59) return null;
-  const ms = m[7] ? Number(m[7].padEnd(3, '0').slice(0, 3)) : 0;
-  const t = Date.UTC(y, mo - 1, d, h, mi, s, ms);
-  const check = new Date(t);
-  if (check.getUTCFullYear() !== y || check.getUTCMonth() !== mo - 1 || check.getUTCDate() !== d) {
-    return null;
-  }
-  const zone = m[8];
-  if (zone === undefined || zone === 'Z') return t;
-  const sign = zone.startsWith('-') ? -1 : 1;
-  const oh = Number(zone.slice(1, 3));
-  const om = Number(zone.slice(4, 6));
-  if (oh > 23 || om > 59) return null;
-  return t - sign * (oh * 60 + om) * 60_000;
-}
 
 class FieldError extends Error {}
 
 const blank = (v: string): boolean => v.trim() === '';
+
+function number(name: string, v: string): number {
+  const t = v.trim();
+  const n = Number(t);
+  if (!NUMBER.test(t) || !Number.isFinite(n)) throw new FieldError(`${name}: not a number`);
+  return n;
+}
 
 function optText(name: string, v: string, pattern: RegExp): string | null {
   if (blank(v)) return null;
@@ -229,46 +214,49 @@ function optText(name: string, v: string, pattern: RegExp): string | null {
   return t;
 }
 
-function optTime(name: string, v: string): number | null {
-  if (blank(v)) return null;
-  const t = parseTimestampMs(v.trim());
-  if (t === null) throw new FieldError(`${name}: not a timestamp`);
-  return t;
+/** Epoch seconds, a whole number, as milliseconds. */
+function seconds(name: string, v: string): number {
+  const n = number(name, v);
+  if (!Number.isInteger(n) || n <= 0 || n >= 1e11) {
+    throw new FieldError(`${name}: not a whole number of epoch seconds`);
+  }
+  return n * 1000;
 }
 
-function optNumber(name: string, v: string): number | null {
+const optSeconds = (name: string, v: string): number | null => (blank(v) ? null : seconds(name, v));
+
+function optUsd(name: string, v: string): number | null {
   if (blank(v)) return null;
-  const t = v.trim();
-  const n = Number(t);
-  if (!NUMBER.test(t) || !Number.isFinite(n)) throw new FieldError(`${name}: not a number`);
+  const n = number(name, v);
   if (n < 0) throw new FieldError(`${name}: negative`);
   return n;
 }
 
-function optCount(name: string, v: string): number | null {
+function optHours(name: string, v: string): number | null {
   if (blank(v)) return null;
-  const t = v.trim();
-  if (!INTEGER.test(t)) throw new FieldError(`${name}: not a non-negative integer`);
-  return Number(t);
+  const n = number(name, v);
+  if (!Number.isInteger(n) || n < 0)
+    throw new FieldError(`${name}: not a non-negative whole number`);
+  return n;
 }
 
-function toRow(get: (name: (typeof GRADUATE_COLUMNS)[number]) => string): GraduateRow {
-  const mintRaw = get('mint').trim();
-  if (!BASE58.test(mintRaw)) throw new FieldError('mint: missing or not a base58 address');
-  const created = optTime('created_at', get('created_at'));
-  if (created === null) throw new FieldError('created_at: missing');
+function toRow(get: (name: Column) => string): GraduateRow {
+  const mint = get('mint').trim();
+  if (!BASE58.test(mint)) throw new FieldError('mint: missing or not a base58 address');
+  if (blank(get('created_at'))) throw new FieldError('created_at: missing');
+  if (blank(get('graduated_at'))) throw new FieldError('graduated_at: missing');
+  const p999 = optUsd('peak_p999_usd', get('peak_p999_usd'));
   return {
-    mint: mintRaw,
-    createdAtMs: created,
+    mint,
+    createdAtMs: seconds('created_at', get('created_at')),
     creator: optText('creator', get('creator'), BASE58),
-    graduatedAtMs: optTime('graduated_at', get('graduated_at')),
-    graduationPool: optText('graduation_pool', get('graduation_pool'), BASE58),
-    graduationVenue: optText('graduation_venue', get('graduation_venue'), VENUE),
-    roughPeakUsd: optNumber('rough_peak_usd', get('rough_peak_usd')),
-    roughPeakAtMs: optTime('rough_peak_at', get('rough_peak_at')),
-    tradeCount: optCount('trade_count', get('trade_count')),
-    firstTradeAtMs: optTime('first_trade_at', get('first_trade_at')),
-    lastTradeAtMs: optTime('last_trade_at', get('last_trade_at')),
+    graduatedAtMs: seconds('graduated_at', get('graduated_at')),
+    hours: optHours('hours', get('hours')),
+    peakMaxUsd: optUsd('peak_max_usd', get('peak_max_usd')),
+    peakP999Usd: p999,
+    peakAtMs: optSeconds('peak_at', get('peak_at')),
+    lastHourMs: optSeconds('last_hour', get('last_hour')),
+    roughPeakUsd: p999,
   };
 }
 
@@ -292,7 +280,7 @@ export async function readGraduates(
   for await (const rec of parseCsvRecords(source)) {
     if (index === null) {
       const names = rec.fields.map((f) => f.trim());
-      const missing = GRADUATE_COLUMNS.filter((c) => !names.includes(c));
+      const missing = REQUIRED_COLUMNS.filter((c) => !names.includes(c));
       if (missing.length > 0)
         throw new CsvHeaderError(`Header is missing columns: ${missing.join(', ')}`);
       if (new Set(names).size !== names.length)
@@ -311,7 +299,10 @@ export async function readGraduates(
     }
     try {
       const idx = index;
-      const row = toRow((name) => rec.fields[idx.get(name) as number] ?? '');
+      const row = toRow((name) => {
+        const at = idx.get(name);
+        return at === undefined ? '' : (rec.fields[at] ?? '');
+      });
       if (options.onRow) options.onRow(row);
       else rows.push(row);
     } catch (err) {

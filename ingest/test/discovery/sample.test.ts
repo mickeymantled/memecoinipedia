@@ -12,8 +12,8 @@ import { row, shuffled } from './helpers.js';
 
 const sha = (m: string) => createHash('sha256').update(m).digest('hex');
 
-/** Mid-points of the four cells, in USD. */
-const PEAK = { c50: 70_000, c100: 500_000, c1m: 5_000_000, c10m: 50_000_000 } as const;
+/** Mid-points of the five cells, in USD. */
+const PEAK = { c30: 40_000, c50: 70_000, c100: 500_000, c1m: 5_000_000, c10m: 50_000_000 } as const;
 const HY_DATE: Record<string, string> = {
   '2024-H1': '2024-03-01T00:00:00Z',
   '2024-H2': '2024-09-01T00:00:00Z',
@@ -40,12 +40,13 @@ const count = (s: SampleRow[], hy: string, cell: string) =>
 const probes20 = Array.from({ length: 20 }, (_, i) => `probe-${i}`);
 
 describe('quota table', () => {
-  it('draws 10, 35, 20 and 15 per half-year, and 500 coins with 20 probes', () => {
+  it('draws 5, 10, 30, 20 and 15 per half-year, and 500 coins with 20 probes', () => {
     const rows = [...plenty(), ...probes20.map((p) => row(p, HY_DATE['2025-H1']!, PEAK.c1m))];
     const s = drawSample(rows, { probes: probes20 });
     for (const hy of DEFAULT_HALF_YEARS) {
+      expect(count(s, hy, '30k-50k')).toBe(5);
       expect(count(s, hy, '50k-100k')).toBe(10);
-      expect(count(s, hy, '100k-1M')).toBe(35);
+      expect(count(s, hy, '100k-1M')).toBe(30);
       expect(count(s, hy, '1M-10M')).toBe(20);
       expect(count(s, hy, '10M+')).toBe(15);
     }
@@ -77,7 +78,9 @@ describe('cell and half-year boundaries', () => {
     drawSample([row('x', created, peak)], {});
 
   it('puts a coin at a lower bound in the cell above, and one cent below in the cell below', () => {
-    expect(one(49_999.99)).toEqual([]);
+    expect(one(29_999.99)).toEqual([]);
+    expect(one(30_000)[0]!.cell).toBe('30k-50k');
+    expect(one(49_999.99)[0]!.cell).toBe('30k-50k');
     expect(one(50_000)[0]!.cell).toBe('50k-100k');
     expect(one(99_999.99)[0]!.cell).toBe('50k-100k');
     expect(one(100_000)[0]!.cell).toBe('100k-1M');
@@ -111,17 +114,19 @@ describe('fill rule', () => {
   it('adds the other cells shortfall to the $100k to $1M cell of the same half-year', () => {
     const hy = '2025-H1';
     const rows = [
+      ...coins('z', hy, PEAK.c30, 2), // short by 3
       ...coins('a', hy, PEAK.c50, 4), // short by 6
       ...coins('b', hy, PEAK.c100, 100), // plenty
       ...coins('c', hy, PEAK.c1m, 20), // exactly full
       ...coins('d', hy, PEAK.c10m, 2), // short by 13
     ];
     const s = drawSample(rows);
+    expect(count(s, hy, '30k-50k')).toBe(2);
     expect(count(s, hy, '50k-100k')).toBe(4);
     expect(count(s, hy, '1M-10M')).toBe(20);
     expect(count(s, hy, '10M+')).toBe(2);
-    expect(count(s, hy, '100k-1M')).toBe(35 + 6 + 13);
-    expect(s).toHaveLength(4 + 20 + 2 + 54);
+    expect(count(s, hy, '100k-1M')).toBe(30 + 3 + 6 + 13);
+    expect(s).toHaveLength(2 + 4 + 20 + 2 + 52);
   });
 
   it('takes what exists when the fill cell is short too', () => {
@@ -136,7 +141,7 @@ describe('fill rule', () => {
       ...coins('b', '2025-H1', PEAK.c100, 100),
       ...coins('c', '2025-H2', PEAK.c1m, 1),
     ]);
-    expect(count(s, '2025-H1', '100k-1M')).toBe(80); // 35 plus 45 of shortfall, from its own half-year only
+    expect(count(s, '2025-H1', '100k-1M')).toBe(80); // 30 plus 50 of shortfall, from its own half-year only
     expect(count(s, '2025-H2', '100k-1M')).toBe(0);
     expect(count(s, '2025-H2', '1M-10M')).toBe(1);
   });
@@ -144,7 +149,7 @@ describe('fill rule', () => {
   it('gives a half-year with no coins no rows and does not disturb the others', () => {
     const s = drawSample(coins('b', '2024-H1', PEAK.c100, 100));
     expect(s.every((r) => r.halfYear === '2024-H1')).toBe(true);
-    expect(s).toHaveLength(80); // 35 plus the 45 of shortfall from the three empty cells
+    expect(s).toHaveLength(80); // 30 plus the 50 of shortfall from the four empty cells
     for (const hy of DEFAULT_HALF_YEARS.slice(1))
       expect(s.filter((r) => r.halfYear === hy)).toEqual([]);
   });
@@ -189,7 +194,7 @@ describe('probes', () => {
     const byHash = [...pool].sort((a, b) => (sha(a.mint) < sha(b.mint) ? -1 : 1));
     const probes = byHash.slice(0, 5).map((r) => r.mint);
     const s = drawSample(pool, { probes });
-    expect(count(s, hy, '100k-1M')).toBe(55); // quota 35 plus 45 of shortfall is 80, but only 55 coins are left
+    expect(count(s, hy, '100k-1M')).toBe(55); // quota 30 plus 50 of shortfall is 80, but only 55 coins are left
     expect(s.filter((r) => r.probe)).toHaveLength(5);
     expect(s.length).toBe(5 + 55);
     expect(new Set(s.map((r) => r.mint)).size).toBe(s.length);
@@ -255,12 +260,31 @@ describe('determinism', () => {
 });
 
 describe('sampleToCsv', () => {
-  it('writes one line per coin under a header', () => {
-    const s = drawSample([row('a', '2025-02-01T00:00:00Z', 1e6)], { probes: ['gone'] });
+  it('writes one line per coin under the header, with times as ISO 8601', () => {
+    const full = row('a', '2025-02-01T00:00:00Z', 1e6, {
+      creator: 'CreatorX',
+      hours: 77,
+      peakMaxUsd: 2e6,
+      peakAtMs: Date.parse('2025-03-01T12:00:00Z'),
+    });
+    const s = drawSample([full], { probes: ['gone'] });
     const lines = sampleToCsv(s).trim().split('\n');
-    expect(lines[0]).toBe('mint,half_year,cell,probe,probe_missing,created_at,rough_peak_usd');
-    expect(lines[1]).toBe('gone,,,true,true,,');
-    expect(lines[2]).toBe('a,2025-H1,1M-10M,false,false,2025-02-01T00:00:00.000Z,1000000');
+    expect(lines[0]).toBe(
+      'mint,half_year,cell,probe,probe_missing,created_at,creator,graduated_at,hours,peak_max_usd,peak_p999_usd,peak_at',
+    );
+    expect(lines[1]).toBe('gone,,,true,true,,,,,,,');
+    expect(lines[2]).toBe(
+      'a,2025-H1,1M-10M,false,false,2025-02-01T00:00:00.000Z,CreatorX,2025-02-01T01:00:00.000Z,77,2000000,1000000,2025-03-01T12:00:00.000Z',
+    );
+  });
+
+  it('leaves optional fields empty', () => {
+    const lines = sampleToCsv(drawSample([row('b', '2025-02-01T00:00:00Z', 60_000)]))
+      .trim()
+      .split('\n');
+    expect(lines[1]).toBe(
+      'b,2025-H1,50k-100k,false,false,2025-02-01T00:00:00.000Z,,2025-02-01T01:00:00.000Z,,60000,60000,',
+    );
   });
 
   it('quotes a field that needs it', () => {

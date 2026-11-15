@@ -1,23 +1,24 @@
 import type { GraduateRow } from '../../src/discovery/index.js';
 
+/** A graduate with the given rough peak (`peak_p999_usd`). Graduation is an hour after creation. */
 export function row(
   mint: string,
   created: string,
   peak: number | null,
   extra: Partial<GraduateRow> = {},
 ): GraduateRow {
+  const createdAtMs = Date.parse(created);
   return {
     mint,
-    createdAtMs: Date.parse(created),
+    createdAtMs,
     creator: null,
-    graduatedAtMs: null,
-    graduationPool: null,
-    graduationVenue: null,
+    graduatedAtMs: createdAtMs + 3_600_000,
+    hours: null,
+    peakMaxUsd: peak,
+    peakP999Usd: peak,
+    peakAtMs: null,
+    lastHourMs: null,
     roughPeakUsd: peak,
-    roughPeakAtMs: null,
-    tradeCount: null,
-    firstTradeAtMs: null,
-    lastTradeAtMs: null,
     ...extra,
   };
 }
