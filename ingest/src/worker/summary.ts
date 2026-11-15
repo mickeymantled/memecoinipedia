@@ -125,10 +125,22 @@ export function formatSummary(s: RunSummary, stageOrder: readonly StageName[]): 
     const e = s.estimate[p as keyof Estimate];
     const a = s.actual[p];
     const est = e
-      ? `${fmt(e.requests)} requests${e.credits !== undefined ? `, ${fmt(e.credits)} credits` : ''}`
+      ? [
+          e.requests !== undefined ? `${fmt(e.requests)} requests` : null,
+          e.credits !== undefined ? `${fmt(e.credits)} credits` : null,
+          e.units !== undefined ? `${fmt(Math.round(e.units))} units` : null,
+        ]
+          .filter((x) => x !== null)
+          .join(', ')
       : 'no estimate';
     const act = a
-      ? `${fmt(a.requests)} requests${p === 'helius' ? `, ${fmt(a.units)} credits` : ''}`
+      ? `${fmt(a.requests)} requests${
+          p === 'helius'
+            ? `, ${fmt(a.units)} credits`
+            : p === 'codex'
+              ? `, ${fmt(Math.round(a.units))} units`
+              : ''
+        }`
       : '0 requests';
     lines.push(`  ${p}: estimated ${est}; actual ${act}`);
   }

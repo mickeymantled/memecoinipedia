@@ -10,9 +10,9 @@ import {
   finishStage,
   groupStageFailures,
   listCoinsNotDone,
-  replaceCoinIssues,
   requeueFailed,
 } from '../src/stages.js';
+import { replaceCoinIssues } from '../src/dataIssues.js';
 import { createTestDatabase, type TestDatabase } from '../src/testing.js';
 import { adminUrl, describeDb } from './helpers.js';
 
@@ -288,6 +288,142 @@ describeDb('stage tracking', () => {
     expect(await groupStageFailures(t.db, ['metadata'])).toEqual([
       { stage: 'metadata', status: 'failed', reason: 'metadata_unreachable', coins: 2 },
     ]);
+  });
+
+  it('stores detail on done, clears it on failed and skipped and on a new claim', async () => {
+    const c1 = await claim('metadata', after(10));
+    if (c1.status !== 'claimed') throw new Error('expected a claim');
+    expect(
+      await finishStage(t.db, {
+        coinId: coin,
+        stage: 'metadata',
+        attempt: c1.attempt,
+        outcome: { status: 'done', detail: { path: 'light', units: 12.5 } },
+        now: after(11),
+      }),
+    ).toBe(true);
+    expect((await row()).detail).toEqual({ path: 'light', units: 12.5 });
+
+    // A higher version runs the stage again: the old detail goes at once.
+    const c2 = await claim('metadata', after(20), 2);
+    if (c2.status !== 'claimed') throw new Error('expected a claim');
+    expect((await row()).detail).toBeNull();
+    await finishStage(t.db, {
+      coinId: coin,
+      stage: 'metadata',
+      attempt: c2.attempt,
+      outcome: { status: 'done', detail: { path: 'full' } },
+      now: after(21),
+    });
+    expect((await row()).detail).toEqual({ path: 'full' });
+
+    // Failed and skipped never keep one, even if the caller passes one.
+    const c3 = await claim('metadata', after(30), 3);
+    if (c3.status !== 'claimed') throw new Error('expected a claim');
+    await finishStage(t.db, {
+      coinId: coin,
+      stage: 'metadata',
+      attempt: c3.attempt,
+      outcome: { status: 'failed', error: 'x: y' },
+      now: after(31),
+    });
+    expect((await row()).detail).toBeNull();
+    const c4 = await claim('metadata', after(40), 3);
+    if (c4.status !== 'claimed') throw new Error('expected a claim');
+    await finishStage(t.db, {
+      coinId: coin,
+      stage: 'metadata',
+      attempt: c4.attempt,
+      outcome: { status: 'skipped', reason: 'r' },
+      now: after(41),
+    });
+    expect((await row()).detail).toBeNull();
+  });
+
+  it('refuses a detail over 1 KB', async () => {
+    const c = await claim();
+    if (c.status !== 'claimed') throw new Error('expected a claim');
+    await expect(
+      finishStage(t.db, {
+        coinId: coin,
+        stage: 'metadata',
+        attempt: c.attempt,
+        outcome: { status: 'done', detail: { blob: 'x'.repeat(2000) } },
+        now: after(1),
+      }),
+    ).rejects.toThrow(/limit is 1024/);
+    expect((await row()).status).toBe('running');
+  });
+
+  it('lists a coin for a stage by its own requirement, whatever other stages did', async () => {
+    const set = async (stage: 'discovered' | 'metadata' | 'candles', status: 'done' | 'failed') => {
+      await ensureStages(t.db, [coin], [stage]);
+      await t.db
+        .updateTable('coin_stages')
+        .set({ status })
+        .where('coin_id', '=', coin)
+        .where('stage', '=', stage)
+        .execute();
+    };
+    await set('discovered', 'done');
+    await set('metadata', 'failed');
+    const ids = async (stage: 'candles' | 'metrics', requires: 'discovered' | 'candles') =>
+      (await listCoinsNotDone(t.db, stage, { requires })).map((c) => c.id);
+    expect(await ids('candles', 'discovered')).toEqual([coin]); // metadata failed, candles still listed
+    expect(await ids('metrics', 'candles')).toEqual([]); // candles not done yet
+    await set('candles', 'failed');
+    expect(await ids('metrics', 'candles')).toEqual([]); // candles failed: metrics waits
+    await set('candles', 'done');
+    expect(await ids('metrics', 'candles')).toEqual([coin]);
+  });
+
+  it('a stage replaces only the issue kinds it owns', async () => {
+    const META = ['metadata_invalid', 'social_links_dropped'];
+    const CANDLES = ['candle_hourly_cap_hit', 'graduation_pool_not_found'];
+    const open = async () =>
+      (
+        await t.db
+          .selectFrom('data_issues')
+          .select(['kind', 'detail'])
+          .where('coin_id', '=', coin)
+          .where('resolved_at', 'is', null)
+          .orderBy('kind')
+          .execute()
+      ).map((r) => [r.kind, r.detail]);
+    await replaceCoinIssues(t.db, coin, META, [{ kind: 'metadata_invalid', detail: { v: 1 } }]);
+    await replaceCoinIssues(t.db, coin, CANDLES, [
+      { kind: 'candle_hourly_cap_hit', detail: { v: 1 } },
+    ]);
+    // The candles stage runs again and finds nothing: metadata's issue stays.
+    await replaceCoinIssues(t.db, coin, CANDLES, []);
+    expect(await open()).toEqual([['metadata_invalid', { v: 1 }]]);
+    // The metadata stage runs again with a different issue: candles' issue (added back) stays.
+    await replaceCoinIssues(t.db, coin, CANDLES, [
+      { kind: 'graduation_pool_not_found', detail: { v: 2 } },
+    ]);
+    await replaceCoinIssues(t.db, coin, META, [{ kind: 'social_links_dropped', detail: { v: 3 } }]);
+    expect(await open()).toEqual([
+      ['graduation_pool_not_found', { v: 2 }],
+      ['social_links_dropped', { v: 3 }],
+    ]);
+    // The same result again changes no row.
+    const rowsOf = async () =>
+      t.db
+        .selectFrom('data_issues')
+        .selectAll()
+        .where('coin_id', '=', coin)
+        .orderBy('id')
+        .execute();
+    const before = await rowsOf();
+    await replaceCoinIssues(t.db, coin, META, [{ kind: 'social_links_dropped', detail: { v: 3 } }]);
+    await replaceCoinIssues(t.db, coin, CANDLES, [
+      { kind: 'graduation_pool_not_found', detail: { v: 2 } },
+    ]);
+    expect(await rowsOf()).toEqual(before);
+    // A stage cannot write a kind it does not own.
+    await expect(
+      replaceCoinIssues(t.db, coin, META, [{ kind: 'candle_hourly_cap_hit' }]),
+    ).rejects.toThrow(/not owned/);
   });
 
   it('replaces open issues of the owned kinds and leaves the rest', async () => {

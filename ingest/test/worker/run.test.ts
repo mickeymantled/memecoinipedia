@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from 'vitest';
-import { getRun, getUsage, type Database } from '@memecoinipedia/db';
+import { getRun, getUsage, type Database, type StageName } from '@memecoinipedia/db';
 import { createTestDatabase, type TestDatabase } from '@memecoinipedia/db/testing';
 import type { Kysely } from 'kysely';
 import { runIngest, type SourceClients } from '../../src/worker/run.js';
@@ -91,6 +91,8 @@ describeDb('runIngest', () => {
 
   const base = (out: string[]) => ({
     samplePath: file,
+    // These tests are about the first two stages; the candle stages have their own file.
+    stages: ['discovered', 'metadata'] as StageName[],
     env: { DATABASE_URL: t.url },
     log: testLog,
     out: (s: string) => out.push(s),
@@ -286,7 +288,7 @@ describeDb('runIngest', () => {
         ...base(out),
         confirm: false,
         db,
-        stages: ['discovered', 'metadata', 'candles'],
+        stages: ['discovered', 'classified'],
       }),
     ).rejects.toThrow(/not available in this build/);
   });

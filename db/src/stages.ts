@@ -89,6 +89,7 @@ export async function claimStage(db: Kysely<Database>, opts: ClaimOptions): Prom
       run_id: opts.runId ?? null,
       started_at: opts.now,
       finished_at: null,
+      detail: null,
       updated_at: opts.now,
     })
     .where('coin_id', '=', opts.coinId)
@@ -117,7 +118,10 @@ export async function claimStage(db: Kysely<Database>, opts: ClaimOptions): Prom
 }
 
 export type FinishOutcome =
-  { status: 'done' } | { status: 'skipped'; reason: string } | { status: 'failed'; error: string };
+  /** `detail` is a small per-coin JSON object (under 1 KB) kept on the stage row. */
+  | { status: 'done'; detail?: Record<string, unknown> | null }
+  | { status: 'skipped'; reason: string }
+  | { status: 'failed'; error: string };
 
 export interface FinishOptions {
   coinId: number;
@@ -126,26 +130,44 @@ export interface FinishOptions {
   attempt: number;
   outcome: FinishOutcome;
   now: Date;
+  /**
+   * For a failed outcome whose cause was the run and not the coin (a spend ceiling): give the
+   * attempt back, so the failure does not count toward the coin's retry limit.
+   */
+  refundAttempt?: boolean;
 }
 
 const MAX_TEXT = 2000;
+/** `coin_stages.detail` is for a few counters, not for data: larger objects are refused. */
+export const MAX_DETAIL_BYTES = 1024;
 const clip = (s: string): string => (s.length > MAX_TEXT ? `${s.slice(0, MAX_TEXT - 1)}…` : s);
 
 /**
  * Records the result of a claimed stage. Returns false (and changes nothing)
  * when the claim is no longer current: the row is not running, or a later
  * attempt has taken it over. `last_error` holds the failure text, or the skip
- * reason for `skipped`, or null for `done`.
+ * reason for `skipped`, or null for `done`. `detail` is stored for `done` only
+ * and is cleared (set to null) for `failed` and `skipped`.
  */
 export async function finishStage(db: Kysely<Database>, opts: FinishOptions): Promise<boolean> {
   const o = opts.outcome;
   const lastError =
     o.status === 'failed' ? clip(o.error) : o.status === 'skipped' ? clip(o.reason) : null;
+  const detail = o.status === 'done' && o.detail ? JSON.stringify(o.detail) : null;
+  if (detail !== null && Buffer.byteLength(detail) > MAX_DETAIL_BYTES) {
+    throw new RangeError(
+      `Stage detail is ${Buffer.byteLength(detail)} bytes; the limit is ${MAX_DETAIL_BYTES}`,
+    );
+  }
   const res = await db
     .updateTable('coin_stages')
     .set({
       status: o.status,
       last_error: lastError,
+      detail,
+      ...(opts.refundAttempt && o.status === 'failed'
+        ? { attempts: sql<number>`attempts - 1` }
+        : {}),
       finished_at: opts.now,
       updated_at: opts.now,
     })
@@ -351,44 +373,6 @@ export async function groupStageFailures(
 }
 
 // ------------------------------------------------------------------ data issues
-
-export interface NewIssue {
-  kind: string;
-  detail?: unknown;
-}
-
-/**
- * Replaces a coin's open issues whose kind is in `ownedKinds` with `issues`, so
- * running a stage again does not pile up duplicates. Issues of other kinds, and
- * resolved ones, are untouched.
- */
-export async function replaceCoinIssues(
-  db: Kysely<Database>,
-  coinId: number,
-  ownedKinds: readonly string[],
-  issues: readonly NewIssue[],
-): Promise<void> {
-  await db.transaction().execute(async (trx) => {
-    await trx
-      .deleteFrom('data_issues')
-      .where('coin_id', '=', coinId)
-      .where('kind', 'in', [...ownedKinds])
-      .where('resolved_at', 'is', null)
-      .execute();
-    if (issues.length > 0) {
-      await trx
-        .insertInto('data_issues')
-        .values(
-          issues.map((i) => ({
-            coin_id: coinId,
-            kind: i.kind,
-            detail: i.detail === undefined ? null : JSON.stringify(i.detail),
-          })),
-        )
-        .execute();
-    }
-  });
-}
 
 /** Open issues per kind, for the given addresses (or all coins). */
 export async function countOpenIssues(

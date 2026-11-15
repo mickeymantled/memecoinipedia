@@ -8,6 +8,10 @@
  * redelivered after a crash, or two workers can never run a finished stage
  * again or run one stage twice at the same time.
  *
+ * Order. Each stage has a requirement (`STAGE_REQUIRES`): the stage that must be done
+ * for the coin first. When a stage finishes a coin, the coin is queued for every active
+ * stage that requires it; there is no single line of stages.
+ *
  * Retries. A stage that fails with `retry: true` is marked `failed` and the
  * job throws, so pg-boss retries it after an exponentially growing delay. After
  * `maxAttempts` claims the failure is final: the stage stays `failed` with its
@@ -26,9 +30,9 @@ import {
 } from '@memecoinipedia/db';
 import { sql, type Kysely } from 'kysely';
 import { PgBoss } from 'pg-boss';
-import { executeStage, type ExecuteOptions } from './execute.js';
+import { executeStage, staleAfterMs, type ExecuteOptions } from './execute.js';
 import type { Logger } from './log.js';
-import type { StageRegistry } from './stage.js';
+import { requirementOf, type StageRegistry } from './stage.js';
 
 export interface PipelineWorkerOptions {
   /** Postgres URL for pg-boss. It keeps its own tables in `schema`. */
@@ -41,12 +45,17 @@ export interface PipelineWorkerOptions {
   log: Logger;
   /** Jobs running at once, per stage queue. Default 5. */
   concurrency?: number;
+  /** Jobs running at once for particular stages; overrides `concurrency` for them. */
+  stageConcurrency?: Partial<Record<StageName, number>>;
   /** Claims a stage may use before a retryable failure is final. Default 3 (`DEFAULT_MAX_ATTEMPTS`). */
   maxAttempts?: number;
   /** First retry delay in seconds; it doubles each time. Default 5. */
   retryDelaySeconds?: number;
   retryDelayMaxSeconds?: number;
-  /** A stage running longer than this is presumed dead. Default 120. */
+  /**
+   * A stage running longer than this is presumed dead. Overrides every stage's own
+   * `timeoutSeconds` (tests use it); by default each stage uses its own, else 120.
+   */
   stageTimeoutSeconds?: number;
   pollingIntervalSeconds?: number;
   monitorIntervalSeconds?: number;
@@ -89,7 +98,9 @@ export class PipelineWorker {
       now: this.now,
       log: opts.log,
       runId: opts.runId,
-      staleAfterMs: (opts.stageTimeoutSeconds ?? 120) * 1000,
+      ...(opts.stageTimeoutSeconds !== undefined
+        ? { staleAfterMs: opts.stageTimeoutSeconds * 1000 }
+        : {}),
       maxAttempts: opts.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
     };
     this.boss = new PgBoss({
@@ -114,9 +125,9 @@ export class PipelineWorker {
   async start(): Promise<void> {
     if (this.started) return;
     await this.boss.start();
-    const timeout = this.opts.stageTimeoutSeconds ?? 120;
     const maxAttempts = this.opts.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
     for (const stage of this.stages) {
+      const timeout = this.timeoutSeconds(stage);
       await this.boss.createQueue(queueName(stage), {
         // One waiting job per coin; the claim makes extra copies harmless anyway.
         policy: 'short',
@@ -133,7 +144,7 @@ export class PipelineWorker {
       await this.boss.work<JobData>(
         queueName(stage),
         {
-          localConcurrency: this.opts.concurrency ?? 5,
+          localConcurrency: this.opts.stageConcurrency?.[stage] ?? this.opts.concurrency ?? 5,
           batchSize: 1,
           pollingIntervalSeconds: this.opts.pollingIntervalSeconds ?? 0.5,
         },
@@ -145,6 +156,10 @@ export class PipelineWorker {
     this.started = true;
   }
 
+  private timeoutSeconds(stage: StageName): number {
+    return staleAfterMs(this.exec, this.opts.registry.get(stage)!) / 1000;
+  }
+
   private async handle(stage: StageName, coinId: number): Promise<void> {
     this.running++;
     try {
@@ -153,7 +168,10 @@ export class PipelineWorker {
         case 'done':
         case 'skipped':
         case 'final':
-          await this.enqueueNext(stage, coinId);
+          await this.enqueueDependents(stage, coinId);
+          return;
+        case 'held':
+          // The stage takes no new coin right now; the coin keeps its state for a later run.
           return;
         case 'busy':
           throw new Error(`stage ${stage} of coin ${coinId} is held by another worker`);
@@ -172,14 +190,11 @@ export class PipelineWorker {
     }
   }
 
-  private nextStage(stage: StageName): StageName | undefined {
-    const i = this.stages.indexOf(stage);
-    return i >= 0 ? this.stages[i + 1] : undefined;
-  }
-
-  private async enqueueNext(stage: StageName, coinId: number): Promise<void> {
-    const next = this.nextStage(stage);
-    if (next) await this.enqueue(next, [coinId]);
+  /** Queues the coin for each active stage that requires `stage`. */
+  private async enqueueDependents(stage: StageName, coinId: number): Promise<void> {
+    for (const next of this.stages) {
+      if (requirementOf(next) === stage) await this.enqueue(next, [coinId]);
+    }
   }
 
   private async enqueue(stage: StageName, coinIds: readonly number[]): Promise<void> {
@@ -197,18 +212,18 @@ export class PipelineWorker {
   async coinsToDo(stage: StageName, addresses?: readonly string[]): Promise<NotDoneCoin[]> {
     const stageDef = this.opts.registry.get(stage);
     if (!stageDef) throw new Error(`Stage "${stage}" is not registered`);
-    const previous = this.opts.registry.previous(stage)?.name;
+    const requires = requirementOf(stage);
     const out: NotDoneCoin[] = [];
     let afterId = 0;
     for (;;) {
       const page = await listCoinsNotDone(this.opts.db, stage, {
         version: stageDef.version,
-        ...(previous ? { requires: previous } : {}),
+        ...(requires ? { requires } : {}),
         ...(addresses ? { addresses } : {}),
         // A stage that used up its attempts is left failed.
         maxAttempts: this.exec.maxAttempts,
         // A fresh `running` row has a live worker on it.
-        runningSince: new Date(this.now().getTime() - this.exec.staleAfterMs),
+        runningSince: new Date(this.now().getTime() - staleAfterMs(this.exec, stageDef)),
         afterId,
         limit: PAGE,
       });

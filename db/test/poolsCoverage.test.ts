@@ -140,27 +140,38 @@ describeDb('pools, coverage and data issues', () => {
     );
   });
 
-  it('adds a data issue once while it is open, and again after it is resolved', async () => {
-    const a = await recordDataIssue(t.db, coinId, 'graduation_pool_not_found', { why: 1 });
-    expect(a.created).toBe(true);
-    const b = await recordDataIssue(t.db, coinId, 'graduation_pool_not_found', { why: 2 });
-    expect(b).toEqual({ id: a.id, created: false });
-    const c = await recordDataIssue(t.db, coinId, 'other_kind');
-    expect(c.created).toBe(true);
-    const rows = await t.db
-      .selectFrom('data_issues')
-      .selectAll()
-      .where('coin_id', '=', coinId)
-      .execute();
-    expect(rows).toHaveLength(2);
-    expect(rows.find((r) => r.id === a.id)!.detail).toEqual({ why: 1 });
+  it('keeps one open issue per coin and kind, and adds again after it is resolved', async () => {
+    await recordDataIssue(t.db, coinId, 'graduation_pool_not_found', { why: 1 });
+    await recordDataIssue(t.db, coinId, 'graduation_pool_not_found', { why: 2 });
+    await recordDataIssue(t.db, coinId, 'other_kind');
+    const open = () =>
+      t.db
+        .selectFrom('data_issues')
+        .selectAll()
+        .where('coin_id', '=', coinId)
+        .where('resolved_at', 'is', null)
+        .orderBy('kind')
+        .execute();
+    const rows = await open();
+    expect(rows.map((r) => r.kind)).toEqual(['graduation_pool_not_found', 'other_kind']);
+    expect(rows[0]!.detail).toEqual({ why: 2 });
+    // The same issue again changes nothing: same row, same time.
+    await recordDataIssue(t.db, coinId, 'graduation_pool_not_found', { why: 2 });
+    expect((await open())[0]).toEqual(rows[0]);
 
     await t.db
       .updateTable('data_issues')
       .set({ resolved_at: new Date(), resolution: 'fixed' })
-      .where('id', '=', a.id)
+      .where('id', '=', rows[0]!.id)
       .execute();
-    const d = await recordDataIssue(t.db, coinId, 'graduation_pool_not_found');
-    expect(d.created).toBe(true);
+    await recordDataIssue(t.db, coinId, 'graduation_pool_not_found');
+    expect((await open()).map((r) => r.kind)).toEqual(['graduation_pool_not_found', 'other_kind']);
+    // the resolved one is still there, untouched
+    const all = await t.db
+      .selectFrom('data_issues')
+      .select('id')
+      .where('coin_id', '=', coinId)
+      .execute();
+    expect(all).toHaveLength(3);
   });
 });

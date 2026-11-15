@@ -14,6 +14,8 @@ export type ExecuteOutcome =
   | { kind: 'done' | 'skipped'; coinId: number; stage: StageName }
   /** Already done or skipped at this version: nothing was run. */
   | { kind: 'final'; coinId: number; stage: StageName }
+  /** The stage is holding (`admit` said no): the coin was not claimed and nothing changed. */
+  | { kind: 'held'; coinId: number; stage: StageName }
   /** Somebody else holds it and has not timed out. Try again later. */
   | { kind: 'busy'; coinId: number; stage: StageName }
   /** Failed, and trying again may help. The stage row is `failed`. */
@@ -30,8 +32,11 @@ export interface ExecuteOptions {
   now: () => Date;
   log: Logger;
   runId: number;
-  /** A `running` stage older than this belongs to a dead worker and may be taken over. */
-  staleAfterMs: number;
+  /**
+   * A `running` stage older than this belongs to a dead worker and may be taken over. A stage's
+   * own `timeoutSeconds` is used when this is not set.
+   */
+  staleAfterMs?: number;
   /** Claims a stage may use up before a retryable failure becomes final. */
   maxAttempts: number;
 }
@@ -47,6 +52,12 @@ async function loadCoin(db: Kysely<Database>, coinId: number): Promise<StageCoin
     .where('id', '=', coinId)
     .executeTakeFirst()) as StageCoin | undefined;
 }
+
+export const DEFAULT_STAGE_TIMEOUT_SECONDS = 120;
+
+/** How long a `running` row of this stage may sit before it is presumed dead. */
+export const staleAfterMs = (opts: Pick<ExecuteOptions, 'staleAfterMs'>, stage: Stage): number =>
+  opts.staleAfterMs ?? (stage.timeoutSeconds ?? DEFAULT_STAGE_TIMEOUT_SECONDS) * 1000;
 
 const errorText = (err: unknown): string =>
   err instanceof Error ? `${err.name}: ${err.message}` : String(err);
@@ -74,6 +85,7 @@ export async function executeStage(
   const stage = opts.registry.get(stageName);
   if (!stage) throw new Error(`Stage "${stageName}" is not registered`);
   const base = { coinId, stage: stageName };
+  if (stage.admit && !stage.admit()) return { kind: 'held', ...base };
 
   const claim = await claimStage(opts.db, {
     coinId,
@@ -81,7 +93,7 @@ export async function executeStage(
     version: stage.version,
     runId: opts.runId,
     now: opts.now(),
-    staleAfterMs: opts.staleAfterMs,
+    staleAfterMs: staleAfterMs(opts, stage),
   });
   if (claim.status === 'no_coin') return { kind: 'no_coin', ...base };
   if (claim.status === 'final') return { kind: 'final', ...base };
@@ -94,7 +106,7 @@ export async function executeStage(
 
   const outcome =
     result.status === 'done'
-      ? ({ status: 'done' } as const)
+      ? ({ status: 'done', ...(result.detail ? { detail: result.detail } : {}) } as const)
       : result.status === 'skipped'
         ? ({ status: 'skipped', reason: result.reason } as const)
         : ({ status: 'failed', error: result.reason } as const);
@@ -104,6 +116,7 @@ export async function executeStage(
     attempt: claim.attempt,
     outcome,
     now: opts.now(),
+    ...(result.status === 'failed' && result.refundAttempt ? { refundAttempt: true } : {}),
   });
   if (!recorded) {
     opts.log.warn('stage result discarded: the claim was taken over', { coinId, stage: stageName });
@@ -112,7 +125,8 @@ export async function executeStage(
 
   if (result.status === 'done') return { kind: 'done', ...base };
   if (result.status === 'skipped') return { kind: 'skipped', ...base };
-  if (result.retry && claim.attempt < opts.maxAttempts) {
+  const refunded = result.refundAttempt === true;
+  if (result.retry && (refunded || claim.attempt < opts.maxAttempts)) {
     return { kind: 'retry', ...base, reason: result.reason };
   }
   return { kind: 'failed', ...base, reason: result.reason };
