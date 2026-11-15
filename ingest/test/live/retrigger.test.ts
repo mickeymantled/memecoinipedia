@@ -12,6 +12,7 @@ import { watchOnce } from '../../src/live/watch.js';
 import {
   describeDb,
   liveFixture,
+  reAsked,
   worldCoin,
   type LiveFixture,
   type WorldCoin,
@@ -107,24 +108,6 @@ async function totals(f: LiveFixture): Promise<Record<string, number>> {
   return sum;
 }
 
-const BUCKET: Record<string, number> = { '1D': DAY, '60': HOUR, '1': MIN };
-
-/**
- * The requests of a later fetch that ask again for bars the first fetch held: same resolution, a
- * range overlapping what the first fetch covered. The bucket that was still forming when the
- * first fetch ended (today's daily bar, this hour's hourly bar) is not held, so it may be asked.
- */
-function reAsked(first: readonly Bar[], later: readonly Bar[], firstAsOf: number): Bar[] {
-  return later.filter((b) =>
-    first.some((h) => {
-      if (h.resolution !== b.resolution) return false;
-      const size = BUCKET[h.resolution]!;
-      const heldEnd = Math.min(h.to + 1, Math.floor(firstAsOf / size) * size);
-      return b.from < heldEnd && b.to + 1 > h.from;
-    }),
-  );
-}
-
 const finishedSec = async (f: LiveFixture, mint: string): Promise<number> =>
   Math.floor((await stageRow(f, mint, 'candles'))!.finished_at!.getTime() / 1000);
 
@@ -138,7 +121,7 @@ describeDb('a watched coin is fetched again at a new high', () => {
     const coin = await addCoin(f, 1, 10 * MIN, (t) =>
       t < day3 ? 20_000 : t < relist ? 95_000 : 110_000,
     );
-    const loop = new LiveLoop(f.deps);
+    const loop = new LiveLoop(f.deps, { refresh: false, topUp: false });
 
     // The sweep queues the coin once it is 24 hours old; the staged fetch screens it out on its
     // daily bars. It stays watched.
@@ -191,7 +174,7 @@ describeDb('a watched coin is fetched again at a new high', () => {
       t < t92 ? 91_500 : t < t97 ? 92_000 : 97_000,
     );
     coin.closeAt = (t) => (t < t92 ? 89_750 : coin.capAt(t));
-    const loop = new LiveLoop(f.deps);
+    const loop = new LiveLoop(f.deps, { refresh: false, topUp: false });
 
     await runUntil(f, loop, S + 30 * MIN);
     let row = await coinRow(f, coin.mint);
@@ -224,7 +207,7 @@ describeDb('a watched coin is fetched again at a new high', () => {
     await sweepDoneToday(f);
     const day5 = f.clock.sec + 4 * DAY;
     const coin = await addCoin(f, 3, 10 * MIN, (t) => (t < day5 ? 150_000 : 400_000));
-    const loop = new LiveLoop(f.deps);
+    const loop = new LiveLoop(f.deps, { refresh: false, topUp: false });
 
     await runUntil(f, loop, f.clock.sec + HOUR);
     const listed = await coinRow(f, coin.mint);
@@ -264,7 +247,7 @@ describeDb('a watched coin is fetched again at a new high', () => {
       10 * MIN,
       (t) => 90_500 + ((Math.floor(t / HOUR) * 7_919) % 3_500),
     );
-    const loop = new LiveLoop(f.deps);
+    const loop = new LiveLoop(f.deps, { refresh: false, topUp: false });
 
     await runUntil(f, loop, G + 2 * HOUR);
     expect(await totals(f)).toMatchObject({ triggered: 1 });
@@ -298,7 +281,7 @@ describeDb('a watched coin is fetched again at a new high', () => {
     const coin = await addCoin(f, 5, 10 * MIN, (t) =>
       t >= spike && t < spike + 6 * MIN ? 300_000 : 30_000,
     );
-    const loop = new LiveLoop(f.deps);
+    const loop = new LiveLoop(f.deps, { refresh: false, topUp: false });
 
     await runUntil(f, loop, G + 12 * DAY, 15 * MIN);
     // The poll never saw it: the coin was screened out at 24 hours and never triggered.
@@ -329,7 +312,7 @@ describeDb('a watched coin is fetched again at a new high', () => {
           ? 120_000
           : 150_000,
     );
-    const loop = new LiveLoop(f.deps);
+    const loop = new LiveLoop(f.deps, { refresh: false, topUp: false });
 
     await runUntil(f, loop, G + 12 * DAY, 15 * MIN);
     // Listed by its first fetch; the hourly polls never saw the run.

@@ -173,6 +173,8 @@ export interface TopUpSpec {
   now: Date;
   /** Midnight UTC of the day: a coin whose candles finished today is not selected again. */
   dayStart: Date;
+  /** Only coins refreshed at or after this time; null to leave the refresh out (the dry run, before it has run). */
+  refreshedSince: Date | null;
   /** ATH market cap at or above which a coin is listed. */
   listedUsd: number;
   /** Rule 1: the current market cap is at least this share of the stored ATH. */
@@ -198,12 +200,15 @@ export function topUpWhere(eb: ExpressionBuilder<Database, 'coins'>, s: TopUpSpe
   return eb.and([
     eb('coins.ath_market_cap_usd', '>=', s.listedUsd),
     eb('coins.status', '=', 'alive'),
-    eb('coins.current_refreshed_at', '>=', s.dayStart),
+    ...refreshedToday(eb, s),
     sql<boolean>`${stageFinished('candles', s.dayStart)}`,
     sql<boolean>`${stageFinished('metrics')}`,
     eb.or([rule1(s), rule2(s)]),
   ]);
 }
+
+const refreshedToday = (eb: ExpressionBuilder<Database, 'coins'>, s: TopUpSpec) =>
+  s.refreshedSince === null ? [] : [eb('coins.current_refreshed_at', '>=', s.refreshedSince)];
 
 const rule1 = (s: TopUpSpec) =>
   sql<boolean>`coins.current_market_cap_usd >= coins.ath_market_cap_usd * ${s.athShare}::float8`;
@@ -241,7 +246,7 @@ export async function countTopUp(db: Kysely<Database>, s: TopUpSpec): Promise<To
     eb.and([
       eb('coins.ath_market_cap_usd', '>=', s.listedUsd),
       eb('coins.status', '=', 'alive'),
-      eb('coins.current_refreshed_at', '>=', s.dayStart),
+      ...refreshedToday(eb, s),
       sql<boolean>`${stageFinished('candles', s.dayStart)}`,
       sql<boolean>`${stageFinished('metrics')}`,
     ]);

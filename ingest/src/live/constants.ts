@@ -4,6 +4,7 @@
  */
 import { DEFAULT_PLAN_LIMITS } from '../candles/plan.js';
 import { FILTER_TOKENS_MAX_LIMIT } from '../sources/codex/queries.js';
+import { LISTED_ATH_USD } from '../worker/stage.js';
 
 const MINUTE = 60;
 const HOUR = 60 * MINUTE;
@@ -23,6 +24,7 @@ export const STATE_DISCOVERY_CURSOR = 'discovery_cursor';
 export const STATE_LAST_DISCOVERY = 'last_discovery';
 export const STATE_LAST_SWEEP = 'last_sweep';
 export const STATE_SETTINGS = 'live_settings';
+export const STATE_REFRESH = 'refresh_state';
 export const dayKey = (d: Date): string => `day:${d.toISOString().slice(0, 10)}`;
 
 // -------------------------------------------------------------------- discovery
@@ -162,3 +164,41 @@ export const UNITS_PER_LAST_LOOK = UNITS_PER_REQUEST;
  */
 export const ASSUMED_LATER_TRIGGERS_PER_TRIGGERED_COIN = 1;
 export const UNITS_PER_LATER_TRIGGER = 3 * UNITS_PER_REQUEST;
+
+// ------------------------------------------------------------- refresh and top-up
+
+/** A coin is listed, and so refreshed and topped up, at this ATH market cap (the stage's own line). */
+export const REFRESH_LISTED_USD = LISTED_ATH_USD;
+/** Mints per refresh request: Jupiter's maximum, as the watch loop uses. */
+export const REFRESH_MINTS_PER_REQUEST = 100;
+/**
+ * Refresh requests one scheduler tick may send. The shared Jupiter limiter spaces them (0.5 a
+ * second without a key), so a tick stays well inside the next one; 150,000 listed coins is 1,500
+ * requests, 150 ticks, under an hour.
+ */
+export const REFRESH_REQUESTS_PER_PASS = 10;
+/** Jupiter's rate without a key, requests a second: the dry run measures the day's requests against it. */
+export const JUPITER_FREE_RPS = 0.5;
+/** Listed coins the dry run assumes when the database has none to count (the issue's figure). */
+export const ASSUMED_LISTED_COINS = 150_000;
+
+/** Top-up rule 1: the current market cap is at least this share of the stored ATH (the coin still trades near it). */
+export const TOPUP_ATH_SHARE = 0.5;
+/** Top-up rule 2: the newest stored bar is older than this (a week of bars is missing for a coin Jupiter shows alive). */
+export const TOPUP_STALE_BAR_SECONDS = 7 * DAY;
+/**
+ * Listed coins whose candles may be waiting or running at once when the top-up adds more. The top-up
+ * feeds the queue a little at a time, so discovery, new coins and later triggers (which go straight
+ * to the queue) are never behind thousands of top-ups.
+ */
+export const TOPUP_MAX_IN_FLIGHT = 200;
+/** Coins one top-up pass reopens at most. */
+export const TOPUP_BATCH = 100;
+/**
+ * The top-up takes no new coin once the day's Codex.io units reach this share of the ceiling, so the
+ * last part is left to discovery, new coins and later triggers, which come first. At the ceiling
+ * itself the candles stage holds everything anyway.
+ */
+export const TOPUP_STOP_SHARE = 0.8;
+/** Compute units the dry run assumes for one top-up: a new daily bar, a new hourly window and a refinement window (as a later trigger). */
+export const UNITS_PER_TOPUP = UNITS_PER_LATER_TRIGGER;

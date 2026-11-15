@@ -97,6 +97,24 @@ export function triggerDecision(coin: WatchedCoin, mcap: number, nowMs: number):
   return mcap >= Math.max(TRIGGER_MARKET_CAP_USD, RETRIGGER_STEP * high) ? 'later' : null;
 }
 
+/**
+ * True when a watch request is due: some watched coin's price is older than its age's interval
+ * (and Jupiter did not just fail to answer for it). The refresh asks this before each request and
+ * waits if so: the watch loop goes first on the shared Jupiter limiter.
+ */
+export async function watchDue(deps: LiveDeps, state: WatchState): Promise<boolean> {
+  const now = deps.now();
+  const nowMs = now.getTime();
+  const skip = [...state.unanswered]
+    .filter(([, u]) => nowMs - u.atMs < u.everyMs)
+    .map(([id]) => id);
+  const due = await listWatchedDue(deps.db, watchSpec(now), WATCH_INTERVALS, {
+    limit: 1,
+    excludeIds: skip,
+  });
+  return due.length > 0;
+}
+
 export async function watchOnce(
   deps: LiveDeps,
   state: WatchState = newWatchState(),

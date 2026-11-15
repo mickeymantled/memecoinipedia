@@ -16,14 +16,18 @@ import {
 } from './constants.js';
 import type { LiveDeps } from './deps.js';
 import { discoverOnce, type DiscoveryPass } from './discover.js';
+import { refreshOnce, type RefreshPass } from './refresh.js';
 import { sweepDue, sweepOnce, type SweepPass } from './sweep.js';
-import { newWatchState, watchOnce, type WatchPass, type WatchState } from './watch.js';
+import { topUpOnce, type TopUpPass } from './topup.js';
+import { newWatchState, watchDue, watchOnce, type WatchPass, type WatchState } from './watch.js';
 import { safeText } from './util.js';
 
 export interface TickReport {
   discovery?: DiscoveryPass;
   watch?: WatchPass;
   sweep?: SweepPass;
+  refresh?: RefreshPass;
+  topUp?: TopUpPass;
   /** Coins waiting for candles that were put in the queue again. */
   requeued?: number;
 }
@@ -55,7 +59,11 @@ export class LiveLoop {
   private sweepNotBeforeMs = Number.NEGATIVE_INFINITY;
   private readonly watchState: WatchState = newWatchState();
 
-  constructor(private readonly deps: LiveDeps) {}
+  /** `refresh` and `topUp` can be switched off (a test seam: the watch tests do not want them). */
+  constructor(
+    private readonly deps: LiveDeps,
+    private readonly opts: { refresh?: boolean; topUp?: boolean } = {},
+  ) {}
 
   private async guarded<T>(what: string, fn: () => Promise<T>): Promise<T | undefined> {
     try {
@@ -88,6 +96,16 @@ export class LiveLoop {
       this.lastWatchMs = nowMs;
       report.watch = await this.guarded('watch', () => watchOnce(deps, this.watchState));
     }
+
+    // After the watch, which goes first on the shared Jupiter limiter: the refresh sends a request
+    // only when no watch request is due. The top-up follows the refresh, last in the spending order.
+    if (this.opts.refresh !== false) {
+      report.refresh = await this.guarded('refresh', () =>
+        refreshOnce(deps, { shouldYield: () => watchDue(deps, this.watchState) }),
+      );
+    }
+    if (this.opts.topUp !== false)
+      report.topUp = await this.guarded('top-up', () => topUpOnce(deps));
 
     if (
       nowMs >= this.sweepNotBeforeMs &&
