@@ -110,7 +110,9 @@ How to read it:
 
 **Phase A sample.** 500 coins: the 20 probe coins plus 480 drawn in Dune, 80 per launch half-year, spread over five peak cells ($30k to $50k: 5, $50k to $100k: 10, $100k to $1M: 30, $1M to $10M: 20, $10M and above: 15), in a fixed order by hash of the mint so the draw can be repeated. File: `ingest/sql/dune/results/sample-2026-11-15.csv`.
 
-**What it cost.** Discovery 3.2 credits, sizing 7.2, sample 7.4. Total used on Dune so far: 113 of 4,000 credits. That total includes two mistakes by the lead: 24.6 credits on two price-table probes that had to be cancelled (a cancelled run is still billed), and 49.1 credits on a test download whose body was not kept (a download is billed when requested). Downloads are the expensive part, at about 1.5 credits per 1,000 rows. So sizing and the sample were computed inside Dune, and the candidate list is downloaded once, at backfill time, for about 325 credits.
+**What it cost.** Discovery 3.2 credits, sizing 7.2, sample 7.4. Total used on Dune so far: 113 of 4,000 credits. That total includes two mistakes by the lead: 24.6 credits on two price-table probes that had to be cancelled (a cancelled run is still billed), and 49.1 credits on a test download whose body was not kept (a download is billed when requested). Downloads are the expensive part, at about 1.5 credits per 1,000 rows. So sizing and the sample were computed inside Dune, and the candidate list is downloaded once.
+
+**Candidate list download, 2026-11-15.** Estimate before the run: about 560 credits for all 347,566 graduates (11 pages at about 49 credits, plus about 3 for the query), under a ceiling of 600. The whole list is taken, not only the 216,511 coins above the $30k floor (about 325 credits), so that the floor can be moved after #40 without paying for a second download. The file stays out of the repo (`data/dune/`, git-ignored).
 
 **What the backfill will cost on Codex.io.** 216,511 candidates at 20 to 30 compute units each is 4.3 to 6.5 million units. The plan includes 3 million a month. That means either $184 to $483 of overage in one month (at $138 per extra million), or two plan months. With a $50k floor (159,170 coins) it is 3.2 to 4.8 million units. A5 measures the real units per coin, and A6 says whether a $50k floor or a one-request screen is safe. The overage price and whether the account has an overage cap still need checking before E2.
 
@@ -240,7 +242,7 @@ D2 to D5 can run in parallel after D1.
 |---|---|---|
 | Probes | $0 spent. DexPaprika's $99 is not needed so far. | Done |
 | Codex.io Growth plan | $360 a month, bought 2026-11-14. Phase A uses under 1% of a month's quota. | Paid |
-| Full backfill data | Measured 2026-11-15: 216,511 candidates. Measured on the 500-coin run: about 4.2 million Codex.io compute units against 3 million a month in the plan, which is about $160 of overage in one month, or no extra cost if spread over two plan months. Taking the graduation pool from Dune could bring it to about 3.3 million (about $40). On Dune, about 325 credits to download the candidate list, inside the credits already paid. See "Target set". | E2 |
+| Full backfill data | Measured 2026-11-15: 216,511 candidates. Measured on the 500-coin run: about 4.2 million Codex.io compute units against 3 million a month in the plan, which is about $160 of overage in one month, or no extra cost if spread over two plan months. Taking the graduation pool from Dune could bring it to about 3.3 million (about $40). On Dune, about 560 credits to download the list of all graduates, inside the credits already paid. See "Target set". | E2 |
 | Dune | Analyst plan, 4,000 credits a month, in place since 2026-11-15. 113 credits used so far. | Paid |
 | Set aside by you for extra spend | $500 (2026-11-15). Nothing drawn. | When an estimate goes beyond the paid plans |
 | Classification and embeddings | Roughly $60 to $90 per 100,000 coins | B4 dry-run, then E2 |
