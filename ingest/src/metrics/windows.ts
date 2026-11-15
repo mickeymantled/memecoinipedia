@@ -115,7 +115,7 @@ export function dailyBarIsUsed(pools: readonly CleanPool[], bar: Bar): boolean {
   );
 }
 
-type BarPredicate = (bar: Bar) => boolean;
+export type BarPredicate = (bar: Bar) => boolean;
 
 /** Section 4: every window, given which hourly and daily bars are used. Unordered. */
 function windowsFor(
@@ -153,21 +153,32 @@ const sortedTimes = (pools: readonly CleanPool[], key: 'bars1m' | 'bars1h'): num
   pools.flatMap((pool) => pool[key].map((bar) => bar.t)).sort((a, b) => a - b);
 
 /**
- * Section 4: every window of every pool, at every resolution. Unordered. The "finer
- * data wins" lookups are built once per call (sorted times, binary search), so the cost
- * is n log n in the bar count. Same result as `buildWindowsByScanning`.
+ * Section 4, "finer data wins": which hourly and daily bars are used as windows. The
+ * lookups are built once (sorted times, binary search), so each check is log n. Every
+ * reader of that rule goes through here, so there is one version of it.
  */
-export function buildWindows(pools: readonly CleanPool[], params: WindowParams): Window[] {
+export function usedBarChecks(pools: readonly CleanPool[]): {
+  hourlyUsed: BarPredicate;
+  dailyUsed: BarPredicate;
+} {
   const minutes = sortedTimes(pools, 'bars1m');
   const hours = sortedTimes(pools, 'bars1h');
-  return windowsFor(
-    pools,
-    params,
-    (bar) => !anyInRange(minutes, bar.t, bar.t + SECONDS['1h']),
-    (bar) =>
+  return {
+    hourlyUsed: (bar) => !anyInRange(minutes, bar.t, bar.t + SECONDS['1h']),
+    dailyUsed: (bar) =>
       !anyInRange(minutes, bar.t, bar.t + SECONDS['1d']) &&
       !anyInRange(hours, bar.t, bar.t + SECONDS['1d']),
-  );
+  };
+}
+
+/**
+ * Section 4: every window of every pool, at every resolution. Unordered. The "finer
+ * data wins" lookups are built once per call (`usedBarChecks`), so the cost is n log n
+ * in the bar count. Same result as `buildWindowsByScanning`.
+ */
+export function buildWindows(pools: readonly CleanPool[], params: WindowParams): Window[] {
+  const { hourlyUsed, dailyUsed } = usedBarChecks(pools);
+  return windowsFor(pools, params, hourlyUsed, dailyUsed);
 }
 
 /** The direct, slow reading of the rules, kept to prove `buildWindows` is equivalent. */

@@ -59,6 +59,10 @@ export interface MetricParams {
   rugDropPct: number;
   rugWithinSec: number;
   rugRecoveryFraction: number;
+  /** A bar is near the ATH when its close is at least this share of the ATH price (section 6). */
+  nearAthFraction: number;
+  /** `ath_thinly_traded` is raised below this share of the ATH market cap in near-ATH volume (section 6). */
+  minAthNearVolumeShare: number;
 }
 
 export const DEFAULT_METRIC_PARAMS: MetricParams = {
@@ -73,10 +77,13 @@ export const DEFAULT_METRIC_PARAMS: MetricParams = {
   rugDropPct: 80,
   rugWithinSec: 1_800,
   rugRecoveryFraction: 0.5,
+  nearAthFraction: 0.5,
+  minAthNearVolumeShare: 0.05,
 };
 
 export type MetricFlag =
   | 'ath_before_launch'
+  | 'ath_thinly_traded'
   | 'bad_bar'
   | 'duplicate_bar'
   | 'implausible_market_cap'
@@ -96,6 +103,8 @@ export interface MetricResult {
   athLiquidityUsd: number | null;
   /** USD traded in the hour up to and including the ATH minute, all pools, or null. */
   athHourVolumeUsd: number | null;
+  /** USD traded in clean bars closing at or above `nearAthFraction` times the ATH price, all pools, or null. */
+  athNearVolumeUsd: number | null;
   /** Seconds at or above each threshold, in the order of `thresholdsUsd`. */
   secondsAbove: number[];
   /** 0 to 100, or null when there is no level series. */
@@ -122,5 +131,10 @@ export interface MetricFixture {
   input: MetricInput;
   /** Overrides of the default parameters, when the case needs them. */
   params?: Partial<MetricParams>;
-  expected: MetricResult;
+  /**
+   * The hand-worked result. Fixtures written for rules version 5 do not list
+   * `athNearVolumeUsd` (version 6): they pin every version 5 output, and the test
+   * leaves the version 6 additions out of the comparison for them.
+   */
+  expected: Omit<MetricResult, 'athNearVolumeUsd'> & { athNearVolumeUsd?: number | null };
 }
