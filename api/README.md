@@ -2,7 +2,7 @@
 
 Version 1, written 2026-11-15 by the lead. This file is the contract between the API in `/api` and the site in `/web`. Both are built against it. To change the API, change this file first, in a pull request the lead reviews.
 
-Nothing here is implemented yet. Section 9 says which plan task builds each part.
+Section 9 says which plan task builds each part. Revised 2026-11-15 with the points the first implementation (pull request #36) found unclear.
 
 ## 1. Conventions
 
@@ -24,11 +24,11 @@ Nothing here is implemented yet. Section 9 says which plan task builds each part
 
 **Nulls.** Every field in this file is always present in a response. A value that is unknown or not computed yet is `null`. Lists are empty rather than `null`. A coin can be listed before it is classified, so the narrative and summary fields of a listed coin can be `null`.
 
-**Creator-written text is untrusted.** `name`, `ticker`, `description` and the links in `socials` were written by whoever launched the coin. The API returns them as plain text, unchanged apart from trimming. The site must render them as text, never as HTML. Each link in `socials` is a full `https://` URL or `null`; anything else was dropped at ingestion.
+**Creator-written text is untrusted.** `name`, `ticker`, `description` and the links in `socials` were written by whoever launched the coin. The API returns them as plain text, unchanged apart from trimming; a value that is empty after trimming is `null`. The site must render them as text, never as HTML. Each link in `socials` is a full `https://` URL or `null`; anything else was dropped at ingestion.
 
 **Images.** `image_url` is a URL on our own storage, or `null` when we hold no copy. It is never a third-party or IPFS gateway URL. Until image storage exists (open decision Q6 in `PLAN.md`) it is `null` for every coin, and the site shows a placeholder. When `sensitive` is `true` the site hides the image until the reader asks for it (decision Q4).
 
-**Caching.** Responses carry `cache-control: public, max-age=N`. N is 60 for lists and search, 300 for a coin and for comparables, 3600 for narratives.
+**Caching.** Responses carry `cache-control: public, max-age=N`. N is 60 for lists and search, 300 for a coin and for comparables, 3600 for narratives. Errors and the health check carry `cache-control: no-store`.
 
 ## 2. Errors
 
@@ -43,11 +43,11 @@ Every error has the same shape and an HTTP status that matches it:
 | Status | `code` | When |
 |---|---|---|
 | 400 | `invalid_parameter` | A parameter is missing, malformed or out of range. Unknown parameters are ignored. |
-| 400 | `invalid_cursor` | The cursor is not one this API issued, or it was issued for other parameters |
+| 400 | `invalid_cursor` | The cursor is not one this API issued, or it was issued for other parameters. `param` is `cursor`. An invalid parameter is reported first. |
 | 404 | `not_found` | See the reasons below |
 | 429 | `rate_limited` | Too many requests from this client. `retry-after` header in seconds. |
 | 503 | `not_ready` | The feature needs data that has not been built yet (embeddings, for semantic search and comparables) |
-| 503 | `upstream_unavailable` | A data provider did not answer while fetching a coin on demand. `retry-after` header. |
+| 503 | `upstream_unavailable` | A data provider did not answer while fetching a coin on demand, or the health check cannot reach the database. `retry-after` header. |
 | 500 | `internal` | Anything else |
 
 Reasons for `not_found`:
@@ -55,7 +55,7 @@ Reasons for `not_found`:
 | `reason` | Meaning |
 |---|---|
 | `unknown_route` | No such endpoint |
-| `unknown_coin` | We hold nothing for this chain and address |
+| `unknown_coin` | We hold nothing for this chain and address. A chain we do not serve gives this too. |
 | `not_listed` | We hold the coin, but its ATH is below $100,000, or its metrics are not computed yet |
 | `not_pump_fun` | Comparables only: the address is not a pump.fun launch, or has no token metadata |
 | `unknown_narrative` | No such narrative slug |
@@ -117,7 +117,7 @@ Everything in `CoinSummary`, plus:
 | `description` | string or null | `coins.description`, as written at launch |
 | `socials` | object | `coins.socials`, always with the three keys `website`, `twitter`, `telegram`, each a URL or null |
 | `ath_pool` | `PoolRef` or null | `coins.ath_pool_id`: the pool the ATH was reached on |
-| `primary_pool` | `PoolRef` or null | The coin's pool with `pools.is_primary`. The site uses its address for the third-party chart embed. |
+| `primary_pool` | `PoolRef` or null | The coin's pool with `pools.is_primary`; if several are marked, the first one stored. The site uses its address for the third-party chart embed. |
 | `ath_wick_market_cap_usd` | number or null | `coins.ath_wick_market_cap_usd`: the highest single candle high, before the rules that reject spikes. Always at least `ath_market_cap_usd`. |
 | `ath_wick_at` | time or null | `coins.ath_wick_at` |
 | `seconds_above_100k`, `seconds_above_1m`, `seconds_above_10m`, `seconds_above_100m` | number or null | The columns of the same names |
@@ -136,7 +136,7 @@ Everything in `CoinSummary`, plus:
 
 `PoolRef` is `{ "address": string, "dex": string }`, from `pools.address` and `pools.dex`.
 
-`ParentRef` is `{ "chain": string, "address": string, "ticker": string or null, "name": string or null, "listed": boolean }`. When `listed` is `false` the site shows the address without a link.
+`ParentRef` is `{ "chain": string, "address": string, "ticker": string or null, "name": string or null, "listed": boolean }`. When `listed` is `false` the site shows the address without a link. When the parent is named but we hold nothing for it, `chain` is the coin's own chain, `ticker` and `name` are `null` and `listed` is `false`.
 
 ## 4. Search and lists
 
@@ -149,13 +149,15 @@ Everything in `CoinSummary`, plus:
 | `narrative` | One or more narrative slugs, separated by commas. A coin matches if any of them matches. | all |
 | `narrative_scope` | `primary` matches the primary narrative only; `any` also matches secondary ones | `primary` |
 | `status` | One or more of `alive`, `dead`, `rugged`, `unknown`, separated by commas | all |
-| `ath_min`, `ath_max` | Bounds on `ath_market_cap_usd` in dollars, both inclusive | none |
+| `ath_min`, `ath_max` | Bounds on `ath_market_cap_usd` in dollars, both inclusive. `ath_min` above `ath_max` is not an error: nothing matches. | none |
 | `launched_from`, `launched_to` | Bounds on `launched_at`. A date (`2025-01-01`) or a time. `from` is inclusive, `to` is exclusive. | none |
-| `sort` | `relevance`, `ath_desc`, `ath_asc`, `launched_desc`, `launched_asc` | `relevance` with `q`, else `ath_desc` |
+| `sort` | `relevance`, `ath_desc`, `ath_asc`, `launched_desc`, `launched_asc`. Coins with no `launched_at` come last under both launch sorts. | `relevance` with `q`, else `ath_desc` |
 | `limit` | 1 to 100 | 25 |
 | `cursor` | `page.next_cursor` from the previous response, sent with the same other parameters | none |
 
-**Keyword mode.** If `q` is a whole address (32 to 44 base58 characters) the only possible match is the coin with that address. Otherwise `q` is matched against `ticker` and `name`, ignoring case, and tolerating small misspellings (trigram similarity). `relevance` orders by: exact ticker, then ticker starting with `q`, then similarity of ticker or name, with ties broken by higher ATH. `sort=relevance` without `q` is an `invalid_parameter`.
+**Keyword mode.** If `q` is a whole address (32 to 44 base58 characters) the only possible match is the coin with that address, and the other filters still apply to it. Otherwise a coin matches when its ticker starts with `q`, or its ticker or name is similar to `q` (trigram similarity of 0.3 or more), ignoring case. `relevance` orders by four keys in turn: exact ticker, then ticker starting with `q`, then higher similarity of ticker or name, then higher ATH. So among tickers that start with `q`, a closer match comes before a higher ATH. `sort=relevance` without `q` is an `invalid_parameter`.
+
+Relevance results stop at 2,000 rows: once the 2,000th is served `next_cursor` is `null`, while `total` stays exact. The other sorts have no such stop.
 
 **Semantic mode.** `q` is required. It is embedded with the same model as the coins, and results are the listed coins nearest to it, nearest first, after the filters are applied. `sort` must be absent or `relevance`. There is one page of at most `limit` results: `page.next_cursor` and `page.total` are `null`. Each item carries one extra field, `similarity` (0 to 1, cosine similarity). Returns `not_ready` until embeddings exist.
 
@@ -168,7 +170,7 @@ Everything in `CoinSummary`, plus:
 }
 ```
 
-`total` is the exact number of listed coins that match. `next_cursor` is `null` on the last page. A cursor is opaque and stays valid for at least an hour. No match is not an error: `data` is empty and `total` is 0.
+`total` is the exact number of listed coins that match. `next_cursor` is `null` on the last page. A cursor is opaque and stays valid for at least an hour. It may be sent with a different `limit`, but not with any other parameter changed. No match is not an error: `data` is empty and `total` is 0.
 
 ## 5. Narratives
 
@@ -259,7 +261,7 @@ A distribution over neighbours describes what similar coins that reached $100,00
 
 Returns one `Coin` (section 3.2), not wrapped in `data`.
 
-- An address in the wrong format is an `invalid_parameter` with `param` set to `address`.
+- An address in the wrong format is an `invalid_parameter` with `param` set to `address`. The format is checked first, whatever the chain.
 - A coin we do not hold is `not_found` with reason `unknown_coin`.
 - A coin we hold but do not list is `not_found` with reason `not_listed`. The site can still offer its comparables.
 
@@ -314,7 +316,7 @@ Returns one `Coin` (section 3.2), not wrapped in `data`.
 
 ### `GET /api/v1/health`
 
-`{ "ok": true }` with status 200 when the service can reach the database, else status 503 with the error shape. Not cached.
+`{ "ok": true }` with status 200 when the service can reach the database, else status 503 with the error shape, code `upstream_unavailable` and `retry-after: 5`. Not cached.
 
 ## 9. What builds what
 
