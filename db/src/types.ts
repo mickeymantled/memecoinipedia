@@ -32,6 +32,8 @@ export interface CoinsTable {
   graduated_at: Ts | null;
   discovery_source: string | null;
   rough_ath_market_cap_usd: number | null;
+  /** Generated from the address: a fixed pseudo-random order for samples (migration 0012). */
+  hash_order: ColumnType<number, never, never>;
 
   description: string | null;
   image_url: string | null;
@@ -194,6 +196,15 @@ export interface NarrativeResearchTable {
   loaded_at: TsNow;
 }
 
+/** Running totals of a run's provider usage, one row per sample, for "over the last hour". */
+export interface ProviderUsageSamplesTable {
+  run_id: number;
+  provider: string;
+  sampled_at: Ts;
+  requests: number;
+  units: number;
+}
+
 export interface DataIssuesTable {
   id: Id;
   coin_id: number;
@@ -213,6 +224,7 @@ export interface Database {
   coin_stages: CoinStagesTable;
   ingest_runs: IngestRunsTable;
   provider_usage: ProviderUsageTable;
+  provider_usage_samples: ProviderUsageSamplesTable;
   eval_labels: EvalLabelsTable;
   narrative_research: NarrativeResearchTable;
   data_issues: DataIssuesTable;
@@ -240,6 +252,7 @@ export const databaseShape: { [T in keyof Database]: Record<keyof Database[T], t
     graduated_at: true,
     discovery_source: true,
     rough_ath_market_cap_usd: true,
+    hash_order: true,
     description: true,
     image_url: true,
     image_storage_key: true,
@@ -351,6 +364,13 @@ export const databaseShape: { [T in keyof Database]: Record<keyof Database[T], t
     created_at: true,
   },
   provider_usage: { run_id: true, provider: true, requests: true, units: true, updated_at: true },
+  provider_usage_samples: {
+    run_id: true,
+    provider: true,
+    sampled_at: true,
+    requests: true,
+    units: true,
+  },
   eval_labels: {
     chain: true,
     mint: true,

@@ -32,7 +32,7 @@ import { sql, type Kysely } from 'kysely';
 import { PgBoss } from 'pg-boss';
 import { executeStage, staleAfterMs, type ExecuteOptions } from './execute.js';
 import type { Logger } from './log.js';
-import { requirementOf, type StageRegistry } from './stage.js';
+import { coinQualifies, type StageRegistry } from './stage.js';
 
 export interface PipelineWorkerOptions {
   /** Postgres URL for pg-boss. It keeps its own tables in `schema`. */
@@ -47,6 +47,16 @@ export interface PipelineWorkerOptions {
   concurrency?: number;
   /** Jobs running at once for particular stages; overrides `concurrency` for them. */
   stageConcurrency?: Partial<Record<StageName, number>>;
+  /**
+   * Jobs a worker takes from the queue at a time, per stage, and runs side by side. Default 1.
+   *
+   * Why it matters at volume: the queue library lets each worker fetch once per polling interval
+   * (half a second at the least) unless its last fetch came back full, so a stage with one job
+   * per fetch moves at most 2 jobs a second per worker. With a batch, a worker whose batch came
+   * back full fetches again at once. The price is that a batch ends when its slowest job does, so
+   * stages that wait on a provider keep their batches small (5).
+   */
+  stageBatchSize?: Partial<Record<StageName, number>>;
   /** Claims a stage may use before a retryable failure is final. Default 3 (`DEFAULT_MAX_ATTEMPTS`). */
   maxAttempts?: number;
   /** First retry delay in seconds; it doubles each time. Default 5. */
@@ -57,6 +67,10 @@ export interface PipelineWorkerOptions {
    * `timeoutSeconds` (tests use it); by default each stage uses its own, else 120.
    */
   stageTimeoutSeconds?: number;
+  /** Connections in pg-boss's own pool. Default pg-boss's own (10). */
+  queuePoolSize?: number;
+  /** Called after jobs are queued, with the stage and the coin ids. */
+  onEnqueued?: (stage: StageName, coinIds: readonly number[]) => void;
   pollingIntervalSeconds?: number;
   monitorIntervalSeconds?: number;
   schema?: string;
@@ -107,6 +121,7 @@ export class PipelineWorker {
       connectionString: opts.connectionString,
       schema: this.schema,
       application_name: 'memecoinipedia-ingest',
+      ...(opts.queuePoolSize !== undefined ? { max: opts.queuePoolSize } : {}),
       ...(opts.monitorIntervalSeconds !== undefined
         ? {
             monitorIntervalSeconds: opts.monitorIntervalSeconds,
@@ -141,16 +156,49 @@ export class PipelineWorker {
       });
     }
     for (const stage of this.stages) {
+      const slots = this.opts.stageConcurrency?.[stage] ?? this.opts.concurrency ?? 5;
+      const batchSize = Math.max(1, Math.min(this.opts.stageBatchSize?.[stage] ?? 1, slots));
+      if (batchSize === 1) {
+        await this.boss.work<JobData>(
+          queueName(stage),
+          {
+            localConcurrency: slots,
+            batchSize: 1,
+            pollingIntervalSeconds: this.opts.pollingIntervalSeconds ?? 0.5,
+          },
+          async (jobs) => {
+            for (const job of jobs) await this.handle(stage, job.data.coinId);
+          },
+        );
+        continue;
+      }
+      // A batch: the jobs run side by side, and each is settled on its own, so one coin that has
+      // to be retried does not fail the others.
+      const handler = async (jobs: Array<{ id: string; data: JobData }>) =>
+        Promise.all(
+          jobs.map(async (job) => {
+            try {
+              await this.handle(stage, job.data.coinId);
+              return { id: job.id, status: 'completed' as const };
+            } catch (err) {
+              return {
+                id: job.id,
+                status: 'failed' as const,
+                output: { message: err instanceof Error ? err.message : String(err) },
+              };
+            }
+          }),
+        );
       await this.boss.work<JobData>(
         queueName(stage),
         {
-          localConcurrency: this.opts.stageConcurrency?.[stage] ?? this.opts.concurrency ?? 5,
-          batchSize: 1,
+          localConcurrency: Math.ceil(slots / batchSize),
+          batchSize,
+          burstWhenBatchFull: true,
+          perJobResults: true,
           pollingIntervalSeconds: this.opts.pollingIntervalSeconds ?? 0.5,
         },
-        async (jobs) => {
-          for (const job of jobs) await this.handle(stage, job.data.coinId);
-        },
+        handler,
       );
     }
     this.started = true;
@@ -181,6 +229,7 @@ export class PipelineWorker {
         case 'failed':
           this.opts.log.warn(`left failed: ${out.reason}`, { coinId, stage });
           return;
+        case 'ineligible':
         case 'lost':
         case 'no_coin':
           return;
@@ -190,14 +239,38 @@ export class PipelineWorker {
     }
   }
 
-  /** Queues the coin for each active stage that requires `stage`. */
+  /**
+   * Queues the coin for each active stage that requires `stage`. A stage with a rule on the coin
+   * (`onlyIf`) is queued only when the coin satisfies it: the coin's ATH is read once for all
+   * such stages.
+   */
   private async enqueueDependents(stage: StageName, coinId: number): Promise<void> {
+    let ath: number | null | undefined;
     for (const next of this.stages) {
-      if (requirementOf(next) === stage) await this.enqueue(next, [coinId]);
+      if (this.opts.registry.requirementOf(next) !== stage) continue;
+      const rule = this.opts.registry.get(next)?.onlyIf;
+      if (rule) {
+        if (ath === undefined) {
+          const row = await this.opts.db
+            .selectFrom('coins')
+            .select('ath_market_cap_usd')
+            .where('id', '=', coinId)
+            .executeTakeFirst();
+          ath = row?.ath_market_cap_usd ?? null;
+        }
+        if (!coinQualifies(rule, ath)) continue;
+      }
+      await this.enqueue(next, [coinId]);
     }
   }
 
+  /** Queues coins for a stage. A coin already waiting in that queue is not queued twice. */
+  async enqueueCoins(stage: StageName, coinIds: readonly number[]): Promise<void> {
+    await this.enqueue(stage, coinIds);
+  }
+
   private async enqueue(stage: StageName, coinIds: readonly number[]): Promise<void> {
+    if (coinIds.length > 0) this.opts.onEnqueued?.(stage, coinIds);
     for (let i = 0; i < coinIds.length; i += PAGE) {
       await this.boss.insert(
         queueName(stage),
@@ -212,7 +285,7 @@ export class PipelineWorker {
   async coinsToDo(stage: StageName, addresses?: readonly string[]): Promise<NotDoneCoin[]> {
     const stageDef = this.opts.registry.get(stage);
     if (!stageDef) throw new Error(`Stage "${stage}" is not registered`);
-    const requires = requirementOf(stage);
+    const requires = this.opts.registry.requirementOf(stage);
     const out: NotDoneCoin[] = [];
     let afterId = 0;
     for (;;) {
@@ -220,6 +293,7 @@ export class PipelineWorker {
         version: stageDef.version,
         ...(requires ? { requires } : {}),
         ...(addresses ? { addresses } : {}),
+        ...(stageDef.onlyIf ? { minAthMarketCapUsd: stageDef.onlyIf.minAthMarketCapUsd } : {}),
         // A stage that used up its attempts is left failed.
         maxAttempts: this.exec.maxAttempts,
         // A fresh `running` row has a live worker on it.
@@ -231,6 +305,50 @@ export class PipelineWorker {
       if (page.length < PAGE) return out;
       afterId = page[page.length - 1]!.id;
     }
+  }
+
+  /**
+   * Of these coins, the ones that still need `stage` and whose requirement is met, in the same
+   * terms the worker uses to claim them. For feeding the queue a page of coins at a time.
+   */
+  async coinsToDoAmong(stage: StageName, ids: readonly number[]): Promise<NotDoneCoin[]> {
+    const stageDef = this.opts.registry.get(stage);
+    if (!stageDef) throw new Error(`Stage "${stage}" is not registered`);
+    const requires = this.opts.registry.requirementOf(stage);
+    return listCoinsNotDone(this.opts.db, stage, {
+      version: stageDef.version,
+      ...(requires ? { requires } : {}),
+      ids,
+      ...(stageDef.onlyIf ? { minAthMarketCapUsd: stageDef.onlyIf.minAthMarketCapUsd } : {}),
+      maxAttempts: this.exec.maxAttempts,
+      runningSince: new Date(this.now().getTime() - staleAfterMs(this.exec, stageDef)),
+    });
+  }
+
+  /**
+   * Removes jobs of this worker's queues that are waiting or in retry backoff (not running ones).
+   * The stage rows are the truth about what is done; a backfill that is started again feeds the
+   * queue afresh from them, so jobs left by an earlier run, for a different selection, do not run.
+   */
+  async clearQueued(): Promise<void> {
+    for (const stage of this.stages) await this.boss.deleteQueuedJobs(queueName(stage));
+  }
+
+  /** Jobs of this worker's queues that are waiting, being retried or running. */
+  async outstandingJobs(): Promise<number> {
+    const names = this.stages.map(queueName);
+    if (names.length === 0) return 0;
+    const res = await sql<{ n: string }>`
+      select count(*)::text as n
+      from ${sql.id(this.schema, 'job')}
+      where name in (${sql.join(names)}) and state in ('created', 'retry', 'active')
+    `.execute(this.opts.db);
+    return Number(res.rows[0]?.n ?? 0);
+  }
+
+  /** Handlers running in this process. */
+  get runningHere(): number {
+    return this.running;
   }
 
   /**

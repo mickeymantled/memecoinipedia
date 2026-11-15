@@ -20,6 +20,8 @@
  *     run(ctx, coin): Promise<StageResult>;
  *     timeoutSeconds?: number;  // a run longer than this is presumed dead; default 120
  *     admit?(): boolean;        // false: the stage takes no new coin right now (a run-wide stop)
+ *     requires?: PipelineStageName | null;  // overrides STAGE_REQUIRES for this registry
+ *     onlyIf?: { minAthMarketCapUsd: number };  // the stage runs only for coins with this ATH or more
  *   }
  *
  *   ctx  = { db, now(), log, runId }   // the database handle, a clock, a logger, the ingest_runs id
@@ -105,6 +107,30 @@ export interface Stage {
    * ends quietly, and the coin stays as it was for a later run (a spend ceiling reached, say).
    */
   admit?(): boolean;
+  /**
+   * The stage this one needs done (or skipped) first, for coins in this registry. Absent: the
+   * default in `STAGE_REQUIRES`. A backfill registers `metadata` with `requires: 'metrics'`.
+   */
+  requires?: PipelineStageName | null;
+  /**
+   * A rule on the coin: the stage runs only for coins whose ATH (from the metrics stage) is at or
+   * above this. A coin outside the rule is not "waiting" for the stage anywhere: it is not queued,
+   * not counted as to do, and a job that reaches it changes nothing. It is declarative, not a
+   * function, so the queue, the counts and the status view can all apply the same rule in SQL.
+   */
+  onlyIf?: StageCoinRule;
+}
+
+export interface StageCoinRule {
+  minAthMarketCapUsd: number;
+}
+
+/** A coin with this ATH or more is "listed" (the product indexes coins that reached $100,000). */
+export const LISTED_ATH_USD = 100_000;
+
+/** True when the coin satisfies the stage's rule (always true without one). */
+export function coinQualifies(rule: StageCoinRule | undefined, ath: number | null): boolean {
+  return rule === undefined || (ath !== null && ath >= rule.minAthMarketCapUsd);
 }
 
 export const done = (detail?: Record<string, unknown>): StageResult =>
@@ -149,8 +175,15 @@ export class StageRegistry {
     return this.stages.find((s) => s.name === name);
   }
 
+  /** The stage `name` requires in this registry: its own `requires`, else the default. */
+  requirementOf(name: StageName): PipelineStageName | null {
+    const stage = this.get(name);
+    if (stage && stage.requires !== undefined) return stage.requires;
+    return requirementOf(name);
+  }
+
   /** Registered stages that require `name`. */
   dependents(name: StageName): Stage[] {
-    return this.stages.filter((s) => STAGE_REQUIRES[s.name] === name);
+    return this.stages.filter((s) => this.requirementOf(s.name) === name);
   }
 }

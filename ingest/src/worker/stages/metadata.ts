@@ -36,6 +36,7 @@ import {
   replaceCoinIssues,
   type Database,
   type NewIssue,
+  type StageName,
 } from '@memecoinipedia/db';
 import type { Kysely } from 'kysely';
 import { BudgetExceededError } from '../../sources/budget.js';
@@ -260,6 +261,15 @@ export interface MetadataLoadersOptions {
   errorCooldownMs?: number;
   /** Failed coins that used this many attempts are not prefetched. Default 3. */
   maxAttempts?: number;
+  /** The stage a coin needs done before its metadata is fetched. Default `discovered`. */
+  requires?: StageName;
+  /** Prefetch only coins with an ATH at or above this (the backfill's listed coins). */
+  minAthMarketCapUsd?: number;
+  /**
+   * Prefetch only these coins, asked for when a batch is built: the coins most recently queued
+   * for the stage. Without it, any coin that needs metadata (in id order) is a candidate.
+   */
+  candidateIds?: () => readonly number[];
 }
 
 const notFoundAsset = (mint: string): AssetInfo => ({
@@ -299,10 +309,13 @@ const notFoundToken = (mint: string): JupiterToken => ({
  */
 export function createMetadataLoaders(o: MetadataLoadersOptions) {
   const candidates = async (_first: string, limit: number): Promise<string[]> => {
+    const ids = o.candidateIds?.();
     const rows = await listCoinsNotDone(o.db, 'metadata', {
       version: METADATA_STAGE_VERSION,
-      requires: 'discovered',
+      requires: o.requires ?? 'discovered',
       ...(o.addresses ? { addresses: o.addresses } : {}),
+      ...(o.minAthMarketCapUsd !== undefined ? { minAthMarketCapUsd: o.minAthMarketCapUsd } : {}),
+      ...(ids ? { ids } : {}),
       maxAttempts: o.maxAttempts ?? 3,
       limit,
     });

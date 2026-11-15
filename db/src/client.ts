@@ -22,11 +22,36 @@ const types = {
   },
 };
 
-/** Creates a Kysely instance with its own pool. Call `db.destroy()` when done. */
-export function createDb(connectionString: string): Kysely<Database> {
+/**
+ * Creates a Kysely instance with its own pool. Call `db.destroy()` when done.
+ * `max` is the pool size (the pg default, 10, when absent).
+ */
+export function createDb(connectionString: string, opts: { max?: number } = {}): Kysely<Database> {
   return new Kysely<Database>({
     dialect: new PostgresDialect({
-      pool: new pg.Pool({ connectionString, types: types as pg.CustomTypesConfig }),
+      pool: new pg.Pool({
+        connectionString,
+        types: types as pg.CustomTypesConfig,
+        ...(opts.max !== undefined ? { max: opts.max } : {}),
+      }),
     }),
   });
+}
+
+/**
+ * A connection that cannot write: every connection is opened with
+ * `default_transaction_read_only = on` (as a startup parameter, and again with SET on connect),
+ * so any INSERT, UPDATE or DDL fails in the database. For the status view.
+ */
+export function createReadOnlyDb(connectionString: string): Kysely<Database> {
+  const pool = new pg.Pool({
+    connectionString,
+    types: types as pg.CustomTypesConfig,
+    max: 2,
+    options: '-c default_transaction_read_only=on',
+  });
+  pool.on('connect', (client: pg.PoolClient) => {
+    void client.query('set default_transaction_read_only = on');
+  });
+  return new Kysely<Database>({ dialect: new PostgresDialect({ pool }) });
 }

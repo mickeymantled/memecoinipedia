@@ -8,3 +8,4 @@ export {
   SOLANA_NETWORK_ID,
   type BarResolution,
 } from './queries.js';
+export * from './transport.js';

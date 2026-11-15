@@ -21,7 +21,7 @@
 import { getCoinPools } from '@memecoinipedia/db';
 import { fetchCandlesForCoin } from '../../candles/index.js';
 import type { CandleFetchSummary } from '../../candles/index.js';
-import { FLAT_UNITS, type CodexClient } from '../../sources/codex/index.js';
+import { FLAT_UNITS, RATE_LIMIT_MESSAGE, type CodexClient } from '../../sources/codex/index.js';
 import { failed, done, type Stage, type StageResult } from '../stage.js';
 
 export const CANDLES_STAGE_VERSION = 1;
@@ -151,6 +151,11 @@ export function createCandlesStage(deps: CandlesStageDeps): CandlesStage {
         stop(result.message);
         // The run's ceiling, not this coin's fault: retry in a later run, and do not count the attempt.
         return failed(`budget_exhausted: ${result.message}`, true, true);
+      }
+      if (result.retry && RATE_LIMIT_MESSAGE.test(result.message)) {
+        // The provider said "slow down" (the client has already slowed the whole run). That is the
+        // run's doing, not this coin's: retry it, and do not count the attempt.
+        return failed(`rate_limited: ${result.message}`, true, true);
       }
       return failed(`${result.reason}: ${result.message}`, result.retry);
     },

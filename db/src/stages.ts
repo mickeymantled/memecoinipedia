@@ -1,4 +1,5 @@
 import { sql, type Kysely, type Selectable } from 'kysely';
+import { selectionCondition, type ResolvedSelection } from './backfill.js';
 import type { CoinStagesTable, Database } from './types.js';
 
 /**
@@ -198,6 +199,15 @@ export interface ListNotDoneOptions {
   maxAttempts?: number;
   /** Return coins with an id above this one. For paging. */
   afterId?: number;
+  /** Only these coin ids. */
+  ids?: readonly number[];
+  /** Only coins in this backfill selection. */
+  selection?: ResolvedSelection;
+  /**
+   * The stage only runs for coins whose ATH is at or above this (a backfill's rule for
+   * `metadata`). A coin with no ATH yet does not qualify, so it is never listed.
+   */
+  minAthMarketCapUsd?: number;
   limit?: number;
 }
 
@@ -214,26 +224,28 @@ export interface NotDoneCoin {
  * row for the stage counts as not done (status null). Never lists a coin whose
  * stage is done or skipped at this version or later.
  */
-export async function listCoinsNotDone(
-  db: Kysely<Database>,
-  stage: StageName,
-  opts: ListNotDoneOptions = {},
-): Promise<NotDoneCoin[]> {
+function notDoneQuery(db: Kysely<Database>, stage: StageName, opts: ListNotDoneOptions) {
   const version = opts.version ?? 1;
   let q = db
     .selectFrom('coins')
     .leftJoin('coin_stages as s', (join) =>
       join.onRef('s.coin_id', '=', 'coins.id').on('s.stage', '=', stage),
     )
-    .select(['coins.id', 'coins.chain', 'coins.address', 's.status', 's.attempts'])
     .where((eb) =>
       eb.or([
         eb('s.status', 'is', null),
         eb('s.status', 'in', ['pending', 'failed', 'running']),
         eb.and([eb('s.status', 'in', ['done', 'skipped']), eb('s.version', '<', version)]),
       ]),
-    )
-    .orderBy('coins.id');
+    );
+  if (opts.minAthMarketCapUsd !== undefined) {
+    q = q.where('coins.ath_market_cap_usd', '>=', opts.minAthMarketCapUsd);
+  }
+  if (opts.selection) q = q.where(sql<boolean>`${selectionCondition(opts.selection, 'coins')}`);
+  if (opts.ids) {
+    if (opts.ids.length === 0) return null;
+    q = q.where('coins.id', 'in', [...opts.ids]);
+  }
   if (opts.runningSince) {
     const since = opts.runningSince;
     q = q.where((eb) =>
@@ -261,12 +273,25 @@ export async function listCoinsNotDone(
     );
   }
   if (opts.addresses) {
-    if (opts.addresses.length === 0) return [];
+    if (opts.addresses.length === 0) return null;
     q = q
       .where('coins.chain', '=', opts.chain ?? 'solana')
       .where('coins.address', 'in', [...opts.addresses]);
   }
   if (opts.afterId !== undefined) q = q.where('coins.id', '>', opts.afterId);
+  return q;
+}
+
+export async function listCoinsNotDone(
+  db: Kysely<Database>,
+  stage: StageName,
+  opts: ListNotDoneOptions = {},
+): Promise<NotDoneCoin[]> {
+  const base = notDoneQuery(db, stage, opts);
+  if (!base) return [];
+  let q = base
+    .select(['coins.id', 'coins.chain', 'coins.address', 's.status', 's.attempts'])
+    .orderBy('coins.id');
   if (opts.limit !== undefined) q = q.limit(opts.limit);
   const rows = await q.execute();
   return rows.map((r) => ({
@@ -276,6 +301,18 @@ export async function listCoinsNotDone(
     status: r.status ?? null,
     attempts: r.attempts ?? 0,
   }));
+}
+
+/** How many coins `listCoinsNotDone` would list (`limit` and `afterId` are ignored). */
+export async function countCoinsNotDone(
+  db: Kysely<Database>,
+  stage: StageName,
+  opts: ListNotDoneOptions = {},
+): Promise<number> {
+  const base = notDoneQuery(db, stage, { ...opts, afterId: undefined });
+  if (!base) return 0;
+  const r = await base.select((eb) => eb.fn.countAll<string>().as('n')).executeTakeFirstOrThrow();
+  return Number(r.n);
 }
 
 /**

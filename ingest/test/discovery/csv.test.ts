@@ -147,6 +147,39 @@ describe('readGraduates', () => {
     });
   });
 
+  it('reads the literal <nil> that Dune writes for an empty value as null', async () => {
+    const nil = '<nil>';
+    const text = [
+      HEADER,
+      line({
+        creator: nil,
+        hours: nil,
+        peak_max_usd: nil,
+        peak_p999_usd: nil,
+        peak_at: nil,
+        last_hour: nil,
+      }),
+      line({ mint: B, peak_p999_usd: '1.2000625e+07', hours: '10' }),
+      line({ mint: C, created_at: nil }),
+    ].join('\n');
+    const r = await readGraduates(chunks(text));
+    expect(r.rows).toHaveLength(2);
+    expect(r.rows[0]).toMatchObject({
+      mint: A,
+      creator: null,
+      hours: null,
+      peakMaxUsd: null,
+      peakP999Usd: null,
+      roughPeakUsd: null,
+      peakAtMs: null,
+      lastHourMs: null,
+    });
+    expect(r.rows[1]!.roughPeakUsd).toBe(12_000_625);
+    // A required column that says <nil> is still a bad row.
+    expect(r.bad.count).toBe(1);
+    expect(r.bad.stored[0]!.reason).toMatch(/created_at: missing/);
+  });
+
   it('needs only mint, created_at and graduated_at in the header, in any order', async () => {
     const text = `graduated_at,peak_p999_usd,mint,created_at\n1710535885,150000,${A},1710511110\n`;
     const r = await readGraduates(chunks(text));
