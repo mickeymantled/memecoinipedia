@@ -25,8 +25,9 @@
  * offset, so a stopped run continues from the next page and never pays for a page twice. Dune bills
  * a page when the request is made, so a page is never requested without being saved.
  *
- * If `discovery.csv` exists, Dune is skipped (no key needed) and the script goes straight to the
- * sizing table and `sample.csv`.
+ * If `discovery.csv` exists, Dune is skipped (no key, no `--confirm`, no `--max-credits` needed) and the
+ * script goes straight to the sizing table and `sample.csv`. `--max-credits` is for the whole download:
+ * credits recorded by earlier runs of it (kept in the state file) count against it.
  *
  * The key comes from DUNE_API_KEY, and is never printed.
  */
@@ -175,6 +176,8 @@ export interface RunState {
   lastPageCredits: number | null;
   columns: string[] | null;
   filter: string | null;
+  /** Credits recorded for this download so far, across runs. Loaded into the budget on resume. */
+  creditsSpent: number;
 }
 
 function readState(file: string): RunState | null {
@@ -195,6 +198,7 @@ function readState(file: string): RunState | null {
         lastPageCredits: typeof s.lastPageCredits === 'number' ? s.lastPageCredits : null,
         columns: Array.isArray(s.columns) ? (s.columns as string[]) : null,
         filter: typeof s.filter === 'string' ? s.filter : null,
+        creditsSpent: typeof s.creditsSpent === 'number' && s.creditsSpent > 0 ? s.creditsSpent : 0,
       };
     }
   } catch {
@@ -234,7 +238,7 @@ export function buildPlan(args: RunnerArgs): Plan {
   }
   if (csvExists) {
     lines.push(
-      `${discoveryFile(args.out)} exists: Dune would be skipped, and the sizing table and sample.csv written from it.`,
+      `${discoveryFile(args.out)} exists: Dune is skipped, and the sizing table and sample.csv are written from it (no --confirm or --max-credits needed).`,
     );
   } else {
     lines.push(
@@ -249,7 +253,7 @@ export function buildPlan(args: RunnerArgs): Plan {
       'The number of rows is not known before the run. A download costs about ' +
         `${CREDITS_PER_1000_ROWS} credits per 1,000 rows, so 350,000 rows would be about ` +
         `${Math.round(350 * CREDITS_PER_1000_ROWS)} credits.`,
-      `Credit ceiling: ${args.maxCredits === null ? 'not set (required with --confirm)' : args.maxCredits}. ` +
+      `Credit ceiling: ${args.maxCredits === null ? 'not set (required with --confirm)' : args.maxCredits}, for the whole download (credits recorded by earlier runs of it count too). ` +
         `A page is not requested when the credits left are below the last page's cost (or ${FIRST_PAGE_HEADROOM} for the first).`,
     );
     if (sqlExists) {
@@ -342,6 +346,15 @@ export async function runDiscovery(opts: RunOptions): Promise<RunSummary> {
     );
   }
 
+  // The ceiling is for the whole download, not one process: count what earlier runs spent.
+  const carried = state?.creditsSpent ?? 0;
+  if (carried > 0) {
+    budget.record(DUNE_PROVIDER, carried, true);
+    log(
+      `Earlier runs of this download recorded ${carried} credits; they count against --max-credits.`,
+    );
+  }
+
   // Usage is free; it is read before and after to compare with the ledger.
   const usedNow = async (): Promise<number | null> => {
     try {
@@ -371,6 +384,7 @@ export async function runDiscovery(opts: RunOptions): Promise<RunSummary> {
         lastPageCredits: null,
         columns: args.columns,
         filter: args.filter,
+        creditsSpent: total(),
       });
       log('Execution started.');
     } else {
@@ -391,6 +405,18 @@ export async function runDiscovery(opts: RunOptions): Promise<RunSummary> {
             : waited.outcome;
       return done('failed', `The execution ${why}`);
     }
+    // The execution's cost is now in the ledger: save it, so a resumed run counts it.
+    writeState(stateFile(args.out), {
+      executionId,
+      nextOffset: state?.nextOffset ?? 0,
+      partBytes: state?.partBytes ?? 0,
+      rows: state?.rows ?? 0,
+      pages: state?.pages ?? 0,
+      lastPageCredits: state?.lastPageCredits ?? null,
+      columns: args.columns,
+      filter: args.filter,
+      creditsSpent: total(),
+    });
     log(
       `Execution complete: ${waited.rowCount ?? '?'} rows, ${waited.resultBytes ?? '?'} bytes of result, ` +
         `cost ${waited.reportedCredits ?? 'not reported'} credits.`,
@@ -421,8 +447,8 @@ export async function runDiscovery(opts: RunOptions): Promise<RunSummary> {
     if (remaining() < need) {
       return done(
         'stopped_budget',
-        `Stopped before offset ${offset}: ${Math.round(remaining() * 100) / 100} credits left, below ${need} ` +
-          `(${lastCost === null ? 'the first-page headroom' : 'the cost of the previous page'}). Run again with a higher --max-credits to continue from here.`,
+        `Stopped before offset ${offset}: ${Math.round(remaining() * 100) / 100} credits left of the ceiling, below ${need} ` +
+          `(${lastCost === null ? 'the first-page headroom' : 'the cost of the previous page'}). The ceiling covers the whole download, earlier runs included; run again with a higher --max-credits to continue from here.`,
       );
     }
     try {
@@ -462,6 +488,7 @@ export async function runDiscovery(opts: RunOptions): Promise<RunSummary> {
         lastPageCredits: lastCost,
         columns: args.columns,
         filter: args.filter,
+        creditsSpent: total(),
       });
     } catch (err) {
       if (err instanceof BudgetExceededError) {
@@ -474,7 +501,7 @@ export async function runDiscovery(opts: RunOptions): Promise<RunSummary> {
   if (usageStart !== null && usageEnd !== null) {
     log(
       `Usage endpoint: ${Math.round((usageEnd - usageStart) * 1000) / 1000} credits used during the run. ` +
-        `Ledger: ${total()}.`,
+        `Ledger: ${Math.round((total() - carried) * 1000) / 1000}.`,
     );
   }
   return done('complete', null);
@@ -521,7 +548,11 @@ export async function main(
   }
   const plan = buildPlan(args);
   console.log(plan.text);
-  if (!args.confirm) return 0;
+  if (!args.confirm) {
+    // Reading a file already on disk sends nothing and costs nothing.
+    if (plan.csvExists) await sizeAndSample(args);
+    return 0;
+  }
 
   if (!plan.csvExists) {
     let client: DuneClient;

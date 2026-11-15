@@ -1,1 +1,3 @@
-{ "error": "This performance tier is not available with your subscription. Please upgrade your subscription plan here: https://dune.com/pricing" }
+{
+  "error": "This performance tier is not available with your subscription. Please upgrade your subscription plan here: https://dune.com/pricing"
+}

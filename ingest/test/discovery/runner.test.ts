@@ -309,7 +309,7 @@ describe('without --confirm', () => {
     fs.writeFileSync(discoveryFile(w.args.out), HEADER + '\n');
     const plan = buildPlan(w.args);
     expect(plan.csvExists).toBe(true);
-    expect(plan.text).toContain('Dune would be skipped');
+    expect(plan.text).toContain('Dune is skipped');
   });
 
   it('reports a missing SQL file and a template with placeholders', () => {
@@ -401,7 +401,9 @@ describe('runDiscovery', () => {
     const first = await run(w);
     // 100 - 0.35 - 3 x 30 leaves 9.65, below the 30 the last page cost.
     expect(first.status).toBe('stopped_budget');
-    expect(first.message).toMatch(/Stopped before offset 150: 9\.65 credits left, below 30/);
+    expect(first.message).toMatch(
+      /Stopped before offset 150: 9\.65 credits left of the ceiling, below 30/,
+    );
     expect(w.csvOffsets).toEqual([0, 50, 100]);
     expect(JSON.parse(readOut(w, 'discovery.csv.part.state.json'))).toMatchObject({
       nextOffset: 150,
@@ -417,6 +419,67 @@ describe('runDiscovery', () => {
     expect(w.csvOffsets).toEqual([0, 50, 100, 150, 200]);
     expect(readOut(w, 'discovery.csv')).toBe(expectedCsv(250));
     expect(exists(w, 'discovery.csv.part.state.json')).toBe(false);
+  });
+
+  it('counts credits from earlier runs: a download stopped by the ceiling stops again on resume with the same ceiling', async () => {
+    const w = world({ maxCredits: 100, pageRows: 50 }, { rows: 250, pageCost: 30 });
+    const first = await run(w);
+    expect(first.status).toBe('stopped_budget');
+    expect(first.message).toContain('whole download');
+    expect(w.csvOffsets).toEqual([0, 50, 100]);
+    expect(JSON.parse(readOut(w, 'discovery.csv.part.state.json')).creditsSpent).toBeCloseTo(
+      0.35 + 90,
+      5,
+    );
+
+    // A new process, the same ceiling: the earlier spending is loaded before anything is requested.
+    const second = await run(w);
+    expect(second.status).toBe('stopped_budget');
+    expect(second.message).toMatch(/Stopped before offset 150: 9\.65 credits left of the ceiling/);
+    expect(w.csvOffsets).toEqual([0, 50, 100]); // no page was requested
+    expect(w.executes()).toBe(1);
+    expect(second.totalCredits).toBeCloseTo(90.35, 5);
+    expect(w.logs.some((l) => l.startsWith('Earlier runs of this download recorded'))).toBe(true);
+  });
+
+  it('records the estimate for every page when usage does not move, and the stop rule still works', async () => {
+    // 32,000 rows a page estimate 51.2 credits each; a ceiling of 160 allows three pages (the execution adds 0.35, from the status fixture).
+    const w = world(
+      { maxCredits: 160, pageRows: 32_000 },
+      { rows: 200_000, pageCost: 0, execCost: 0 },
+    );
+    const s = await run(w);
+    expect(s.status).toBe('stopped_budget');
+    expect(w.csvOffsets).toEqual([0, 32_000, 64_000]);
+    expect(w.logs.filter((l) => /^page \d+:.*credits 51\.2 \(estimated\)/.test(l))).toHaveLength(3);
+    expect(w.logs.some((l) => l.includes('(measured)'))).toBe(false);
+    expect(s.totalCredits).toBeCloseTo(153.95, 5);
+    expect(s.message).toMatch(/Stopped before offset 96000: 6\.05 credits left of the ceiling/);
+  });
+
+  it('keeps a page file consistent when the file before it has no trailing newline', async () => {
+    const w = world({ pageRows: 100 }, { rows: 250 });
+    // Page 1 is saved by an earlier run, but its last newline was lost.
+    const page1 = expectedCsv(100).slice(0, -1);
+    fs.mkdirSync(w.args.out, { recursive: true });
+    fs.writeFileSync(partFile(w.args.out), page1);
+    fs.writeFileSync(
+      stateFile(w.args.out),
+      JSON.stringify({
+        executionId: EXEC,
+        nextOffset: 100,
+        partBytes: Buffer.byteLength(page1),
+        rows: 100,
+        pages: 1,
+        lastPageCredits: 0.5,
+        columns: null,
+        filter: null,
+        creditsSpent: 0.85,
+      }),
+    );
+    const s = await run(w);
+    expect(s).toMatchObject({ status: 'complete', rows: 250 });
+    expect(readOut(w, 'discovery.csv')).toBe(expectedCsv(250));
   });
 
   it('needs 60 credits left before the first page', async () => {
@@ -604,6 +667,20 @@ describe('sizeAndSample', () => {
     // Per cell: 5 of 20 (30k), 10 of 20 (50k), 20 of 20 (500k), 19 of 20 (5M, one is the probe),
     // 15 of 20 (50M): 69 drawn, plus the 2 probes and the header.
     expect(sample).toHaveLength(1 + 69 + 2);
+  });
+
+  it('runs from main without --confirm and without --max-credits when discovery.csv exists', async () => {
+    const w = setup(40);
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const code = await main(['--out', w.args.out, '--probes', w.args.probes], {});
+    const printed = log.mock.calls.map((c) => String(c[0])).join('\n');
+    log.mockRestore();
+    expect(code).toBe(0);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(exists(w, 'sample.csv')).toBe(true);
+    expect(printed).toMatch(/\ntotal\t40\t/);
   });
 
   it('runs from main with --confirm and an existing discovery.csv, needing no key and no network', async () => {

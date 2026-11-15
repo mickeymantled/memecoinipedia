@@ -522,6 +522,47 @@ describe('downloadCsv', () => {
     });
   });
 
+  it('does not believe a measured cost of zero or less for a page with rows', async () => {
+    const budget = new UnitBudget({ ceilingUnits: 1000 });
+    const { client } = setup({ budget, get: () => ({ body: HEADER + dataRows(1000) }) });
+    for (const measured of [0, -0.5]) {
+      const r = await client.downloadCsv(ID, tmpFile(), {
+        limit: 1000,
+        measureCredits: async () => measured,
+      });
+      expect(r).toMatchObject({ credits: 1.6, estimated: true });
+    }
+    expect(dune(budget)).toMatchObject({ units: 3.2, estimatedUnits: 3.2 });
+  });
+
+  it('believes a measured cost of zero for a page with no rows', async () => {
+    const budget = new UnitBudget({ ceilingUnits: 1000 });
+    const { client } = setup({ budget, get: () => ({ body: HEADER }) });
+    const r = await client.downloadCsv(ID, tmpFile(), {
+      limit: 1000,
+      measureCredits: async () => 0,
+    });
+    expect(r).toMatchObject({ rows: 0, credits: 0, estimated: false });
+  });
+
+  it('writes a newline before appending to a file that does not end with one', async () => {
+    const { client } = setup({ get: () => ({ body: HEADER + dataRows(2, 2) }) });
+    const out = tmpFile();
+    const page1 = HEADER + dataRows(2).slice(0, -1); // no trailing newline
+    fs.writeFileSync(out, page1);
+    const r = await client.downloadCsv(ID, out, { limit: 2, offset: 2 });
+    expect(r).toMatchObject({ rows: 2 });
+    expect(fs.readFileSync(out, 'utf8')).toBe(HEADER + dataRows(4));
+  });
+
+  it('does not add a second newline when the file already ends with one', async () => {
+    const { client } = setup({ get: () => ({ body: HEADER + dataRows(1, 2) }) });
+    const out = tmpFile();
+    fs.writeFileSync(out, HEADER + dataRows(2));
+    await client.downloadCsv(ID, out, { limit: 1, offset: 2 });
+    expect(fs.readFileSync(out, 'utf8')).toBe(HEADER + dataRows(3));
+  });
+
   it('uses the configured rate', async () => {
     const { client } = setup({
       downloadCreditsPer1000Rows: 3,

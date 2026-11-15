@@ -467,6 +467,9 @@ export class DuneClient {
    * offset leaves no duplicate rows. Dune bills a page when the request is made, so a page whose
    * body then fails is still recorded, at the reserved estimate.
    *
+   * A zero or negative measured cost for a page with rows is not believed; the estimate is used.
+   * A later page is appended after a newline if the file did not end with one.
+   *
    * An estimate (rows times the rate) is reserved before the request; when it does not fit the
    * budget, `BudgetExceededError` is thrown and nothing is requested. HTTP 402 is a
    * `DuneCreditLimitError`, not retried. The next offset comes from `x-dune-next-offset`.
@@ -537,6 +540,14 @@ export class DuneClient {
         await res.body.cancel().catch(() => undefined);
         throw new DuneDownloadTooLargeError(cap);
       }
+      if (!first && startSize > 0) {
+        // A file that does not end with a newline would glue this page's first row onto its last.
+        const fd = fs.openSync(path, 'r');
+        const last = Buffer.alloc(1);
+        fs.readSync(fd, last, 0, 1, startSize - 1);
+        fs.closeSync(fd);
+        if (last[0] !== 0x0a) fs.appendFileSync(path, '\n');
+      }
       let dropping = !first; // drop bytes up to and including the first newline (the header)
       const counter = new Transform({
         transform(chunk: Buffer, _enc, cb) {
@@ -585,7 +596,11 @@ export class DuneClient {
       } catch {
         measured = null;
       }
-      const useMeasured = measured !== null && Number.isFinite(measured) && measured >= 0;
+      // A zero (or less) for a page that returned rows is not believed: usage may lag. Use the estimate.
+      const useMeasured =
+        measured !== null &&
+        Number.isFinite(measured) &&
+        (measured > 0 || (measured === 0 && rows === 0));
       const credits = useMeasured ? (measured as number) : estimate(rows);
       this.budget.settle(reservation, [{ units: credits, estimated: !useMeasured }]);
       return {
