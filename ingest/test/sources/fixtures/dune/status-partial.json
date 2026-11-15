@@ -1,0 +1,8 @@
+{
+  "execution_id": "01HKZJ2683PHF9Q9PHHQ8FW4Q1",
+  "query_id": 0,
+  "state": "QUERY_STATE_COMPLETED_PARTIAL",
+  "is_execution_finished": true,
+  "execution_cost_credits": 12,
+  "result_metadata": { "total_row_count": 100, "total_result_set_bytes": 5000 }
+}
