@@ -95,7 +95,7 @@ export const WATCH_PASS_SECONDS = 30;
  */
 export const SWEEP_MIN_AGE_SECONDS = DAY;
 /**
- * The last look: a watched coin this old (13 days, a day before it leaves the window), not listed,
+ * The last look: a watched coin this old (13 days, a day before it leaves the window), listed or not,
  * whose candles last finished before it was this old, is fetched once more. With fresh daily bars
  * the staged fetch screens it cheaply, and a spike that the hourly polls of days 3 to 14 missed
  * shows in a daily bar.
@@ -150,8 +150,8 @@ export const UNITS_PER_REQUEST = 4;
 /**
  * Cost of one last look: the fetch asks only for bars after what is held, and a coin with nothing
  * new at hourly or minute scale needs fresh daily bars only: one request. A last look that finds a
- * spike costs more; those are part of the later-trigger allowance. Every graduate that does not
- * list (1 minus the trigger share) gets one.
+ * spike costs more; those are part of the later-trigger allowance. Every graduate gets a last look;
+ * one that lists costs `UNITS_PER_LATER_TRIGGER` instead.
  */
 export const UNITS_PER_LAST_LOOK = UNITS_PER_REQUEST;
 /**

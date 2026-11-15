@@ -111,7 +111,9 @@ describeDb('live loops', () => {
     // The fetch sees the bars up to the minute before it ran, so its ATH is a minute or two behind the poll.
     expect(row.ath_market_cap_usd).toBeGreaterThan(85_000);
     expect(row.discovery_source).toBe('codex-live');
-    expect(row.ticker).toBeTruthy(); // the metadata stage ran after the second fetch listed the coin
+    // The second fetch listed the coin, so the metadata stage ran and wrote the simulated Helius
+    // symbol (`T` and characters 4 to 6 of the mint) over the ticker Codex.io gave.
+    expect(row.ticker).toBe(`T${coin.mint.slice(4, 7)}`);
     expect(row.current_market_cap_usd).toBeGreaterThanOrEqual(90_000);
     // A fetched coin stays watched for its 14 days, and the day's counters say what happened.
     const status = await collectLiveStatus(f.db, f.clock.now());

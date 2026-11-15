@@ -251,8 +251,9 @@ describe('the load model', () => {
     expect(l.codex.discoveryUnits).toBeLessThan(1_600);
     // First candle fetches: 300 triggered at 23.2 units and 700 screened at 13.5.
     expect(l.codex.candlesUnits).toBe(Math.round(300 * 23.2 + 700 * 13.5));
-    // Last looks: the 700 coins that do not list, one request (4 units) each.
-    expect(l.codex.lastLookUnits).toBe(700 * 4);
+    // Last looks: every graduate. The 700 that do not list cost one request (4 units); the 300
+    // that list cost a later trigger's worth (12 units).
+    expect(l.codex.lastLookUnits).toBe(700 * 4 + 300 * 12);
     // Later triggers: one a triggered coin, 12 units each.
     expect(l.codex.laterUnits).toBe(300 * 12);
     // The parts are rounded one by one: the total is their sum to within the rounding.

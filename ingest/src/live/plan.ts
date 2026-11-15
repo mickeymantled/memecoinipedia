@@ -108,7 +108,8 @@ export function predictLoad(o: { graduatesPerDay: number; triggerShare?: number 
   const sweep = discoveryCost(2 * g, SWEEP_REREAD_SECONDS / DISCOVERY_WINDOW_SECONDS);
   const candlesUnits = triggered * UNITS_PER_TRIGGERED_COIN + screened * UNITS_PER_SCREENED_COIN;
   const candlesRequests = candlesUnits / UNITS_PER_REQUEST;
-  const lastLookUnits = screened * UNITS_PER_LAST_LOOK;
+  // Every graduate gets one: a coin that lists costs a later trigger's worth, one that does not a daily-bars request.
+  const lastLookUnits = triggered * UNITS_PER_LATER_TRIGGER + screened * UNITS_PER_LAST_LOOK;
   const lastLookRequests = lastLookUnits / UNITS_PER_REQUEST;
   const laterCount = triggered * ASSUMED_LATER_TRIGGERS_PER_TRIGGERED_COIN;
   const laterUnits = laterCount * UNITS_PER_LATER_TRIGGER;
@@ -262,7 +263,7 @@ export function formatLivePlan(p: LivePlan): string {
   );
   lines.push(
     `  Assumptions: every graduate is watched for 14 days (Jupiter figure above is for that steady state). ` +
-      `A last look is one daily-bars request (${UNITS_PER_LAST_LOOK} units) for each graduate that does not list. ` +
+      `Every graduate gets a last look: one daily-bars request (${UNITS_PER_LAST_LOOK} units) for a coin that does not list, ${UNITS_PER_LATER_TRIGGER} units for one that does. ` +
       `The later-trigger allowance is ${ASSUMED_LATER_TRIGGERS_PER_TRIGGERED_COIN} later fetch per triggered coin, ` +
       `${UNITS_PER_LATER_TRIGGER} units each (3 requests: a daily bar, an hourly window, a refinement window); ` +
       `it is a guess, bounded by the 5% step and the 15 minutes, not a measurement.`,

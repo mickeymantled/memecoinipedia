@@ -11,7 +11,7 @@ import {
   listLastLook,
   listWaitingCandles,
   listWatchedDue,
-  listWatchedFailedCandles,
+  listWatchedFailures,
   listWatchedOlderThan,
   recordTriggerMarketCaps,
   reopenForFetch,
@@ -233,13 +233,45 @@ describeDb('live state, the watched set and the pipeline lock', () => {
     expect(await getLiveState(t.db, 'day:2026-11-15')).toMatchObject({ retriggered: 1 });
   });
 
-  it('lists the coins due a last look: 13 days old, not listed, fetched before that age', async () => {
+  it('never lowers the last-trigger market cap', async () => {
+    await insertLiveGraduates(t.db, [grad(1, HOUR)], OPTS);
+    const id = await idOf(1);
+    const read = async () =>
+      (
+        await t.db
+          .selectFrom('coins')
+          .select('last_trigger_market_cap_usd')
+          .where('id', '=', id)
+          .executeTakeFirstOrThrow()
+      ).last_trigger_market_cap_usd;
+    await recordTriggerMarketCaps(t.db, [{ id, marketCapUsd: 95_000 }], NOW);
+    await recordTriggerMarketCaps(t.db, [{ id, marketCapUsd: 91_000 }], NOW);
+    expect(await read()).toBe(95_000);
+    await recordTriggerMarketCaps(t.db, [{ id, marketCapUsd: 99_000 }], NOW);
+    expect(await read()).toBe(99_000);
+  });
+
+  it('lists watched coins whose metrics failed behind finished candles', async () => {
+    await insertLiveGraduates(t.db, [grad(1, HOUR), grad(2, HOUR), grad(3, HOUR)], OPTS);
+    await stage(await idOf(1), 'candles', 'done', 1, ago(90), ago(80));
+    await stage(await idOf(1), 'metrics', 'failed', 3, ago(70), ago(60));
+    await stage(await idOf(2), 'candles', 'failed', 3, ago(90), ago(80));
+    await stage(await idOf(2), 'metrics', 'failed', 3, ago(70), ago(60));
+    await stage(await idOf(3), 'candles', 'done', 1, ago(90), ago(80));
+    await stage(await idOf(3), 'metrics', 'done', 1, ago(70), ago(60));
+    expect(await listWatchedFailures(t.db, W, { afterId: 0, limit: 10 })).toEqual([
+      { id: await idOf(1), address: addr(1), candlesFailed: false, metricsFailed: true },
+      { id: await idOf(2), address: addr(2), candlesFailed: true, metricsFailed: false },
+    ]);
+  });
+
+  it('lists the coins due a last look: 13 days old, listed or not, fetched before that age', async () => {
     const D13 = 13 * DAY;
     await insertLiveGraduates(
       t.db,
       [
         grad(1, D13 + HOUR), // due
-        grad(2, D13 + HOUR), // listed
+        grad(2, D13 + HOUR), // listed: gets its look too
         grad(3, D13 + HOUR), // candles finished after its 13th day: already had the look
         grad(4, D13 + HOUR), // metrics not finished
         grad(5, 5 * DAY), // too young
@@ -266,10 +298,13 @@ describeDb('live state, the watched set and the pipeline lock', () => {
       .set({ ath_market_cap_usd: 150_000 })
       .where('address', '=', addr(2))
       .execute();
-    const spec = { ...W, minAgeSeconds: D13, listedUsd: 100_000 };
-    expect(await listLastLook(t.db, spec, { afterId: 0, limit: 10 })).toEqual([await idOf(1)]);
-    expect(await listWatchedFailedCandles(t.db, W, { afterId: 0, limit: 10 })).toEqual([
-      { id: await idOf(6), address: addr(6) },
+    const spec = { ...W, minAgeSeconds: D13 };
+    expect(await listLastLook(t.db, spec, { afterId: 0, limit: 10 })).toEqual([
+      await idOf(1),
+      await idOf(2),
+    ]);
+    expect(await listWatchedFailures(t.db, W, { afterId: 0, limit: 10 })).toEqual([
+      { id: await idOf(6), address: addr(6), candlesFailed: true, metricsFailed: false },
     ]);
   });
 
@@ -278,10 +313,13 @@ describeDb('live state, the watched set and the pipeline lock', () => {
     expect(await lock.isHeld()).toBe(true);
     const holder = await sql<{ pid: number }>`
       select pid from pg_locks where locktype = 'advisory'
+        and database = (select oid from pg_database where datname = current_database())
         and classid = ${Math.floor(PIPELINE_LOCK_KEY / 2 ** 32)}::oid
         and objid = ${PIPELINE_LOCK_KEY % 2 ** 32}::oid`.execute(t.db);
     expect(holder.rows[0]!.pid).toBe(lock.backendPid);
-    await sql`select pg_terminate_backend(${lock.backendPid})`.execute(t.db);
+    // Only a session connected to this database is ever terminated.
+    await sql`select pg_terminate_backend(pid) from pg_stat_activity
+      where pid = ${lock.backendPid} and datname = current_database()`.execute(t.db);
     // Give the client its 'end' event; the check itself also notices.
     expect(await lock.isHeld()).toBe(false);
     // The lock is free for the next process, and releasing the dead one is harmless.

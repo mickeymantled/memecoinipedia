@@ -9,12 +9,12 @@
  *    reached $100,000; a coin that spiked and fell back between two polls has a daily bar that
  *    shows it, and gets the full fetch.
  *
- * 3. The last look: a watched coin 13 days old or more, not listed, whose candles last finished
+ * 3. The last look: a watched coin 13 days old or more, listed or not, whose candles last finished
  *    before it was 13 days old, is fetched once more (its candles and metrics reopened). With fresh
  *    daily bars the staged fetch screens it cheaply; a spike that the hourly polls of days 3 to 14
  *    missed shows in a daily bar. The fetch finishes after the 13th day, so the coin is not
  *    found again.
- * 4. A watched coin whose candles stage is `failed` is retried (the same requeue as
+ * 4. A watched coin whose candles stage is `failed`, or whose metrics stage is `failed`, is retried (the same requeue as
  *    `backfill run --retry-failed`), once a day.
  *
  * The sweep is done for the UTC day when both parts finished. If discovery failed or was paused,
@@ -26,14 +26,13 @@ import {
   bumpLiveCounters,
   getLiveState,
   listLastLook,
-  listWatchedFailedCandles,
+  listWatchedFailures,
   listWatchedOlderThan,
   reopenForFetch,
   requeueFailed,
   setLiveState,
   triggerCandles,
 } from '@memecoinipedia/db';
-import { LISTED_ATH_USD } from '../worker/stage.js';
 import {
   LAST_LOOK_AGE_SECONDS,
   STATE_LAST_SWEEP,
@@ -112,11 +111,7 @@ export async function sweepOnce(deps: LiveDeps): Promise<SweepPass> {
   for (let afterId = 0; ;) {
     const ids = await listLastLook(
       deps.db,
-      {
-        ...watchSpec(at),
-        minAgeSeconds: LAST_LOOK_AGE_SECONDS,
-        listedUsd: LISTED_ATH_USD,
-      },
+      { ...watchSpec(at), minAgeSeconds: LAST_LOOK_AGE_SECONDS },
       { afterId, limit: SWEEP_PAGE },
     );
     if (ids.length === 0) break;
@@ -133,23 +128,26 @@ export async function sweepOnce(deps: LiveDeps): Promise<SweepPass> {
 
   let retried = 0;
   for (let afterId = 0; ;) {
-    const rows = await listWatchedFailedCandles(deps.db, watchSpec(at), {
-      afterId,
-      limit: SWEEP_PAGE,
-    });
+    const rows = await listWatchedFailures(deps.db, watchSpec(at), { afterId, limit: SWEEP_PAGE });
     if (rows.length === 0) break;
-    const n = await requeueFailed(deps.db, ['candles'], {
-      addresses: rows.map((r) => r.address),
-      now: at,
-    });
-    if (n > 0) {
-      await bumpLiveCounters(deps.db, dayKey(at), { retried: n }, at);
-      await deps.enqueue(
-        'candles',
-        rows.map((r) => r.id),
-      );
+    for (const [stage, which] of [
+      ['candles', rows.filter((r) => r.candlesFailed)],
+      ['metrics', rows.filter((r) => r.metricsFailed)],
+    ] as const) {
+      if (which.length === 0) continue;
+      const n = await requeueFailed(deps.db, [stage], {
+        addresses: which.map((r) => r.address),
+        now: at,
+      });
+      if (n > 0) {
+        await bumpLiveCounters(deps.db, dayKey(at), { retried: n }, at);
+        await deps.enqueue(
+          stage,
+          which.map((r) => r.id),
+        );
+      }
+      retried += n;
     }
-    retried += n;
     afterId = rows[rows.length - 1]!.id;
     if (rows.length < SWEEP_PAGE) break;
   }

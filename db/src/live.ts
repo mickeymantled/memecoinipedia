@@ -428,7 +428,10 @@ export async function listWatchedOlderThan(
   return rows.map((r) => r.id);
 }
 
-/** Writes the market cap a coin had when the watch queued its fetch (`last_trigger_market_cap_usd`). */
+/**
+ * Writes the market cap a coin had when the watch queued its fetch (`last_trigger_market_cap_usd`).
+ * The figure never goes down: the larger of the stored value and the new one is kept.
+ */
 export async function recordTriggerMarketCaps(
   db: Kysely<Database>,
   rows: readonly { id: number; marketCapUsd: number }[],
@@ -436,7 +439,8 @@ export async function recordTriggerMarketCaps(
 ): Promise<void> {
   if (rows.length === 0) return;
   await sql`
-    update coins set last_trigger_market_cap_usd = t.mcap, updated_at = ${now}
+    update coins set last_trigger_market_cap_usd = greatest(coins.last_trigger_market_cap_usd, t.mcap),
+      updated_at = ${now}
     from unnest(${rows.map((r) => r.id)}::bigint[], ${rows.map((r) => r.marketCapUsd)}::float8[])
       as t(id, mcap)
     where coins.id = t.id
@@ -465,12 +469,11 @@ export async function reopenForFetch(
 export interface LastLookSpec extends WatchSpec {
   /** A coin this old or older gets its last look. */
   minAgeSeconds: number;
-  /** Coins with an ATH market cap at or above this are listed, and get none. */
-  listedUsd: number;
 }
 
 /**
- * Watched coins due a last look: at least `minAgeSeconds` old, not listed, with candles and
+ * Watched coins due a last look: at least `minAgeSeconds` old, listed or not (a listed coin can
+ * run and fall back between two hourly polls too), with candles and
  * metrics both finished (`done` or `skipped`) and the candles last finished before the coin was
  * `minAgeSeconds` old. Once the look has been fetched the candles finish after that age, so the
  * coin is not found again. By id, paged by `afterId`.
@@ -485,9 +488,6 @@ export async function listLastLook(
     .select('id')
     .where((eb) => isWatched(eb, w))
     .where(sql<boolean>`${ageSeconds(w.now)} >= ${w.minAgeSeconds}::float8`)
-    .where(
-      sql<boolean>`(coins.ath_market_cap_usd is null or coins.ath_market_cap_usd < ${w.listedUsd}::float8)`,
-    )
     .where(
       sql<boolean>`exists (select 1 from coin_stages c where c.coin_id = coins.id and c.stage = 'candles'
         and c.status in ('done', 'skipped')
@@ -504,23 +504,46 @@ export async function listLastLook(
   return rows.map((r) => r.id);
 }
 
-/** Watched coins whose candles stage is `failed`: id and address, paged by `afterId`. */
-export async function listWatchedFailedCandles(
+export interface WatchedFailure {
+  id: number;
+  address: string;
+  /** The candles stage is `failed`. */
+  candlesFailed: boolean;
+  /** The metrics stage is `failed` and the candles stage is not (candles are retried first). */
+  metricsFailed: boolean;
+}
+
+/**
+ * Watched coins whose candles stage is `failed`, or whose metrics stage is `failed` while the
+ * candles are not: paged by `afterId`.
+ */
+export async function listWatchedFailures(
   db: Kysely<Database>,
   w: WatchSpec,
   o: { afterId: number; limit: number },
-): Promise<{ id: number; address: string }[]> {
-  return db
+): Promise<WatchedFailure[]> {
+  const failed = (stage: string) =>
+    sql<boolean>`exists (select 1 from coin_stages c where c.coin_id = coins.id and c.stage = ${stage} and c.status = 'failed')`;
+  const rows = await db
     .selectFrom('coins')
-    .select(['id', 'address'])
+    .select([
+      'id',
+      'address',
+      failed('candles').as('candles_failed'),
+      failed('metrics').as('metrics_failed'),
+    ])
     .where((eb) => isWatched(eb, w))
-    .where(
-      sql<boolean>`exists (select 1 from coin_stages c where c.coin_id = coins.id and c.stage = 'candles' and c.status = 'failed')`,
-    )
+    .where(sql<boolean>`(${failed('candles')} or ${failed('metrics')})`)
     .where('id', '>', o.afterId)
     .orderBy('id')
     .limit(o.limit)
     .execute();
+  return rows.map((r) => ({
+    id: r.id,
+    address: r.address,
+    candlesFailed: r.candles_failed,
+    metricsFailed: r.metrics_failed && !r.candles_failed,
+  }));
 }
 
 /** Coins with a candles row that nobody has claimed yet (triggered, waiting), by id. */

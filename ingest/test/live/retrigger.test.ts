@@ -316,6 +316,38 @@ describeDb('a watched coin is fetched again at a new high', () => {
     expect((await stageRow(f, coin.mint, 'metadata'))?.status).toBe('done');
   }, 300_000);
 
+  it('gives a listed coin its last look too: a run on day 8 between two hourly polls is found', async () => {
+    fx = await liveFixture();
+    const f = fx;
+    const G = f.clock.sec - 10 * MIN;
+    // $150,000, except 20 minutes on day 8 at $600,000, then $120,000 at the next poll.
+    const spike = f.clock.sec + 8 * DAY + 3 * MIN;
+    const coin = await addCoin(f, 9, 10 * MIN, (t) =>
+      t >= spike && t < spike + 20 * MIN
+        ? 600_000
+        : t >= spike + 20 * MIN && t < spike + 2 * HOUR
+          ? 120_000
+          : 150_000,
+    );
+    const loop = new LiveLoop(f.deps);
+
+    await runUntil(f, loop, G + 12 * DAY, 15 * MIN);
+    // Listed by its first fetch; the hourly polls never saw the run.
+    let t = await totals(f);
+    expect(t.triggered).toBe(1);
+    expect(t.retriggered ?? 0).toBe(0);
+    const before = await coinRow(f, coin.mint);
+    expect(before.ath_market_cap_usd).toBeGreaterThanOrEqual(149_000);
+    expect(before.ath_market_cap_usd).toBeLessThan(151_000);
+
+    // The sweep after its 13th day looks again, once.
+    await runUntil(f, loop, G + 16 * DAY, 15 * MIN);
+    t = await totals(f);
+    expect(t.lastlook).toBe(1);
+    expect(t.retriggered ?? 0).toBe(0);
+    expect((await coinRow(f, coin.mint)).ath_market_cap_usd).toBeGreaterThanOrEqual(590_000);
+  }, 300_000);
+
   it('does not trigger a coin while its candles or metrics are waiting or running', async () => {
     fx = await liveFixture();
     const f = fx;
@@ -385,27 +417,49 @@ describeDb('a watched coin is fetched again at a new high', () => {
     expect(WATCH_PASS_SECONDS).toBeLessThan(2 * MIN);
   }, 60_000);
 
-  it('retries the failed candles of a watched coin at the next sweep, once', async () => {
+  it('retries the failed candles, or failed metrics, of a watched coin at the next sweep, once', async () => {
     fx = await liveFixture();
     const f = fx;
     const watched = await addCoin(f, 7, 2 * DAY, () => 10_000);
     const old = await addCoin(f, 8, 20 * DAY, () => 10_000);
+    const metricsOnly = await addCoin(f, 10, 2 * DAY, () => 10_000);
     for (const c of [watched, old]) {
       await sql`
         insert into coin_stages (coin_id, stage, status, attempts, started_at, finished_at, last_error)
         select id, 'candles', 'failed', 3, now(), now(), 'provider said no'
         from coins where address = ${c.mint}`.execute(f.db);
     }
+    // Candles done, metrics failed.
+    await sql`
+      insert into coin_stages (coin_id, stage, status, attempts, started_at, finished_at)
+      select id, 'candles', 'done', 1, now(), now() from coins where address = ${metricsOnly.mint}`.execute(
+      f.db,
+    );
+    await sql`
+      insert into coin_stages (coin_id, stage, status, attempts, started_at, finished_at, last_error)
+      select id, 'metrics', 'failed', 3, now(), now(), 'bad bars' from coins where address = ${metricsOnly.mint}`.execute(
+      f.db,
+    );
     const queuedBefore = f.queued.length;
 
     const first = await sweepOnce(f.deps);
-    expect(first.retried).toBe(1);
+    expect(first.retried).toBe(2);
     // The watched coin is back to a fresh pending row and was queued; the old one is left failed.
     expect(await stageRow(f, watched.mint, 'candles')).toMatchObject({
       status: 'pending',
       attempts: 0,
     });
     expect(await stageRow(f, old.mint, 'candles')).toMatchObject({ status: 'failed', attempts: 3 });
+    // Candles stay done for the coin whose metrics failed; only its metrics are retried and queued.
+    expect(await stageRow(f, metricsOnly.mint, 'candles')).toMatchObject({ status: 'done' });
+    expect(await stageRow(f, metricsOnly.mint, 'metrics')).toMatchObject({
+      status: 'pending',
+      attempts: 0,
+    });
+    const metricsId = (await coinRow(f, metricsOnly.mint)).id;
+    expect(
+      f.queued.slice(queuedBefore).some((q) => q.stage === 'metrics' && q.ids.includes(metricsId)),
+    ).toBe(true);
     const watchedId = (await coinRow(f, watched.mint)).id;
     expect(
       f.queued.slice(queuedBefore).some((q) => q.stage === 'candles' && q.ids.includes(watchedId)),
@@ -414,6 +468,6 @@ describeDb('a watched coin is fetched again at a new high', () => {
     // The next sweep finds nothing failed among the watched coins.
     const second = await sweepOnce(f.deps);
     expect(second.retried).toBe(0);
-    expect((await totals(f)).retried).toBe(1);
+    expect((await totals(f)).retried).toBe(2);
   }, 60_000);
 });
