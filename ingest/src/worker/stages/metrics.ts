@@ -12,13 +12,16 @@
  * Reopening. Metric rules versions 4 and 5 can only lower an ATH, so a coin fetched under an older
  * version can come out with `peak_outside_minute_coverage` for a period it holds no 1-minute bars
  * for. When the result carries the flag, a target of it is at or above `refineFromUsd`, and the
- * coin's candles are `done` without the hourly cap hit and were fetched under an older metrics
- * version (or none recorded), the stage ends `done` and asks for `candles` and `metrics` to go back
- * to pending: candles fetches the missing minutes, metrics recomputes. The refetch records the
- * current version in the candles detail, so a flag that survives it reopens nothing.
+ * coin's candles are `done` without the hourly cap hit and were fetched under a candle rules
+ * version older than `CANDLE_RULES_VERSION` (or none recorded), the stage ends `done` and asks for
+ * `candles` and `metrics` to go back to pending: candles fetches the missing minutes, metrics
+ * recomputes. The refetch records the current `METRICS_VERSION` in the candles detail, so a flag
+ * that survives it reopens nothing. A rules version that only adds an output (version 6) does not
+ * raise `CANDLE_RULES_VERSION`, so it reopens nothing.
  */
 import { loadMetricInput } from '@memecoinipedia/db';
 import {
+  CANDLE_RULES_VERSION,
   computeMetricsForCoin,
   DEFAULT_PLAN_LIMITS,
   findCoveragePeaks,
@@ -39,7 +42,7 @@ async function candlesCanBeRefetched(ctx: StageContext, coinId: number): Promise
   if (!row || row.status !== 'done') return false;
   const detail = (row.detail ?? {}) as { hourlyCapHit?: unknown; metricsVersion?: unknown };
   if (detail.hourlyCapHit === true) return false;
-  return typeof detail.metricsVersion !== 'number' || detail.metricsVersion < METRICS_VERSION;
+  return typeof detail.metricsVersion !== 'number' || detail.metricsVersion < CANDLE_RULES_VERSION;
 }
 
 export const metricsStage: Stage = {

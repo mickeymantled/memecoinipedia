@@ -66,6 +66,10 @@ export function seededRandom(seed: number): () => number {
 export function withoutVersion6Additions(
   result: MetricResult,
 ): Omit<MetricResult, 'athNearVolumeUsd'> {
-  const { athNearVolumeUsd: _near, ...rest } = result;
-  return { ...rest, flags: rest.flags.filter((f) => f !== 'ath_thinly_traded') };
+  const rest: Partial<MetricResult> = { ...result };
+  delete rest.athNearVolumeUsd;
+  return {
+    ...(rest as Omit<MetricResult, 'athNearVolumeUsd'>),
+    flags: result.flags.filter((f) => f !== 'ath_thinly_traded'),
+  };
 }

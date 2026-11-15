@@ -1,12 +1,13 @@
 /**
  * A metrics run that raises `peak_outside_minute_coverage` reopens the coin's candles and metrics
- * stages once per metrics version (issue 43, item 4). The provider is simulated.
+ * stages once per candle rules version (issue 43, item 4; `CANDLE_RULES_VERSION`, issue 77). The provider is simulated.
  */
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import { createRun, discoverCoins, type Database, type StageName } from '@memecoinipedia/db';
 import { createTestDatabase, type TestDatabase } from '@memecoinipedia/db/testing';
 import { sql, type Kysely } from 'kysely';
 import {
+  CANDLE_RULES_VERSION,
   fetchCandlesForCoin,
   METRICS_VERSION,
   type FetchCandlesOptions,
@@ -256,6 +257,75 @@ describeDb('reopening candles and metrics after a coverage flag', () => {
     expect(await h.flags()).toContain('peak_outside_minute_coverage');
     expect(await h.stage('candles')).toMatchObject({ status: 'done' });
     expect(await h.stage('metrics')).toMatchObject({ status: 'done' });
+  }, 90_000);
+
+  it('a metrics-only run fills ath_near_volume_usd and the flag for a coin computed at version 5, and reopens no candle stage', async () => {
+    // Thin trading: 1,000 USD a minute, so the volume near the high is a sliver of its market cap.
+    const h = await setup(coinWith(rug().map((m) => ({ ...m, volume: 1_000 }))));
+    h.limits.current = undefined;
+    await h.pass(['discovered', 'candles', 'metrics']);
+    const current = await db
+      .selectFrom('coins')
+      .select(['ath_market_cap_usd', 'ath_near_volume_usd', 'metric_flags', 'metrics_version'])
+      .executeTakeFirstOrThrow();
+    expect(current.metrics_version).toBe(METRICS_VERSION);
+    expect(current.ath_near_volume_usd).toBeGreaterThan(0);
+    expect(current.metric_flags).toContain('ath_thinly_traded');
+
+    // Make the coin look as version 5 left it: no new column, no flag, stages at version 5,
+    // candles fetched under version 5.
+    await db
+      .updateTable('coins')
+      .set({
+        ath_near_volume_usd: null,
+        metrics_version: 5,
+        metric_flags: current.metric_flags.filter((f) => f !== 'ath_thinly_traded'),
+      })
+      .execute();
+    await sql`update coin_stages set version = 5 where stage = 'metrics'`.execute(db);
+    await sql`update coin_stages set detail = detail || '{"metricsVersion": 5}'::jsonb
+      where stage = 'candles'`.execute(db);
+    const candlesBefore = await h.stage('candles');
+    const requests = h.sim.queries.length;
+
+    await h.pass(['metrics']);
+
+    const after = await db
+      .selectFrom('coins')
+      .select(['ath_market_cap_usd', 'ath_near_volume_usd', 'metric_flags', 'metrics_version'])
+      .executeTakeFirstOrThrow();
+    expect(after).toEqual(current);
+    expect(await h.stage('metrics')).toMatchObject({ status: 'done' });
+    expect(await h.stage('candles')).toEqual(candlesBefore); // done, untouched
+    expect(h.sim.queries.length).toBe(requests); // no provider request
+  }, 90_000);
+
+  it('the candle rules version is never ahead of the metrics version', () => {
+    expect(CANDLE_RULES_VERSION).toBeLessThanOrEqual(METRICS_VERSION);
+  });
+
+  it('does not reopen candles fetched under candle rules version 5 when metrics run at version 6', async () => {
+    // Rules version 6 only adds an output, so it asks for no bars the fetch did not ask for.
+    expect(METRICS_VERSION).toBeGreaterThan(5);
+    const h = await setup(coinWith(rug()));
+    await h.fetchedBefore();
+    await sql`update coin_stages set detail = detail || '{"metricsVersion": 5}'::jsonb
+      where coin_id = ${h.coinId} and stage = 'candles'`.execute(db);
+    await h.pass(['metrics']);
+    expect(await h.flags()).toContain('peak_outside_minute_coverage');
+    expect(await h.stage('candles')).toMatchObject({ status: 'done' });
+    expect(await h.stage('metrics')).toMatchObject({ status: 'done' });
+  }, 90_000);
+
+  it('still reopens candles fetched under metrics version 4', async () => {
+    const h = await setup(coinWith(rug()));
+    await h.fetchedBefore();
+    await sql`update coin_stages set detail = detail || '{"metricsVersion": 4}'::jsonb
+      where coin_id = ${h.coinId} and stage = 'candles'`.execute(db);
+    await h.pass(['metrics']);
+    expect(await h.flags()).toContain('peak_outside_minute_coverage');
+    expect(await h.stage('candles')).toMatchObject({ status: 'pending', attempts: 0 });
+    expect(await h.stage('metrics')).toMatchObject({ status: 'pending', attempts: 0 });
   }, 90_000);
 
   it('does not reopen when the flag points only at periods under the refine line', async () => {

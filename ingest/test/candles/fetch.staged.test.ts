@@ -177,6 +177,7 @@ describeDb('the staged fetch on simulated trading', () => {
     expect(row.ath_wick_pool_id).toBeNull();
     expect(row.ath_liquidity_usd).toBeNull();
     expect(row.ath_hour_volume_usd).toBeNull();
+    expect(row.ath_near_volume_usd).toBeNull();
     expect(row.metrics_version).toBe(METRICS_VERSION);
     expect(row.metrics_as_of).toEqual(new Date(NOW * 1000));
     expect(row.metrics_computed_at).toEqual(new Date(NOW * 1000));

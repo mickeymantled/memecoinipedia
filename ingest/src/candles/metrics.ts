@@ -10,7 +10,15 @@ import { DEFAULT_PLAN_LIMITS } from './plan.js';
 import type { CandleDeps } from './types.js';
 
 /** Stored in `coins.metrics_version`. Raise it when docs/metrics.md or the status rule changes. */
-export const METRICS_VERSION = 5;
+export const METRICS_VERSION = 6;
+
+/**
+ * The last rules version that changed which bars count or how a peak is found, so a coin whose
+ * candles were fetched under an older version may need bars that fetch did not ask for. A version
+ * that only adds an output does not raise it. The metrics stage reopens candles against this, not
+ * against `METRICS_VERSION` (docs/metrics.md section 12).
+ */
+export const CANDLE_RULES_VERSION = 5;
 
 /** The flag the fetcher sets on a coin it screened out. It is not one of the metric library's flags. */
 export const SCREENED_OUT_FLAG = 'screened_out';
@@ -81,6 +89,7 @@ export function screenedOutResult(
     athWickPoolAddress: null,
     athLiquidityUsd: null,
     athHourVolumeUsd: null,
+    athNearVolumeUsd: null,
     secondsAbove: [],
     maxDrawdownPct: null,
     rugPattern: false,
@@ -104,6 +113,7 @@ export function noCandlesResult(): MetricResultShape {
     athWickPoolAddress: null,
     athLiquidityUsd: null,
     athHourVolumeUsd: null,
+    athNearVolumeUsd: null,
     secondsAbove: [],
     maxDrawdownPct: null,
     rugPattern: false,
