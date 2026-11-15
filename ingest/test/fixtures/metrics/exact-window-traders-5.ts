@@ -1,0 +1,40 @@
+import type { MetricFixture } from '../../../src/metrics/types.js';
+import { bar, input, minute, pool } from './build.js';
+
+export const exactWindowTraders5: MetricFixture = {
+  name: 'exact-window-traders-5',
+  description:
+    'A window whose best minute has exactly 5 traders is strict: the traders comparison is inclusive.',
+  reasoning: `
+One primary pool, two bars: m0 close .0002, 2,000 USD, traders 5; m1 close .0002, 2,000 USD, traders 5. asOf = m2, launchedAt = T0.
+
+Windows:
+m0: one bar, not strict.
+m1: two bars, volume 4000 >= 1000, traders max(5,5) = 5 = minWindowTraders exactly. Inclusive: strict. Price .0002.
+
+ATH = 200,000 at m1: athAt = T0+60, secondsToAth 60. Wick: .0002 at T0: 200,000.
+Level: one level point at m1 holding 60 s to asOf. secondsAbove [60,0,0,0]. Drawdown 0. Rug false.
+`,
+  input: input(
+    [
+      pool('pool-a', [
+        bar(minute(0), 0.0002, { volumeUsd: 2_000, traders: 5 }),
+        bar(minute(1), 0.0002, { volumeUsd: 2_000, traders: 5 }),
+      ]),
+    ],
+    minute(2),
+  ),
+  expected: {
+    athMarketCapUsd: 200_000,
+    athAt: 1_699_920_060,
+    athPoolAddress: 'pool-a',
+    secondsToAth: 60,
+    athWickMarketCapUsd: 200_000,
+    athWickAt: 1_699_920_000,
+    athWickPoolAddress: 'pool-a',
+    secondsAbove: [60, 0, 0, 0],
+    maxDrawdownPct: 0,
+    rugPattern: false,
+    flags: [],
+  },
+};
