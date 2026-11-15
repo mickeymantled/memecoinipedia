@@ -43,7 +43,7 @@ Approved with the plan on 2026-11-14:
 | Q7 | Git flow | Initial commit to `main` by the lead, then pull requests the lead reviews and you merge |
 | Q8 | Live freshness | Within one hour of crossing $100k |
 | Q9 | Use the paid Codex.io month | The candle stage of the backfill moves to right after A6, inside the billing month that ends about 2026-12-14, with the cost estimate shown to you first |
-| Q14 | The last part of the backfill | Run it now on Codex.io overage (your answer of 2026-11-15: "do the 160 in overage"). The dry run of that day: 83,384 coins, about 1.30 million compute units. About 119,000 are still inside the plan month, so about 1.18 million are overage: about $163 at the listed $138 a million. The run carries a ceiling of 1,320,000 units, which bounds the overage at about $166. |
+| Q14 | The last part of the backfill | Run it now on Codex.io overage (your answer of 2026-11-15: "do the 160 in overage"). The dry run of that day: 83,384 coins, about 1.30 million compute units. About 119,000 are still inside the plan month, so about 1.18 million are overage: about $163 at the listed $138 a million. The run carries a ceiling of 1,320,000 units, which bounds the overage at about $166. That ceiling was reached at 21:56 UTC with 2,063 of the smallest coins left (the coins cost about 3% more units each than estimated); a last step with a ceiling of 30,000 units fetches them, so the bound becomes 1,350,000 units: about $170 of overage. |
 
 ## Decisions I need from you
 
