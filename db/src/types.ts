@@ -69,6 +69,8 @@ export interface CoinsTable {
   current_refreshed_at: Ts | null;
   status: WithDefault<'unknown' | 'alive' | 'dead' | 'rugged'>;
   status_changed_at: Ts | null;
+  /** Market cap when the live watch last queued this coin's candle fetch (migration 0015). */
+  last_trigger_market_cap_usd: number | null;
 
   primary_narrative: string | null;
   secondary_narratives: WithDefault<string[]>;
@@ -296,6 +298,7 @@ export const databaseShape: { [T in keyof Database]: Record<keyof Database[T], t
     current_refreshed_at: true,
     status: true,
     status_changed_at: true,
+    last_trigger_market_cap_usd: true,
     primary_narrative: true,
     secondary_narratives: true,
     narrative_confidence: true,

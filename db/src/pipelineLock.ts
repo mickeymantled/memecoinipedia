@@ -1,4 +1,4 @@
-import { sql } from 'kysely';
+import pg from 'pg';
 import { createDb } from './client.js';
 
 /**
@@ -47,53 +47,81 @@ export class PipelineLockError extends Error {
 }
 
 export interface PipelineLock {
-  /** Releases the lock and closes its connection. Safe to call twice. */
+  /** The Postgres backend (session) pid that holds the lock. */
+  readonly backendPid: number;
+  /**
+   * True while this process still holds the lock: the connection is open and the database lists
+   * the advisory lock against its session. False once the connection dropped (the database
+   * released the lock with it), or when the check itself cannot be made. Never throws.
+   */
+  isHeld(): Promise<boolean>;
+  /** Releases the lock and closes its connection. Safe to call twice, and after a loss. */
   release(): Promise<void>;
 }
 
+/** The process lost the lock while it ran: its connection to the database dropped. */
+export class PipelineLockLostError extends Error {
+  constructor(kind: PipelineProcessKind) {
+    super(
+      `The pipeline lock was lost: the database connection holding it dropped while the ${kind} run was ` +
+        'running, so another pipeline process could now start. This run took no new work, let the jobs ' +
+        'in flight finish, and is exiting. Check that no other pipeline process is running, then start it again.',
+    );
+    this.name = 'PipelineLockLostError';
+  }
+}
+
+/** How often a runner checks that it still holds the lock (the live process: every scheduler tick). */
+export const PIPELINE_LOCK_CHECK_SECONDS = 15;
+
+/** pg_locks lists a bigint advisory key as two int4 halves. */
+const LOCK_CLASSID = Math.floor(PIPELINE_LOCK_KEY / 2 ** 32);
+const LOCK_OBJID = PIPELINE_LOCK_KEY % 2 ** 32;
+
 /**
- * Takes the lock or throws `PipelineLockError`. The connection that holds it is opened here and
- * stays open until `release()`.
+ * Takes the lock or throws `PipelineLockError`. The connection that holds it is opened here
+ * (a plain `pg` client of its own, never shared) and stays open until `release()`.
  */
 export async function acquirePipelineLock(
   connectionString: string,
   kind: PipelineProcessKind,
   opts: { now?: Date; pid?: number } = {},
 ): Promise<PipelineLock> {
-  // Two connections: one is held for the lock, the other writes and reads the hint row.
-  const db = createDb(connectionString, { max: 2 });
-  let releaseHeld!: () => void;
-  const mayRelease = new Promise<void>((resolve) => {
-    releaseHeld = resolve;
+  // One connection holds the lock; a one-connection pool writes and reads the hint row.
+  const hintDb = createDb(connectionString, { max: 1 });
+  const client = new pg.Client({ connectionString });
+  let dropped = false;
+  // A dropped connection emits 'error' (or just 'end'); without a listener the first would crash
+  // the process. The next `isHeld()` reports it.
+  client.on('error', () => {
+    dropped = true;
   });
-  let heldDone: Promise<unknown> = Promise.resolve();
-  const outcome = new Promise<boolean>((resolve, reject) => {
-    heldDone = db
-      .connection()
-      .execute(async (conn) => {
-        const r = await sql<{
-          ok: boolean;
-        }>`select pg_try_advisory_lock(${PIPELINE_LOCK_KEY}) as ok`.execute(conn);
-        const ok = r.rows[0]?.ok === true;
-        resolve(ok);
-        if (!ok) return;
-        await mayRelease;
-        await sql`select pg_advisory_unlock(${PIPELINE_LOCK_KEY})`.execute(conn);
-      })
-      .catch(reject);
+  client.on('end', () => {
+    dropped = true;
   });
+  const closeAll = async () => {
+    await client.end().catch(() => undefined);
+    await hintDb.destroy().catch(() => undefined);
+  };
 
   let got: boolean;
+  let backendPid: number;
   try {
-    got = await outcome;
+    await client.connect();
+    const r = await client.query<{ ok: boolean; pid: number }>(
+      'select pg_try_advisory_lock($1) as ok, pg_backend_pid() as pid',
+      [PIPELINE_LOCK_KEY],
+    );
+    got = r.rows[0]?.ok === true;
+    backendPid = Number(r.rows[0]?.pid ?? 0);
   } catch (err) {
-    await db.destroy().catch(() => undefined);
+    await closeAll();
     throw err;
   }
   if (!got) {
     let holder: PipelineLockHolder | null = null;
     try {
-      const row = await db
+      const row = await hintDb
         .selectFrom('live_state')
         .select('value')
         .where('key', '=', PIPELINE_LOCK_STATE_KEY)
@@ -105,14 +133,14 @@ export async function acquirePipelineLock(
     } catch {
       // No hint (the table may not exist yet): the message just says another process runs.
     }
-    await db.destroy().catch(() => undefined);
+    await closeAll();
     throw new PipelineLockError(kind, holder);
   }
 
   const now = opts.now ?? new Date();
   const hint = { kind, pid: opts.pid ?? process.pid, since: now.toISOString() };
   try {
-    await db
+    await hintDb
       .insertInto('live_state')
       .values({ key: PIPELINE_LOCK_STATE_KEY, value: JSON.stringify(hint), updated_at: now })
       .onConflict((oc) =>
@@ -125,17 +153,38 @@ export async function acquirePipelineLock(
 
   let released = false;
   return {
+    backendPid,
+    async isHeld() {
+      if (released || dropped) return false;
+      try {
+        const r = await client.query<{ held: boolean }>(
+          `select exists (select 1 from pg_locks
+             where locktype = 'advisory' and pid = pg_backend_pid()
+               and classid = $1::oid and objid = $2::oid and objsubid = 1) as held`,
+          [LOCK_CLASSID, LOCK_OBJID],
+        );
+        return r.rows[0]?.held === true;
+      } catch {
+        dropped = true;
+        return false;
+      }
+    },
     async release() {
       if (released) return;
       released = true;
-      try {
-        await db.deleteFrom('live_state').where('key', '=', PIPELINE_LOCK_STATE_KEY).execute();
-      } catch {
-        // Nothing to clean up if the table is gone.
+      // After a loss the hint may already be a new holder's: leave it.
+      if (!dropped) {
+        try {
+          await hintDb
+            .deleteFrom('live_state')
+            .where('key', '=', PIPELINE_LOCK_STATE_KEY)
+            .execute();
+        } catch {
+          // Nothing to clean up if the table is gone.
+        }
       }
-      releaseHeld();
-      await heldDone.catch(() => undefined);
-      await db.destroy().catch(() => undefined);
+      // Ending the connection releases the session lock.
+      await closeAll();
     },
   };
 }

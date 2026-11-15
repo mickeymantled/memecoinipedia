@@ -8,9 +8,13 @@ import {
   getLiveState,
   insertLiveGraduates,
   latestGraduatedAt,
+  listLastLook,
   listWaitingCandles,
   listWatchedDue,
+  listWatchedFailedCandles,
   listWatchedOlderThan,
+  recordTriggerMarketCaps,
+  reopenForFetch,
   setLiveState,
   storeCurrentFigures,
   triggerCandles,
@@ -20,7 +24,7 @@ import {
   type WatchIntervals,
   type WatchSpec,
 } from '../src/live.js';
-import { acquirePipelineLock, PipelineLockError } from '../src/pipelineLock.js';
+import { acquirePipelineLock, PipelineLockError, PIPELINE_LOCK_KEY } from '../src/pipelineLock.js';
 import { createTestDatabase, type TestDatabase } from '../src/testing.js';
 import { adminUrl, describeDb } from './helpers.js';
 
@@ -123,7 +127,20 @@ describeDb('live state, the watched set and the pipeline lock', () => {
     expect(await latestGraduatedAt(t.db)).toEqual(ago(900));
   });
 
-  it('watches coins graduated in the window that no candles attempt has touched', async () => {
+  const stage = (
+    i: number,
+    name: 'candles' | 'metrics',
+    status: string,
+    attempts: number,
+    started: Date | null,
+    finished: Date | null = null,
+  ) =>
+    sql`insert into coin_stages (coin_id, stage, status, attempts, started_at, finished_at, updated_at)
+        values (${i}, ${name}, ${status}, ${attempts}, ${started}, ${finished}, ${NOW})`.execute(
+      t.db,
+    );
+
+  it('watches every coin graduated in the window, fetched or not', async () => {
     await insertLiveGraduates(
       t.db,
       [
@@ -131,26 +148,147 @@ describeDb('live state, the watched set and the pipeline lock', () => {
         grad(2, 2 * DAY), // mid
         grad(3, 5 * DAY), // older
         grad(4, 20 * DAY), // outside the window
-        grad(5, 3 * HOUR), // attempted: done
-        grad(6, 3 * HOUR), // attempted: failed
+        grad(5, 3 * HOUR), // fetched: done
+        grad(6, 3 * HOUR), // fetched: failed
         grad(7, 3 * HOUR), // triggered, not yet claimed
         grad(8, 3 * HOUR), // claimed once, then back to pending with no attempts counted
       ],
       OPTS,
     );
-    const stage = (i: number, status: string, attempts: number, started: Date | null) =>
-      sql`insert into coin_stages (coin_id, stage, status, attempts, started_at, updated_at)
-          values (${i}, 'candles', ${status}, ${attempts}, ${started}, ${NOW})`.execute(t.db);
-    await stage(await idOf(5), 'done', 1, ago(100));
-    await stage(await idOf(6), 'failed', 1, ago(100));
-    await stage(await idOf(7), 'pending', 0, null);
-    await stage(await idOf(8), 'pending', 0, ago(500));
+    await stage(await idOf(5), 'candles', 'done', 1, ago(100), ago(50));
+    await stage(await idOf(6), 'candles', 'failed', 1, ago(100), ago(50));
+    await stage(await idOf(7), 'candles', 'pending', 0, null);
+    await stage(await idOf(8), 'candles', 'pending', 0, ago(500));
     const counts = await countWatchedByAge(t.db, W, {
       freshUnderSeconds: DAY,
       midUnderSeconds: 3 * DAY,
     });
-    // 1, 2, 3 and the triggered-but-unclaimed 7 are watched; 4 is too old; 5, 6, 8 were attempted.
-    expect(counts).toEqual({ fresh: 2, mid: 1, older: 1, total: 4, triggeredWaiting: 1 });
+    // All but 4, which is outside the window; 7 and 8 have a pending row.
+    expect(counts).toEqual({ fresh: 5, mid: 1, older: 1, total: 7, triggeredWaiting: 2 });
+  });
+
+  it('lists the sweep coins: watched, old enough, with no attempted candles row', async () => {
+    await insertLiveGraduates(
+      t.db,
+      [grad(1, 2 * DAY), grad(2, 2 * DAY), grad(3, 2 * DAY), grad(4, 2 * HOUR), grad(5, 30 * DAY)],
+      OPTS,
+    );
+    await stage(await idOf(2), 'candles', 'done', 1, ago(100), ago(50));
+    await stage(await idOf(3), 'candles', 'pending', 0, null);
+    const ids = await listWatchedOlderThan(t.db, W, DAY, { afterId: 0, limit: 10 });
+    expect(ids).toEqual([await idOf(1), await idOf(3)]);
+  });
+
+  it('hands the watch the stage rows and ATH it decides a later trigger from', async () => {
+    await insertLiveGraduates(t.db, [grad(1, 2 * HOUR), grad(2, 2 * HOUR)], OPTS);
+    const one = await idOf(1);
+    await stage(one, 'candles', 'done', 1, ago(900), ago(800));
+    await stage(one, 'metrics', 'running', 1, ago(700));
+    await t.db
+      .updateTable('coins')
+      .set({ ath_market_cap_usd: 89_750, last_trigger_market_cap_usd: 91_500 })
+      .where('id', '=', one)
+      .execute();
+    const due = await listWatchedDue(t.db, W, INTERVALS, { limit: 10 });
+    const a = due.find((c) => c.id === one)!;
+    expect(a.athMarketCapUsd).toBe(89_750);
+    expect(a.lastTriggerMarketCapUsd).toBe(91_500);
+    expect(a.candles).toMatchObject({ status: 'done', attempts: 1 });
+    expect(a.candles!.finishedAt).toEqual(ago(800));
+    expect(a.candles!.startedAt).toEqual(ago(900));
+    expect(a.metrics).toMatchObject({ status: 'running', finishedAt: null });
+    const b = due.find((c) => c.id !== one)!;
+    expect(b).toMatchObject({ candles: null, metrics: null, athMarketCapUsd: null });
+    expect(b.lastTriggerMarketCapUsd).toBeNull();
+  });
+
+  it('records the trigger market cap and reopens candles and metrics, counting the coins', async () => {
+    await insertLiveGraduates(t.db, [grad(1, 2 * HOUR), grad(2, 2 * HOUR)], OPTS);
+    const [one, two] = [await idOf(1), await idOf(2)];
+    await stage(one, 'candles', 'done', 2, ago(900), ago(800));
+    await stage(one, 'metrics', 'skipped', 1, ago(700), ago(600));
+    await stage(two, 'candles', 'running', 1, ago(100));
+    await recordTriggerMarketCaps(t.db, [{ id: one, marketCapUsd: 123_456 }], NOW);
+    const row = await t.db
+      .selectFrom('coins')
+      .select('last_trigger_market_cap_usd')
+      .where('id', '=', one)
+      .executeTakeFirstOrThrow();
+    expect(row.last_trigger_market_cap_usd).toBe(123_456);
+    const reopened = await reopenForFetch(t.db, [one, two], {
+      now: NOW,
+      dayKey: 'day:2026-11-15',
+      counter: 'retriggered',
+    });
+    // The running row of coin 2 is not reopened.
+    expect(reopened).toEqual([one]);
+    const rows = await sql<{ coin_id: number; stage: string; status: string; attempts: number }>`
+      select coin_id, stage, status, attempts from coin_stages
+      where stage in ('candles', 'metrics') order by coin_id, stage`.execute(t.db);
+    expect(rows.rows).toEqual([
+      { coin_id: one, stage: 'candles', status: 'pending', attempts: 0 },
+      { coin_id: one, stage: 'metrics', status: 'pending', attempts: 0 },
+      { coin_id: two, stage: 'candles', status: 'running', attempts: 1 },
+    ]);
+    expect(await getLiveState(t.db, 'day:2026-11-15')).toMatchObject({ retriggered: 1 });
+  });
+
+  it('lists the coins due a last look: 13 days old, not listed, fetched before that age', async () => {
+    const D13 = 13 * DAY;
+    await insertLiveGraduates(
+      t.db,
+      [
+        grad(1, D13 + HOUR), // due
+        grad(2, D13 + HOUR), // listed
+        grad(3, D13 + HOUR), // candles finished after its 13th day: already had the look
+        grad(4, D13 + HOUR), // metrics not finished
+        grad(5, 5 * DAY), // too young
+        grad(6, D13 + HOUR), // candles failed
+        grad(7, 15 * DAY), // out of the window
+      ],
+      OPTS,
+    );
+    const early = ago(D13 + HOUR - 2 * DAY);
+    const late = ago(HOUR / 2);
+    const fetched = async (i: number, finished: Date, metrics: 'done' | 'running' | 'skipped') => {
+      await stage(await idOf(i), 'candles', 'done', 1, finished, finished);
+      await stage(await idOf(i), 'metrics', metrics, 1, finished, finished);
+    };
+    await fetched(1, early, 'skipped');
+    await fetched(2, early, 'done');
+    await fetched(3, late, 'done');
+    await fetched(4, early, 'running');
+    await fetched(5, early, 'done');
+    await stage(await idOf(6), 'candles', 'failed', 3, early, early);
+    await fetched(7, early, 'done');
+    await t.db
+      .updateTable('coins')
+      .set({ ath_market_cap_usd: 150_000 })
+      .where('address', '=', addr(2))
+      .execute();
+    const spec = { ...W, minAgeSeconds: D13, listedUsd: 100_000 };
+    expect(await listLastLook(t.db, spec, { afterId: 0, limit: 10 })).toEqual([await idOf(1)]);
+    expect(await listWatchedFailedCandles(t.db, W, { afterId: 0, limit: 10 })).toEqual([
+      { id: await idOf(6), address: addr(6) },
+    ]);
+  });
+
+  it('knows when the connection holding the pipeline lock is gone', async () => {
+    const lock = await acquirePipelineLock(t.url, 'live', { now: NOW });
+    expect(await lock.isHeld()).toBe(true);
+    const holder = await sql<{ pid: number }>`
+      select pid from pg_locks where locktype = 'advisory'
+        and classid = ${Math.floor(PIPELINE_LOCK_KEY / 2 ** 32)}::oid
+        and objid = ${PIPELINE_LOCK_KEY % 2 ** 32}::oid`.execute(t.db);
+    expect(holder.rows[0]!.pid).toBe(lock.backendPid);
+    await sql`select pg_terminate_backend(${lock.backendPid})`.execute(t.db);
+    // Give the client its 'end' event; the check itself also notices.
+    expect(await lock.isHeld()).toBe(false);
+    // The lock is free for the next process, and releasing the dead one is harmless.
+    const next = await acquirePipelineLock(t.url, 'backfill');
+    await lock.release();
+    expect(await getLiveState(t.db, 'pipeline_lock')).toMatchObject({ kind: 'backfill' });
+    await next.release();
   });
 
   it('lists the coins whose price is due by their age, never-polled and longest-ago first', async () => {

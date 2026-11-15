@@ -1,4 +1,5 @@
 import { sql, type ExpressionBuilder, type Kysely } from 'kysely';
+import { reopenStages } from './stages.js';
 import type { Database } from './types.js';
 
 /**
@@ -74,30 +75,36 @@ export interface WatchSpec {
 }
 
 /**
- * The watched coins: graduated within `windowSeconds` of `now`, and no `candles` stage row that
- * was ever attempted (a row that is anything but a fresh `pending` one with no attempt).
+ * The watched coins: every coin that graduated within `windowSeconds` of `now`, whether its
+ * candles were fetched or not and whether it is listed or not. A fetched coin can still reach a
+ * new high, so it is polled like the rest.
  */
 export function isWatched(eb: ExpressionBuilder<Database, 'coins'>, w: WatchSpec) {
   const since = new Date(w.now.getTime() - w.windowSeconds * 1000);
-  return eb.and([
-    eb('coins.graduated_at', '>', since),
-    eb.not(
-      eb.exists(
-        eb
-          .selectFrom('coin_stages as cs')
-          .select(sql.lit(1).as('one'))
-          .whereRef('cs.coin_id', '=', 'coins.id')
-          .where('cs.stage', '=', 'candles')
-          .where((e) =>
-            e.or([
-              e('cs.status', '<>', 'pending'),
-              e('cs.attempts', '>', 0),
-              e('cs.started_at', 'is not', null),
-            ]),
-          ),
-      ),
+  return eb('coins.graduated_at', '>', since);
+}
+
+/**
+ * True for a coin with no `candles` stage row that was ever attempted (no row, or a fresh
+ * `pending` one that no worker has claimed): the coins the sweep queues for a first fetch.
+ */
+export function candlesNeverAttempted(eb: ExpressionBuilder<Database, 'coins'>) {
+  return eb.not(
+    eb.exists(
+      eb
+        .selectFrom('coin_stages as cs')
+        .select(sql.lit(1).as('one'))
+        .whereRef('cs.coin_id', '=', 'coins.id')
+        .where('cs.stage', '=', 'candles')
+        .where((e) =>
+          e.or([
+            e('cs.status', '<>', 'pending'),
+            e('cs.attempts', '>', 0),
+            e('cs.started_at', 'is not', null),
+          ]),
+        ),
     ),
-  ]);
+  );
 }
 
 /** Seconds since graduation, as SQL. */
@@ -116,7 +123,7 @@ export interface WatchedCounts {
   mid: number;
   older: number;
   total: number;
-  /** Watched coins already triggered: a `pending` candles row that no worker has claimed yet. */
+  /** Watched coins with a `pending` candles row: queued, no worker has finished it yet. */
   triggeredWaiting: number;
 }
 
@@ -136,7 +143,7 @@ export async function countWatchedByAge(
       sql<string>`count(*) filter (where ${age} >= ${bounds.midUnderSeconds}::float8)`.as('older'),
       sql<string>`count(*)`.as('total'),
       sql<string>`count(*) filter (where exists (
-        select 1 from coin_stages t where t.coin_id = coins.id and t.stage = 'candles'))`.as(
+        select 1 from coin_stages t where t.coin_id = coins.id and t.stage = 'candles' and t.status = 'pending'))`.as(
         'waiting',
       ),
     ])
@@ -169,12 +176,51 @@ export interface WatchedCoin {
   totalSupply: number;
   graduatedAt: Date;
   currentRefreshedAt: Date | null;
+  /** Stored ATH market cap (from the metrics stage), null when never computed. */
+  athMarketCapUsd: number | null;
+  /** Market cap at the coin's last trigger, null when it was never triggered by the watch. */
+  lastTriggerMarketCapUsd: number | null;
+  /** The `candles` stage row, null when there is none. */
+  candles: WatchedStage | null;
+  /** The `metrics` stage row, null when there is none. */
+  metrics: WatchedStage | null;
+}
+
+export interface WatchedStage {
+  status: 'pending' | 'running' | 'done' | 'failed' | 'skipped';
+  attempts: number;
+  startedAt: Date | null;
+  finishedAt: Date | null;
+}
+
+interface StageJson {
+  status: WatchedStage['status'];
+  attempts: number;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+const stageJson = (stage: string) =>
+  sql<StageJson | null>`(select json_build_object('status', cs.status, 'attempts', cs.attempts,
+    'started_at', cs.started_at, 'finished_at', cs.finished_at)
+  from coin_stages cs where cs.coin_id = coins.id and cs.stage = ${stage})`;
+
+function toStage(j: StageJson | null): WatchedStage | null {
+  return j
+    ? {
+        status: j.status,
+        attempts: Number(j.attempts),
+        startedAt: j.started_at ? new Date(j.started_at) : null,
+        finishedAt: j.finished_at ? new Date(j.finished_at) : null,
+      }
+    : null;
 }
 
 /**
  * Watched coins whose price is due, most overdue first: never polled coins, then the ones polled
- * longest ago. Coins that already have a `candles` row (triggered, waiting for a worker) are not
- * polled again. `excludeIds` are coins to leave out (those Jupiter did not answer for lately).
+ * longest ago. A coin whose candle or metric stage is waiting or running is polled like the
+ * rest (the caller does not queue it again until both stages have finished), with the stage rows
+ * and ATH the trigger decision needs. `excludeIds` are coins to leave out (those Jupiter did not answer for lately).
  */
 export async function listWatchedDue(
   db: Kysely<Database>,
@@ -189,11 +235,18 @@ export async function listWatchedDue(
     else ${intervals.olderEverySeconds}::float8 end`;
   const rows = await db
     .selectFrom('coins')
-    .select(['id', 'address', 'total_supply', 'graduated_at', 'current_refreshed_at'])
+    .select([
+      'id',
+      'address',
+      'total_supply',
+      'graduated_at',
+      'current_refreshed_at',
+      'ath_market_cap_usd',
+      'last_trigger_market_cap_usd',
+      stageJson('candles').as('candles'),
+      stageJson('metrics').as('metrics'),
+    ])
     .where((eb) => isWatched(eb, w))
-    .where(
-      sql<boolean>`not exists (select 1 from coin_stages t where t.coin_id = coins.id and t.stage = 'candles')`,
-    )
     .where(
       sql<boolean>`(coins.current_refreshed_at is null
         or extract(epoch from (${w.now}::timestamptz - coins.current_refreshed_at)) >= ${every})`,
@@ -211,6 +264,10 @@ export async function listWatchedDue(
     totalSupply: Number(r.total_supply),
     graduatedAt: r.graduated_at!,
     currentRefreshedAt: r.current_refreshed_at,
+    athMarketCapUsd: r.ath_market_cap_usd,
+    lastTriggerMarketCapUsd: r.last_trigger_market_cap_usd,
+    candles: toStage(r.candles),
+    metrics: toStage(r.metrics),
   }));
 }
 
@@ -348,7 +405,10 @@ export async function triggerCandles(
   return fresh;
 }
 
-/** Watched coins at least `minAgeSeconds` old, by id, for the sweep (paged by `afterId`). */
+/**
+ * Watched coins at least `minAgeSeconds` old whose candles were never attempted, by id, for the
+ * sweep (paged by `afterId`).
+ */
 export async function listWatchedOlderThan(
   db: Kysely<Database>,
   w: WatchSpec,
@@ -359,12 +419,108 @@ export async function listWatchedOlderThan(
     .selectFrom('coins')
     .select('id')
     .where((eb) => isWatched(eb, w))
+    .where((eb) => candlesNeverAttempted(eb))
     .where(sql<boolean>`${ageSeconds(w.now)} >= ${minAgeSeconds}::float8`)
     .where('id', '>', o.afterId)
     .orderBy('id')
     .limit(o.limit)
     .execute();
   return rows.map((r) => r.id);
+}
+
+/** Writes the market cap a coin had when the watch queued its fetch (`last_trigger_market_cap_usd`). */
+export async function recordTriggerMarketCaps(
+  db: Kysely<Database>,
+  rows: readonly { id: number; marketCapUsd: number }[],
+  now: Date,
+): Promise<void> {
+  if (rows.length === 0) return;
+  await sql`
+    update coins set last_trigger_market_cap_usd = t.mcap, updated_at = ${now}
+    from unnest(${rows.map((r) => r.id)}::bigint[], ${rows.map((r) => r.marketCapUsd)}::float8[])
+      as t(id, mcap)
+    where coins.id = t.id
+  `.execute(db);
+}
+
+/**
+ * Puts the candles and metrics stages of coins back to `pending` (`reopenStages`, one coin at a
+ * time: it only changes rows that are `done` or `skipped`) and adds the number of coins reopened
+ * to the named counter of the day. Returns the ids that were reopened.
+ */
+export async function reopenForFetch(
+  db: Kysely<Database>,
+  coinIds: readonly number[],
+  opts: { now: Date; dayKey: string; counter: string },
+): Promise<number[]> {
+  const reopened: number[] = [];
+  for (const id of coinIds) {
+    const n = await reopenStages(db, id, ['candles', 'metrics'], opts.now);
+    if (n > 0) reopened.push(id);
+  }
+  await bumpLiveCounters(db, opts.dayKey, { [opts.counter]: reopened.length }, opts.now);
+  return reopened;
+}
+
+export interface LastLookSpec extends WatchSpec {
+  /** A coin this old or older gets its last look. */
+  minAgeSeconds: number;
+  /** Coins with an ATH market cap at or above this are listed, and get none. */
+  listedUsd: number;
+}
+
+/**
+ * Watched coins due a last look: at least `minAgeSeconds` old, not listed, with candles and
+ * metrics both finished (`done` or `skipped`) and the candles last finished before the coin was
+ * `minAgeSeconds` old. Once the look has been fetched the candles finish after that age, so the
+ * coin is not found again. By id, paged by `afterId`.
+ */
+export async function listLastLook(
+  db: Kysely<Database>,
+  w: LastLookSpec,
+  o: { afterId: number; limit: number },
+): Promise<number[]> {
+  const rows = await db
+    .selectFrom('coins')
+    .select('id')
+    .where((eb) => isWatched(eb, w))
+    .where(sql<boolean>`${ageSeconds(w.now)} >= ${w.minAgeSeconds}::float8`)
+    .where(
+      sql<boolean>`(coins.ath_market_cap_usd is null or coins.ath_market_cap_usd < ${w.listedUsd}::float8)`,
+    )
+    .where(
+      sql<boolean>`exists (select 1 from coin_stages c where c.coin_id = coins.id and c.stage = 'candles'
+        and c.status in ('done', 'skipped')
+        and c.finished_at < coins.graduated_at + make_interval(secs => ${w.minAgeSeconds}::float8))`,
+    )
+    .where(
+      sql<boolean>`exists (select 1 from coin_stages m where m.coin_id = coins.id and m.stage = 'metrics'
+        and m.status in ('done', 'skipped'))`,
+    )
+    .where('id', '>', o.afterId)
+    .orderBy('id')
+    .limit(o.limit)
+    .execute();
+  return rows.map((r) => r.id);
+}
+
+/** Watched coins whose candles stage is `failed`: id and address, paged by `afterId`. */
+export async function listWatchedFailedCandles(
+  db: Kysely<Database>,
+  w: WatchSpec,
+  o: { afterId: number; limit: number },
+): Promise<{ id: number; address: string }[]> {
+  return db
+    .selectFrom('coins')
+    .select(['id', 'address'])
+    .where((eb) => isWatched(eb, w))
+    .where(
+      sql<boolean>`exists (select 1 from coin_stages c where c.coin_id = coins.id and c.stage = 'candles' and c.status = 'failed')`,
+    )
+    .where('id', '>', o.afterId)
+    .orderBy('id')
+    .limit(o.limit)
+    .execute();
 }
 
 /** Coins with a candles row that nobody has claimed yet (triggered, waiting), by id. */
