@@ -214,9 +214,11 @@ export class MetadataFetcher {
     return { targets };
   }
 
-  private async attempt(
-    t: Target,
-  ): Promise<{ attempt: MetadataAttempt; json?: Record<string, unknown> }> {
+  private async attempt(t: Target): Promise<{
+    attempt: MetadataAttempt;
+    cleaned?: Record<string, unknown>;
+    metadata?: TokenMetadata;
+  }> {
     const o = this.opts;
     let requests = 0;
     const limiter = this.limiterFor(t);
@@ -278,7 +280,14 @@ export class MetadataFetcher {
     if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
       return done('invalid', res.status);
     }
-    return { ...done('ok', res.status), json: parsed as Record<string, unknown> };
+    // Hostile JSON must not escape `fetch`: too deep, or anything unexpected, is `invalid`.
+    // Postgres rejects NUL in text and jsonb, so keys and values are cleaned here too.
+    try {
+      const cleaned = stripNulDeep(parsed) as Record<string, unknown>;
+      return { ...done('ok', res.status), cleaned, metadata: parseTokenMetadata(cleaned) };
+    } catch {
+      return done('invalid', res.status);
+    }
   }
 
   async fetch(uri: string): Promise<MetadataResult> {
@@ -295,16 +304,14 @@ export class MetadataFetcher {
 
     const attempts = base.attempts;
     for (const t of planned.targets) {
-      const { attempt, json } = await this.attempt(t);
+      const { attempt, cleaned, metadata } = await this.attempt(t);
       attempts.push(attempt);
-      if (attempt.result === 'ok' && json) {
-        // Postgres rejects NUL in text and jsonb, so keys and values are cleaned first.
-        const cleaned = stripNulDeep(json) as Record<string, unknown>;
+      if (attempt.result === 'ok' && cleaned && metadata) {
         return {
           ...base,
           outcome: 'ok',
           gateway: attempt.gateway,
-          metadata: parseTokenMetadata(cleaned),
+          metadata,
           raw: cleaned,
         };
       }

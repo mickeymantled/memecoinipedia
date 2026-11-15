@@ -42,7 +42,6 @@ export const assetSchema = z.object({
  * so one unreadable row does not fail the batch. A missing or non-token account
  * comes back as null.
  */
-
 export const assetBatchResultSchema = z.array(z.unknown());
 
 const accountKey = z.union([

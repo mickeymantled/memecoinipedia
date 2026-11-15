@@ -110,7 +110,6 @@ interface AttemptResult<T> {
   value: T;
 }
 
-/** Thrown inside an attempt to stop the retry loop at once (for example a body over its cap). */
 /**
  * The default fetch of `postJson` refuses redirects (a custom header such as an API key
  * would otherwise travel to another origin). It throws this, and the retry loop turns it
@@ -125,6 +124,7 @@ class RedirectRefused extends Error {
   }
 }
 
+/** Thrown inside an attempt to stop the retry loop at once (for example a body over its cap). */
 class StopRetrying extends Error {
   readonly original: Error;
 
