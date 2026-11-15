@@ -1,208 +1,155 @@
-# Dune queries for discovering pump.fun graduates
+# Dune queries: discovering pump.fun graduates
 
-**Status: NOT YET RUN.** There is no Dune key and the credit limit for this task is zero, so no query here has been executed. Everything below comes from Dune's documentation and from source code on GitHub, read on 2026-11-15. Nothing was tested against real data.
+These queries were run on Dune on 2026-11-15, and the figures below are what that run measured. Every table and column named here was confirmed live on that date. The results of the sizing query and of the sample query are in `results/`. They hold public chain data only.
 
-Labels used below:
+The design changed after the first draft of this pull request. The first draft scanned `dex_solana.trades` for 1-minute buckets. That did not finish in a useful time (section 6). The queries now take the peak from Dune's hourly price table, `dex_solana.price_hour`, and use pump.fun's decoded event tables for creation and graduation.
 
-- **Verified in docs or source**: I read the definition at the linked page.
-- **Assumed**: I could not find a definition; the query depends on it anyway.
+## 1. The queries
 
+Plan: Dune Analyst, medium tier (the small tier is refused on this plan). None of the queries has parameters.
 
-## 1. The files and the first live run
+| File | Returns | Result | Execution credits | Run time |
+|---|---|---|---|---|
+| `discovery.sql` | One row per pump.fun coin that graduated: `mint`, `created_at`, `creator`, `graduated_at`, `hours` (hours with a price), `peak_max_usd`, `peak_p999_usd`, `peak_at`, `last_hour`. Times are epoch seconds (UTC). The peak is a market cap in USD: hourly price times 1,000,000,000. An optional filter goes on a last line: `WHERE peak_max_usd >= <floor>`. | 347,564 rows, 49.9 MB | 3.2 | 65 s |
+| `sizing.sql` | One row per launch month (35 rows): graduates, graduates with no hourly price, graduates reaching $30k, $50k, $80k, $100k, $125k, $250k, $1M, $10M and $100M by the 99.9th percentile of the hourly price (`p30k` to `p100m`), the same at $30k and $100k by the plain maximum (`max30k`, `max100k`), and for coins at $100k or more the median, p90, p99 and maximum of hours with a price (`hours_p50` to `hours_max`), plus the sum of hours for coins at $30k or more (`hours_sum_30k`). | 35 rows | 7.2 | 38 s |
+| `sample.sql` | The Phase A sample: the 20 probe coins from `probes/coins.json`, plus a draw by quota from each launch half-year and peak cell, ordered by the SHA-256 of the mint (no random function). Quotas per half-year: 5 for $30k to $50k, 10 for $50k to $100k, 30 for $100k to $1M, 20 for $1M to $10M, 15 for $10M and above. Cells are cut on the 99.9th percentile peak. Columns: `mint`, `half_year`, `cell`, `probe`, `cell_size`, `created_at`, `creator`, `graduated_at`, `hours`, `peak_max_usd`, `peak_p999_usd`, `peak_at`. | 500 rows | 7.4 | 101 s |
+| `schema_probe.sql` | Metadata and coverage statements, each run on its own. | small | about 0.02 to 0.03 for each metadata statement | seconds |
 
-| File | What it is | Parameters (default) |
+The sample CSV in `results/` holds its times as ISO text, not as the epoch seconds the query text returns. The conversion happened outside the query.
+
+**Downloads are billed separately and are the expensive part.** A 7,000-row CSV page cost 10.0 credits and a 32,000-row page cost 49.1 credits. Dune's page cap is 32,000 rows. Downloading the full discovery list would cost about 530 credits. A download is billed when it is requested, even if the body is never read. A cancelled execution is billed for the work done (5.8 to 17.5 credits for runs cancelled after 150 to 240 seconds).
+
+So the sizing table and the sample are computed in Dune, and the full discovery list is downloaded once, when the backfill starts, with a floor on the peak.
+
+## 2. Tables and columns used
+
+All of these were confirmed live on 2026-11-15. The column lists come from `SELECT * ... LIMIT 0` (statements 2 to 6 of `schema_probe.sql`). `SHOW COLUMNS` and `information_schema.columns` return nothing for the decoded tables; `information_schema.tables` works.
+
+| Table | Columns used | Notes |
 |---|---|---|
-| `schema_probe.sql` | Metadata statements that list the tables of schema `pumpdotfun_solana` and the columns of the create, complete, withdraw and migrate tables. Two forms (`information_schema` and `SHOW`) as separate statements, each run on its own, because Dune may refuse one. Almost free. | none |
-| `graduates.sql` | The one heavy query. One row per coin created in `[launch_from, launch_to)` that graduated within `window_days` of creation. Columns, in this order: `mint, created_at, creator, graduated_at, graduation_pool, graduation_venue, rough_peak_usd, rough_peak_at, trade_count, first_trade_at, last_trade_at`. Coins with no counting bucket come back with a null rough peak. | `launch_from` (2024-01-01), `launch_to` (2024-02-01), `window_days` (90), `min_peak_usd` (0; null peaks are returned only at 0) |
-| `curve_edge.sql` | Coins that never graduated but whose curve price times 1e9 reached `min_peak_usd`, with a count on every row. | `range1_from` to `range3_to` (section 4), `min_peak_usd` (100000), `grad_check_days` (30) |
+| `pumpdotfun_solana.pump_evt_completeevent` | `evt_block_time`, `evt_block_date`, `mint`, `bonding_curve`, `user`, `quote_mint`, `timestamp` | One row per graduation. Starts April 2024 (336 events that month). |
+| `pumpdotfun_solana.pump_call_withdraw` | `call_block_time`, `call_block_date`, `account_mint`, `account_user` | January 2024 to March 2025. `account_mint` is decoded correctly only up to May 2024; from June 2024 every row carries the same value. The query therefore uses it only before 2024-06-01. |
+| `pumpdotfun_solana.pump_evt_createevent` | `evt_block_time`, `evt_block_date`, `mint`, `creator`, `user`, `name`, `symbol`, `uri`, `bonding_curve`, `token_program`, `quote_mint`, `is_mayhem_mode`, `is_cashback_enabled`, `token_total_supply` | 24.8 million rows. Starts April 2024 (34,566 that month), complete from May 2024. |
+| `pumpdotfun_solana.pump_call_create` | `call_block_time`, `call_block_date`, `account_mint`, `account_user`, `name`, `symbol`, `uri`, `creator` | Covers January to April 2024. Matches the event table exactly from May 2024 to October 2025 and is incomplete from November 2025. The query uses it only before 2024-05-01. |
+| `dex_solana.price_hour` | `contract_address`, `hour`, `price`, `block_month`, `symbol`, `decimals`, `blockchain` | Price is USD per whole coin. It covers bonding-curve hours as well as later pools. It holds infinite and absurd prices, hence the three price filters in the queries: `is_finite(price)`, `price > 0`, `price < 1000`. `block_month` is the partition column. |
 
-Timestamps in `graduates.sql` are UTC text, `YYYY-MM-DD HH:MM:SS`, which sorts as text. They come from `date_format(ts, '%Y-%m-%d %H:%i:%s')` and assume Dune formats `block_time` in UTC (unverified).
+Present and not used: `pump_evt_completepumpammmigrationevent` (`mint`, `pool`, `evt_block_time`; starts November 2025), `pump_call_migrate` (`account_mint`, `account_pool`; starts November 2025), `pump_call_migrate_v2` (from May 2026), `pump_call_create_v2` (from April 2026), `pump_evt_tradeevent`, `pump_amm_evt_createpoolevent` (`base_mint`, `pool`, `creator`, `coin_creator`), and the schema's own `trades` and `base_trades`. The schema has 116 tables.
 
-Sizing tables (graduates and peak counts per launch month, trades and active days per coin) and the 500-coin Phase A sample draw are **not** done in SQL. They are computed in tested code from the exported `graduates.sql` rows under issue #23.
+How the queries combine them:
 
-**Order of the first live run**
+- Graduation time is the first CompleteEvent; before June 2024 the withdraw call stands in for it.
+- Creation time and creator come from the CreateEvent; the create call stands in for January to April 2024. `creator` is the event's `creator`, falling back to `user`.
+- The peak comes from `dex_solana.price_hour`, joined to the graduates with a RIGHT JOIN so that graduates without a price are kept (`hours` is 0).
+- Each source table is read once.
 
-1. `schema_probe.sql`, each statement on its own. It is close to free. Read which decoded create, complete and migrate tables exist and what their columns are.
-2. `graduates.sql` on a one-week launch range with `window_days` 7. This measures cost and checks the parsing (for example, that the probe coins' mints appear). If the probe found usable decoded tables, switch the event pass first (see the comment block at the top of the query).
-3. `graduates.sql` for full months, one month at a time.
-4. `curve_edge.sql`, first with `range1` cut to one day to measure cost.
+## 3. Coverage
 
-Expected size: `graduates.sql` one month is tens of thousands of rows and a few MB (a guess). `curve_edge.sql` is a guess of 10 to 500 rows. Expected megabytes of **scan** (what Dune bills) are unknown. The only number I found is from Spellbook's test config: `dex_solana.trades` holds 17.2 billion rows and 236 GB in total ([_schema.yml, comment on `amount_usd`](https://github.com/duneanalytics/spellbook/blob/main/dbt_subprojects/solana/models/_sector/dex/_schema.yml)). I found no size for `solana.instruction_calls`.
+Events and calls per month, from `schema_probe.sql` statements 7 to 9. A dash means no rows.
 
-### How each table is read once
+| Month | Graduation events | Withdraw calls | Create events | Create calls |
+|---|---|---|---|---|
+| 2024-01 | - | 2 | - | 172 |
+| 2024-02 | - | 17 | - | 1,279 |
+| 2024-03 | - | 703 | - | 74,691 |
+| 2024-04 | 336 | 2,453 | 34,566 | 286,327 |
+| 2024-05 | 6,703 | 7,069 | 436,918 | 436,918 |
+| 2024-06 | 6,495 | 6,583 | 386,354 | 386,354 |
+| 2024-07 | 6,033 | 6,066 | 393,622 | 393,622 |
+| 2024-08 | 4,436 | 4,452 | 344,068 | 344,068 |
+| 2024-09 | 3,254 | 3,262 | 248,400 | 248,400 |
+| 2024-10 | 10,630 | 10,654 | 704,301 | 704,301 |
+| 2024-11 | 17,261 | 17,723 | 1,248,131 | 1,248,131 |
+| 2024-12 | 14,023 | 14,120 | 1,207,901 | 1,207,901 |
+| 2025-01 | 24,008 | 24,342 | 1,727,508 | 1,727,508 |
+| 2025-02 | 11,903 | 11,918 | 1,140,175 | 1,140,175 |
+| 2025-03 | 6,808 | 4,250 | 823,401 | 823,401 |
+| 2025-04 | 9,059 | - | 1,001,077 | 1,001,077 |
+| 2025-05 | 8,447 | - | 897,553 | 897,553 |
+| 2025-06 | 6,761 | - | 771,771 | 771,771 |
+| 2025-07 | 2,801 | - | 346,532 | 346,532 |
+| 2025-08 | 4,759 | - | 599,659 | 599,659 |
+| 2025-09 | 4,373 | - | 675,397 | 675,397 |
+| 2025-10 | 2,920 | - | 449,230 | 449,230 |
+| 2025-11 | 3,568 | - | 511,170 | 248,412 |
+| 2025-12 | 4,337 | - | 620,682 | 41,744 |
+| 2026-01 | 6,473 | - | 878,191 | 31,550 |
+| 2026-02 | 8,369 | - | 857,239 | 28,803 |
+| 2026-03 | 11,430 | - | 794,571 | 11,376 |
+| 2026-04 | 8,193 | - | 803,491 | 6,087 |
+| 2026-05 | 7,006 | - | 890,846 | 5,627 |
+| 2026-06 | 7,417 | - | 852,083 | 4,197 |
+| 2026-07 | 22,079 | - | 857,288 | 2,851 |
+| 2026-08 | 34,217 | - | 1,184,684 | 5,774 |
+| 2026-09 | 34,109 | - | 1,005,468 | 3,476 |
+| 2026-10 | 33,994 | - | 1,476,492 | 5,219 |
+| 2026-11 | 12,927 | - | 599,747 | 2,406 |
 
-DuneSQL runs a `WITH` block again every time it is referenced. Every block that reads a table is therefore referenced once, in a chain:
+Other facts:
 
-- `graduates.sql`: `pump_raw` (the only read of `solana.instruction_calls`) -> `pump_parsed` -> `pump_by_mint` -> `graduates` -> `trade_buckets` (the only read of `dex_solana.trades`, in a subquery) -> `coin_stats` -> final `SELECT`.
-- The two sides of a trade are split with `CROSS JOIN UNNEST(ARRAY[ROW(bought mint, bought raw), ROW(sold mint, sold raw)])`, so the coin is whichever side matches a graduate. The table is read once, not once per side.
-- Graduates with no trades are kept by a `RIGHT JOIN` from the trades subquery to `graduates` inside `trade_buckets`, so `graduates` is not referenced a second time.
-- `curve_edge.sql`: `curve_trades` and `completes` are each referenced once.
+- Token supply is 1,000,000,000 (raw 10^15, 6 decimals) on every create event that records it.
+- From the second quarter of 2026 almost every new coin is a Token-2022 mint, and a large share is created in "mayhem mode".
+- `quote_mint` is null before 2026-05-21. After that, `11111111111111111111111111111111` means SOL. Coins are also paired with USDC and, from September 2026, with hundreds of other coins (963 distinct values seen; the first 200 were listed).
+- 1,846 graduates have no row in the hourly price table.
+- One day of `dex_solana.trades` is about 28.5 million rows (counted for 2025-01-15 and 2026-10-10).
 
-### Decoded tables
+## 4. How good the hourly peak is
 
-`pumpdotfun_solana.pump_call_create` and `pumpdotfun_solana.pump_call_withdraw` exist (a published analysis queries them: <https://seouldatalabs.substack.com/p/can-we-rescue-trapped-sol-from-pumpfun>). Their columns are not documented, so `graduates.sql` keeps the raw-instruction pass as the working version and carries a comment block showing which columns the decoded tables must supply (mint, creator or user, block time for create; mint or bonding curve and block time for graduation; mint and pool for the PumpSwap migration). No column name of a decoded pump.fun table is written in executable SQL.
+Dune's hourly figures for the 20 probe coins, against the highest 1-minute candle high from the Codex probe (`probes/codex-probe-results.json`: `ath1m.highMcap`, otherwise `athFromDaily.highMcap`). All values are market caps in USD.
 
-## 2. The scan bound: `window_days`
+| Coin | Candle high (USD market cap) | Hourly max, unfiltered | Hourly max, price under 1,000 | Hourly 99.9th pct | 99.9th / candle | Peak on candle day |
+|---|---|---|---|---|---|---|
+| FARTCOIN | 2,685,924,110 | 2,503,211,197 | 2,503,211,197 | 2,114,387,221 | 0.79 | yes |
+| Pnut | 2,492,406,314 | 110,959,030,504 | 110,959,030,504 | 2,313,151,371 | 0.93 | no |
+| GOAT | 1,361,665,653 | 4,767,889,350,400 | 25,686,711,511 | 1,541,677,777 | 1.13 | no |
+| CHILLGUY | 688,313,768 | 656,175,186 | 656,175,186 | 580,626,245 | 0.84 | yes |
+| VANGOAT | 1,239,471 | 934,000 | 934,000 | 934,000 | 0.75 | yes |
+| NUT | 1,412,678 | 918,147 | 918,147 | 918,147 | 0.65 | yes |
+| Dog | 20,866,579 | 13,210,041 | 13,210,041 | 11,937,221 | 0.57 | yes |
+| Pang | 2,404,870 | 1,433,236 | 1,433,236 | 1,433,236 | 0.60 | yes |
+| COP | 1,361,583 | 464,928 | 464,928 | 464,928 | 0.34 | yes |
+| MM | 764,164 | 387,740 | 387,740 | 387,740 | 0.51 | yes |
+| CHILLDOG | 2,679,732 | 1,301,947 | 1,301,947 | 1,301,947 | 0.49 | yes |
+| Andrew | 3,675,488 | 1,609,492 | 1,609,492 | 1,609,492 | 0.44 | yes |
+| dodge | 1,825,744 | 734,225 | 734,225 | 734,225 | 0.40 | yes |
+| DSG | 2,185,003 | 2,138,918 | 2,138,918 | 2,138,918 | 0.98 | yes |
+| ROOM | 525,900 | 401,574 | 401,574 | 401,574 | 0.76 | yes |
+| WIZARD | 3,008,643 | 1,934,515 | 1,934,515 | 1,934,515 | 0.64 | yes |
+| Rose | 176,578 | 123,643 | 123,643 | 103,995 | 0.59 | yes |
+| DUMACRATS | 308,796 | 126,104 | 126,104 | 126,104 | 0.41 | yes |
+| USOF | 4,315,953 | 2,401,458 | 2,401,458 | 2,401,458 | 0.56 | yes |
+| Goyim | 10,239,517 | 7,924,633 | 7,924,633 | 6,901,837 | 0.67 | yes |
 
-`window_days` (default 90) bounds each coin, not the whole query:
+What it shows:
 
-- A coin counts as graduated only if its CompleteEvent is within `window_days` of its creation.
-- Only trades from graduation to creation + `window_days` count toward its rough peak, trade count, first and last trade.
-- The trades scan covers the calendar months from `launch_from` to `launch_to + window_days` (partition column `block_month`), and `block_time` trims it.
+- The 99.9th percentile of the hourly price is 0.34 to 1.13 times the highest 1-minute candle high, with a median of 0.62. An hourly price understates a short spike.
+- The hour of the hourly maximum falls on the same day as the candle peak for 18 of 20 coins, and in the same hour for 10. The other two are the bad prints below.
+- The plain maximum is wrong for long-lived coins that have bad prints. Both are in August 2025: about 45 times the candle high for Pnut, and about 3,500 times for GOAT (19 times once prices of 1,000 USD or more are filtered out, as the queries do). The 99.9th percentile fixes both (0.93 and 1.13).
+- The percentile does not protect short-lived coins. 2,839 graduates show a peak of $100M or more, far more than exist. Treat the two top sample cells as holding bad prints as well as real large coins. Bad prints are harmless for discovery, because the coin is checked against candles, and useful for validation.
+- So the hourly peak is used to pick candidates and to spread the sample, never as an ATH. A floor of $30k on it is the safe candidate cut (0.34 times $100k is $34k): 216,511 of 347,566 graduates. 99,486 are at $100k or more.
 
-A per-coin window means running a full range or twelve one-month slices gives the same row for the same coin.
+## 5. Known inaccuracies and gaps
 
-**The limitation, plainly.** With `window_days` = 90, a coin that first passes $100k more than 90 days after creation is missed. A rough peak inside 90 days understates coins that peaked later. FARTCOIN's all-time high came about three months after launch. Both are accepted for sizing and discovery. The real all-time high comes from our own pipeline, and late peaks are handled later, per coin, for the coins we ingest. A coin that took longer than `window_days` to graduate is not returned at all.
+- The hourly peak is a price from an hourly table, not a trade. It understates short spikes and includes bad prints (section 4). The real all-time high comes from our own metric library and the candles.
+- Coins that never graduated are not in the list. In the weeks when SOL was above about $243 a coin could pass $100k on the curve without graduating. This is not covered yet.
+- The list is as of the run time. About 1,100 coins graduate a day in late 2026.
+- 1,846 graduates have no hourly price, so they have no peak.
+- Before June 2024 graduation comes from the withdraw call, not from an event. Before May 2024 creation comes partly from the create call.
+- The create call table is incomplete from November 2025, so the queries use the event table for those months.
+- From 2026-05-21, coins may be paired with USDC or with other coins. `dex_solana.price_hour` prices are USD per whole coin; how well it prices coins paired with other coins was not checked.
 
-For a cost measurement on a one-week slice, set `window_days` to 7 too. Otherwise a one-week slice still reads about 4 months of trade partitions. The value 90 is a guess; no measurement supports it.
+## 6. Tried and rejected
 
+- **A scan of `dex_solana.trades` with 1-minute buckets** (the first draft's `graduates.sql`). Three days of Raydium and PumpSwap trades joined to all graduates did not finish in four minutes on the medium tier and cost 5.8 credits when cancelled. A month would take about an hour and the full history roughly 3,000 credits.
+- **`prices.hour` and `prices.minute`.** A lookup of 20 coins did not finish in 150 seconds and cost 17.5 and 7.1 credits when cancelled. Do not use them.
+- **The third-highest hour as a robust peak.** Memecoin peaks are too sharp: one probe coin's second-highest hour is a quarter of its highest, and the bad prints on GOAT and Pnut last more than six hours.
+- **The raw-instruction scan of `solana.instruction_calls`** for create and graduation events (the first draft). The decoded event tables replace it.
 
-## 3. Tables and columns used
+## 7. How to run
 
-### 3.1 `dex_solana.trades` (Dune curated table, built by Spellbook)
+The runner is in PR #24: `ingest/scripts/dune-discovery.ts`. It runs the queries against Dune and writes the results. Follow its own instructions for the key, which is read from an environment variable and is not in this repository.
 
-Definition checked against:
+Order:
 
-- Dune docs: <https://docs.dune.com/data-catalog/curated/dex-trades/solana/solana-dex-trades>
-- Spellbook model: <https://github.com/duneanalytics/spellbook/blob/main/dbt_subprojects/solana/models/_sector/dex/dex_solana_trades.sql>
-- Spellbook base model, which lists the venue models: <https://github.com/duneanalytics/spellbook/blob/main/dbt_subprojects/solana/models/_sector/dex/dex_solana_base_trades.sql>
-
-| Column | Type | Used for | Checked |
-|---|---|---|---|
-| `block_month` | DATE | **The partition column.** Spellbook's config says `partition_by = ['block_month']`; the docs say "partition key". Every trades scan filters on it. | Verified in docs and source |
-| `block_time` | TIMESTAMP | Time of the trade; trims each coin's window | Verified in docs and source |
-| `project` | VARCHAR | Venue name; used to exclude the curve (`'pumpdotfun'`), to find the first Raydium pool (`'raydium'`), and to select curve trades in `curve_edge.sql` | Verified in docs and in each venue model (below) |
-| `version` | INTEGER | Raydium v4 is `project = 'raydium'` and `version = 4` | Verified in the Raydium v4 model |
-| `project_program_id` | VARCHAR | **Despite the name, this is the pool address** for PumpSwap and Raydium v4, and the bonding-curve account for the pump.fun curve. Used as `graduation_pool` for Raydium-era coins. | Verified in the PumpSwap and Raydium v4 models; see "naming trap" below |
-| `token_bought_mint_address`, `token_sold_mint_address` | VARCHAR | The coin is whichever side equals its mint (base58 text) | Verified in docs and source. `_schema.yml` calls them `token_bought_address` and `token_sold_address`, which does not match the model SQL or the docs page; I used the SQL and docs names |
-| `token_bought_amount_raw`, `token_sold_amount_raw` | UINT256 | Token volume. Divided by 1,000,000 (6 decimals) | Verified in docs and source |
-| `amount_usd` | DOUBLE | USD value of the trade | Verified in docs and source |
-
-Facts about these columns that the queries rely on:
-
-- **Bought and sold sides.** One row per swap leg. The bought side and sold side each have a mint and a raw amount. The queries scan once for "coin is the bought side" and once for "coin is the sold side" and union the two. A single join on `mint IN (bought, sold)` would be slow.
-- **Which amounts are decimal-adjusted.** `token_bought_amount` and `token_sold_amount` are decimal-adjusted, using decimals from `tokens_solana.fungible`; when that join finds nothing the result is null (`dex_solana_trades.sql`: `raw / pow(10, coalesce(decimal_project_specific, token.decimals))`). The `_raw` columns are not adjusted and are always present. The queries use `_raw / 1,000,000`, because every pump.fun coin has 6 decimals (given in the task brief; not re-checked here), and a brand-new Token-2022 mint may be missing from `tokens_solana.fungible`.
-- **How `amount_usd` is made.** From `dex_solana_trades.sql`: if the bought token is in `prices.trusted_tokens`, bought amount times its minute price; otherwise sold amount times its minute price; otherwise bought amount times its minute price. The coin itself is not a trusted token, so for a coin trade the USD value normally comes from the quote side (SOL, USDC and so on) at that minute's price. It is null when the quote side has no price in `prices.usd`.
-- **Spellings.** `project` is `pumpdotfun` (version 1) for the curve, `pumpswap` (version 1) for PumpSwap, `raydium` with `version` 4 (and `version_name` `amm`) for Raydium v4. Sources: [pumpdotfun_solana_base_trades.sql](https://github.com/duneanalytics/spellbook/blob/main/dbt_subprojects/solana/models/_sector/dex/pumpdotfun/solana/pumpdotfun_solana_base_trades.sql), [pumpswap_solana_base_trades_backfill.sql](https://github.com/duneanalytics/spellbook/blob/main/dbt_subprojects/solana/models/_sector/dex/pumpswap/pumpswap_solana_base_trades_backfill.sql), [raydium_v4_base_trades_backfill.sql](https://github.com/duneanalytics/spellbook/blob/main/dbt_subprojects/solana/models/_sector/dex/raydium/raydium_v4_base_trades_backfill.sql). The queries filter on `project` only to pick out the curve, Raydium v4 and (in `curve_edge.sql`) the curve; they do not filter on any other venue.
-- **Venues in the table.** `dex_solana_base_trades.sql` unions 36 models. Relevant ones: `raydium_version_clmm`, `raydium_v4`, `raydium_v5`, `raydium_launchlab_version_1`, `orca_whirlpool` v1 and v2, `meteora` amm, dlmm, cpamm and v4, `pumpdotfun_version_1`, `pumpswap_version_1`, and others. `sanctum_router` is excluded on purpose. This confirms the list in `docs/data-sources.md` (36 models).
-- **Naming trap.** `project_program_id` holds the pool address and `project_main_id` holds the program id. If a later reader assumes the name, the graduation pool column will look wrong.
-
-### 3.2 `solana.instruction_calls` (Dune raw table)
-
-Definition checked against: <https://docs.dune.com/data-catalog/solana/instruction-calls>. Used the same way in Spellbook's curve model: [pumpdotfun_solana_base_trades.sql](https://github.com/duneanalytics/spellbook/blob/main/dbt_subprojects/solana/models/_sector/dex/pumpdotfun/solana/pumpdotfun_solana_base_trades.sql).
-
-| Column | Used for | Checked |
-|---|---|---|
-| `executing_account` | The pump.fun program, `6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P` | Verified in docs; the address is verified in the pump.fun IDL (below) |
-| `executing_account_prefix` | First two characters of the program id (`6E`), as Spellbook does | **Assumed** to exist: Spellbook's model uses it, but Dune's docs page does not list it |
-| `tx_success` | Only successful transactions | Verified in docs |
-| `block_date`, `block_time` | Time filters. `block_date` is added so the engine can prune by date | Verified in docs. **Assumed** that `block_date` is a partition or sort key. The docs do not say what the table is partitioned by; Spellbook filters on `block_time` |
-| `data` (VARBINARY) | Instruction or event bytes. The first 8 bytes are the instruction discriminator; for events the first 16 bytes are the event tag and discriminator | Verified in docs and in Spellbook's use |
-| `account_arguments` (ARRAY(VARCHAR)) | Mint and user accounts of the create instructions. Arrays are 1-based | Verified in docs and in Spellbook's use (`account_arguments[1]` is the mint) |
-
-### 3.3 Decoded-table data and Spellbook data: which is which
-
-- **Decoded-table data (instruction-level, from IDLs):** Dune's decoded pump.fun tables exist in the schema `pumpdotfun_solana`, but the only tables I could confirm by name are the PumpSwap ones: `pump_amm_call_buy`, `pump_amm_call_sell`, `pump_amm_call_create_pool`, `pump_amm_call_create_config`, `pump_amm_call_update_fee_config`, `pump_amm_evt_buyevent` ([Spellbook `_sources.yml`](https://github.com/duneanalytics/spellbook/blob/main/dbt_subprojects/solana/models/_sources.yml)). `pump_call_create` and `pump_call_withdraw` also exist (a published analysis queries them, see section 1), but their columns are undocumented. I could not confirm any decoded table for CompleteEvent or the migration. Dune's docs do not list them, and Spellbook's curve model avoids them and reads raw instruction rows instead. So **no query here uses a decoded pump.fun table**. Using one would likely be cheaper (smaller table); `schema_probe.sql` lists their columns; switching to them is the first thing to try once it has run.
-- **Raw table with IDL-derived layouts (what the queries use):** create, create_v2, CompleteEvent and CompletePumpAmmMigrationEvent are read from `solana.instruction_calls` using discriminators and byte offsets from pump.fun's IDL.
-- **Spellbook-derived:** all trades come from `dex_solana.trades`.
-
-### 3.4 pump.fun create, graduation and migration: the exact layouts
-
-Source for every row below: pump.fun's IDL, <https://github.com/pump-fun/pump-public-docs/blob/main/idl/pump.json> (program address `6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P`, which matches Spellbook). I recomputed the Anchor discriminators (first 8 bytes of SHA-256 of `global:<name>` or `event:<Name>`); they match the IDL, and `create` and `TradeEvent` also match Spellbook's hard-coded values.
-
-| What | Where | Discriminator | Fields used |
-|---|---|---|---|
-| Create (classic) | instruction `create` | `0x181ec828051c0777` | account 1 = `mint`, account 8 = `user` (creator wallet signer) |
-| Create (Token-2022, new coins) | instruction `create_v2` | `0xd6904cec5f8b31b4` | account 1 = `mint`, account 6 = `user` |
-| Graduation | event `CompleteEvent`, inner instruction, data starts `0xe445a52e51cb9a1d` + `0x5f72619cd42e9808` | | `mint` at bytes 49 to 80 (1-based). The IDL's other fields: user, bonding_curve, timestamp, quote_mint |
-| Graduation pool, PumpSwap era | event `CompletePumpAmmMigrationEvent`, data starts `0xe445a52e51cb9a1d` + `0xbde95db95c94ea94` | | `mint` at bytes 49 to 80, `pool` at bytes 145 to 176 |
-| Graduation pool, Raydium era | none on the pump.fun side | | The query uses the pool of the coin's first Raydium v4 trade after graduation |
-
-Things to know:
-
-- **create_v2 is covered.** The create-event source selects both `create` and `create_v2`, so Token-2022 coins are not dropped. The creator wallet is the `user` account. The instructions also take a `creator` argument that can differ from `user`; I did not parse it, because it sits after three variable-length strings. It is unverified how often the two differ.
-- The IDL is newer than the Spellbook curve model: it has `create_v2`, `buy_v2`, `buy_v3`, `migrate_v2`, a `quote_mint` on `CompleteEvent`, `CompletePumpAmmMigrationEvent` and `TradeEvent`, and a `multi_hop_curve_swap`. The 8-byte discriminators of the events I use did not change, but I **assumed** that the field positions I use (mint at 49, pool at 145) held for every program version since 2024. The IDL I read is the current one only. This is the biggest unverified point.
-- **Migrate instruction vs event.** The `migrate` and `migrate_v2` instructions also carry the pool as an account (account 10 and 11, 0-based). I read the event instead, because one event covers both instruction versions.
-- **Graduation time** is the block time of the CompleteEvent row.
-
-### 3.5 What Spellbook already has, and why I did not use it
-
-- Spellbook has **no model of pump.fun graduates or token launches**. I searched the full file tree of the repository (`dbt_subprojects/solana/models/_sector/dex/pumpdotfun` has only trade models; `pumpswap` has trade models plus `pumpswap_solana_pools`).
-- `pumpswap_solana.pools` ([source](https://github.com/duneanalytics/spellbook/blob/main/dbt_subprojects/solana/models/_sector/dex/pumpswap/pumpswap_solana_pools.sql)) lists every PumpSwap pool: `pool`, `created_at`, `baseMint`, `quoteMint`. It would be cheap, but it lists all pools, not only pump.fun graduation pools; anyone can open a PumpSwap pool, and I could not tell from the source how to isolate migrations. It also only starts at 2025-03-14. I did not use it.
-- Spellbook's own curve model reads only the classic `create` instruction (discriminator `0x181ec828051c0777`) to find the bonding-curve account. For `create_v2` coins the curve rows' `project_program_id` is probably null. The queries here do not read that column for the curve, so it does not affect them.
-
-## 4. `curve_edge.sql`: when SOL was above $243
-
-The curve ends at about 411 SOL of market cap (`docs/data-sources.md`, section 2, labelled Inferred there). 411 SOL is $100k at a SOL price of about $243. The ranges are the days when SOL's daily high on Binance SOLUSDT was above $243.
-
-Price source: Binance spot daily candles for SOLUSDT, `GET https://api.binance.com/api/v3/klines?symbol=SOLUSDT&interval=1d` ([documentation](https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints)). Read on 2026-11-15 for 2024-01-01 to 2026-11-15. The all-time daily high in that period was $295.83 on 2025-01-19. Days with a daily high above $243:
-
-| Dates (UTC) | Notes |
-|---|---|
-| 2024-11-18 to 2024-11-19, 2024-11-21 to 2024-11-25, 2024-11-27 to 2024-11-30, 2024-12-05 to 2024-12-07 | Merged into one range, because the gaps are single days |
-| 2025-01-18 to 2025-01-26, 2025-01-28, 2025-01-30 | One range |
-| 2025-09-12 to 2025-09-15, 2025-09-17 to 2025-09-19 | One range |
-
-The defaults add one day on each side and use an exclusive end:
-
-| Parameter | Default |
-|---|---|
-| `range1_from`, `range1_to` | 2024-11-17, 2024-12-09 |
-| `range2_from`, `range2_to` | 2025-01-17, 2025-01-31 |
-| `range3_from`, `range3_to` | 2025-09-11, 2025-09-21 |
-
-**This differs from `docs/data-sources.md`.** That document says the weeks were "late 2024 and January 2025". The Binance data adds a third window in mid-September 2025. SOL's price could also have been above $243 on Dune's price feed while below it on Binance; one day of padding covers small gaps only.
-
-Two assumptions in this query:
-
-- The curve model gives each trade's `amount_usd` using a SOL price. For a coin on a non-SOL quote (the IDL's `TradeEvent` now has a `quote_mint` and a `quote_amount`), Spellbook still reads the old `sol_amount` field and labels the quote wrapped SOL (`pumpdotfun_solana_base_trades.sql` hard-codes `So111...112`). Such coins' USD values may be wrong. I could not check whether `sol_amount` holds the quote amount for them.
-- The coin side of a curve trade is "the side that is not wrapped SOL". It follows from the hard-coded quote in the Spellbook model; it is not a filter on the quote currency and drops no coin.
-
-## 5. Known inaccuracies of the rough peak
-
-The rough peak sizes and finds candidates. The real ATH comes from our metric library (`docs/metrics.md`). The rough peak can be wrong in these ways:
-
-1. **Thin or manipulated buckets.** A bucket needs $1,000 and 3 trades, not 3 distinct traders. One wallet can pass it. `docs/metrics.md` requires at least 5 traders over a 3-minute window and the second-highest close, so the rough peak is generally higher than the real ATH. Counts at the $100k level are therefore upper bounds.
-2. **Price = USD volume / token volume mixes buys and sells.** A bucket with one large sell and small buys can print a price away from the last trade.
-3. **`amount_usd` null.** If the quote token has no price in `prices.usd` at that minute, `amount_usd` is null and the trade is skipped. This applies to coins whose pool is quoted in another memecoin: Spellbook's PumpSwap model keeps only pools whose quote mint is SOL, mSOL, USDC, USDT, PUMP or BONK (`pumpswap_solana_pools.sql`, column `is_valid_pool`), so trades in pools quoted in other coins are **missing** from the table, not just null. The pump.fun curve model assumes SOL quote.
-4. **`amount_usd` outliers.** Spellbook's data test only flags amounts above $1 billion for the last 7 days ([_schema.yml](https://github.com/duneanalytics/spellbook/blob/main/dbt_subprojects/solana/models/_sector/dex/_schema.yml)). A mispriced trade can set a very high bucket price. The rough peak has no cap, as the issue fixes the rule. `docs/metrics.md` has a data-error cap of $20 billion that the real ATH uses.
-5. **Aggregator routes.** `dex_solana.trades` has one row per pool leg, and `trade_source` says if it went through an aggregator. A multi-hop route that passes through the coin in two legs counts twice (once as bought, once as sold) with USD values taken from different quote sides. A route that is split across two pools counts as two trades. I did not de-duplicate them. The `trade_count` and "at least 3 trades" test are in legs, not in user trades.
-6. **Venues missing from Dune.** The table has Raydium v4, CPMM (v5), CLMM and LaunchLab, Orca Whirlpool, Meteora (AMM, DLMM, CPAMM, v4) and PumpSwap. Venues outside the 36 models are absent, and `sanctum_router` is excluded. Pools opened later on a missing venue would be missed.
-7. **Data lag.** Dune's table refreshes about every 3 hours (`docs/data-sources.md`, Reported), and the Spellbook monitoring config allows 24 hours before a warning. Coins from the last day are incomplete.
-8. **The window.** Peaks after `window_days` are missed (section 2). Coins that took longer than `window_days` to graduate are not counted at all.
-9. **Graduation time and pool.** A Raydium-era coin's pool is its first Raydium v4 trade, which can be a different pool than pump.fun's if someone opened another Raydium pool first (unverified). A graduated coin whose first post-graduation trade is on neither venue gets a null pool and venue.
-10. **Token amount.** `_raw / 1e6` assumes 6 decimals for every coin.
-11. **Tied minutes.** `max_by` picks an arbitrary minute if two buckets have the same price; the peak value is unaffected.
-12. **Creator.** The `user` account of the create instruction is returned. It is the signer paying for the create, which is the creator in the normal case.
-
-## 6. What could make each query expensive
-
-| Query | Expensive parts |
-|---|---|
-| `graduates.sql` | (a) `pump_raw` reads the pump.fun program's rows, which include every curve trade event (at least two rows per pump.fun trade); the discriminator tests on `data` probably cannot prune, only the date filters do. (b) `trade_buckets` reads `dex_solana.trades` for `launch_from` to `launch_to + window_days` in months, splits each row into two sides, and only then joins to the graduate list, so nothing prunes the unnest by mint (dynamic filtering may not reach below the unnest). That is the heavy step. (c) The `RIGHT JOIN` is meant to build its hash table on the small side (`graduates`); if Dune builds on the trades side instead, memory use will be high. |
-| `curve_edge.sql` | The curve is probably the busiest venue in those weeks (unmeasured). Three ranges of 2 to 3 weeks. The CompleteEvent scan repeats the `pump_raw` cost for the same ranges. |
-| `schema_probe.sql` | Metadata only. |
-
-Possible failure points on a first run (all untested):
-
-- `executing_account_prefix` or `block_date` not existing or not pruning on `solana.instruction_calls` (section 3.2).
-- `CROSS JOIN UNNEST(ARRAY[ROW(...), ROW(...)]) AS s(mint, raw_amount)`: standard Trino, but not run. A fallback is two `UNION ALL` subqueries over `dex_solana.trades`, which reads the table twice.
-- `CAST(uint256 AS double)`, `date_format` on a timestamp, `min_by` and `max_by` with `FILTER`, and `min_by` over a column with nulls (`raydium_pool`) have not been executed.
-- A `RIGHT JOIN` whose `ON` clause holds range conditions on both sides.
-- The field offsets in section 3.4.
-- Memory in `pump_raw` if `data` of create rows (long names and URIs) is large.
-- `schema_probe.sql`: Dune may refuse `information_schema` or `SHOW` statements; that is why both forms exist.
-
-## 7. Sources, with what each supports
-
-| Link | Supports |
-|---|---|
-| <https://docs.dune.com/data-catalog/curated/dex-trades/solana/solana-dex-trades> | Columns, types and "partition key" of `dex_solana.trades` |
-| <https://github.com/duneanalytics/spellbook/tree/main/dbt_subprojects/solana/models/_sector/dex> | Models and their SQL (all Spellbook claims above) |
-| <https://docs.dune.com/data-catalog/solana/instruction-calls> | `solana.instruction_calls` columns |
-| <https://docs.dune.com/data-catalog/solana/idl-tables> | How decoded Solana tables are named and that they only decode instructions, not inner instructions |
-| <https://github.com/pump-fun/pump-public-docs/blob/main/idl/pump.json> | pump.fun instructions, events and their fields |
-| <https://docs.dune.com/web-app/query-editor/parameters> | `{{name}}` parameter rules |
-| <https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints> | SOLUSDT daily candles used for the $243 ranges |
-
-One note on a source: the decoded-tables page says decoded call tables "only decode from instructions, and not inner instructions." Dune also has event tables (`pump_amm_evt_buyevent` is one, per Spellbook's `_sources.yml`), so an event table for CompleteEvent may exist. I could not confirm it, which is why the queries read the raw table.
+1. `sizing.sql` and `sample.sql` need no download of the full list. Their results are already in `results/sizing-2026-11-15.csv` and `results/sample-2026-11-15.csv`.
+2. When the backfill starts, run `discovery.sql` once with a floor on the peak (`WHERE peak_max_usd >= 30000` is the safe cut) and download it in pages of up to 32,000 rows. Budget the download credits first (section 1).
+3. Re-run `schema_probe.sql` statements 2 to 6 if a table seems to have changed.
