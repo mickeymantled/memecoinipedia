@@ -31,6 +31,7 @@ const RESULT_FIELDS: readonly (keyof MetricResult)[] = [
   'athLiquidityUsd',
   'athHourVolumeUsd',
   'athNearVolumeUsd',
+  'athBackedMarketCapUsd',
   'secondsAbove',
   'maxDrawdownPct',
   'rugPattern',
@@ -65,10 +66,11 @@ describe('metric fixtures are well formed', () => {
     });
 
     it('has every field of MetricResult and nothing else', () => {
-      // Fixtures from before rules version 6 may leave out `athNearVolumeUsd`; the new ones list it.
-      const optional = 'athNearVolumeUsd';
+      // Fixtures from before rules versions 6 and 7 may leave out the two outputs those added; the
+      // newer ones list both.
+      const optional = ['athNearVolumeUsd', 'athBackedMarketCapUsd'];
       const without = (keys: readonly string[]): string[] =>
-        keys.filter((k) => k !== optional).sort();
+        keys.filter((k) => !optional.includes(k)).sort();
       expect(without(Object.keys(fixture.expected))).toEqual(without(RESULT_FIELDS));
     });
 

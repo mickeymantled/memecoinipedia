@@ -259,53 +259,66 @@ describeDb('reopening candles and metrics after a coverage flag', () => {
     expect(await h.stage('metrics')).toMatchObject({ status: 'done' });
   }, 90_000);
 
-  it('a metrics-only run fills ath_near_volume_usd and the flag for a coin computed at version 5, and reopens no candle stage', async () => {
-    // Thin trading: 1,000 USD a minute, so the volume near the high is a sliver of its market cap.
-    const h = await setup(coinWith(rug().map((m) => ({ ...m, volume: 1_000 }))));
-    h.limits.current = undefined;
-    await h.pass(['discovered', 'candles', 'metrics']);
-    const current = await db
-      .selectFrom('coins')
-      .select(['ath_market_cap_usd', 'ath_near_volume_usd', 'metric_flags', 'metrics_version'])
-      .executeTakeFirstOrThrow();
-    expect(current.metrics_version).toBe(METRICS_VERSION);
-    expect(current.ath_near_volume_usd).toBeGreaterThan(0);
-    expect(current.metric_flags).toContain('ath_thinly_traded');
+  it.each([5, 6])(
+    'a metrics-only run fills ath_near_volume_usd, ath_backed_market_cap_usd and the flag for a coin computed at version %i, and reopens no candle stage',
+    async (version) => {
+      // Thin trading: 1,000 USD a minute, so the volume near the high is a sliver of its market cap.
+      const h = await setup(coinWith(rug().map((m) => ({ ...m, volume: 1_000 }))));
+      h.limits.current = undefined;
+      await h.pass(['discovered', 'candles', 'metrics']);
+      const columns = [
+        'ath_market_cap_usd',
+        'ath_near_volume_usd',
+        'ath_backed_market_cap_usd',
+        'metric_flags',
+        'metrics_version',
+      ] as const;
+      const current = await db.selectFrom('coins').select(columns).executeTakeFirstOrThrow();
+      expect(current.metrics_version).toBe(METRICS_VERSION);
+      expect(current.ath_near_volume_usd).toBeGreaterThan(0);
+      expect(current.metric_flags).toContain('ath_thinly_traded');
+      // Flagged: the backed high is below the ATH.
+      expect(current.ath_backed_market_cap_usd).toBeGreaterThan(0);
+      expect(current.ath_backed_market_cap_usd).toBeLessThan(current.ath_market_cap_usd!);
 
-    // Make the coin look as version 5 left it: no new column, no flag, stages at version 5,
-    // candles fetched under version 5.
-    await db
-      .updateTable('coins')
-      .set({
-        ath_near_volume_usd: null,
-        metrics_version: 5,
-        metric_flags: current.metric_flags.filter((f) => f !== 'ath_thinly_traded'),
-      })
-      .execute();
-    await sql`update coin_stages set version = 5 where stage = 'metrics'`.execute(db);
-    await sql`update coin_stages set detail = detail || '{"metricsVersion": 5}'::jsonb
-      where stage = 'candles'`.execute(db);
-    const candlesBefore = await h.stage('candles');
-    const requests = h.sim.queries.length;
+      // Make the coin look as that version left it: the newer columns empty, stages at that
+      // version, candles fetched under it. Version 5 also had no flag.
+      await db
+        .updateTable('coins')
+        .set({
+          ath_backed_market_cap_usd: null,
+          ...(version === 5
+            ? {
+                ath_near_volume_usd: null,
+                metric_flags: current.metric_flags.filter((f) => f !== 'ath_thinly_traded'),
+              }
+            : {}),
+          metrics_version: version,
+        })
+        .execute();
+      await sql`update coin_stages set version = ${version} where stage = 'metrics'`.execute(db);
+      await sql`update coin_stages set detail = detail || ${JSON.stringify({ metricsVersion: version })}::jsonb
+        where stage = 'candles'`.execute(db);
+      const candlesBefore = await h.stage('candles');
+      const requests = h.sim.queries.length;
 
-    await h.pass(['metrics']);
+      await h.pass(['metrics']);
 
-    const after = await db
-      .selectFrom('coins')
-      .select(['ath_market_cap_usd', 'ath_near_volume_usd', 'metric_flags', 'metrics_version'])
-      .executeTakeFirstOrThrow();
-    expect(after).toEqual(current);
-    expect(await h.stage('metrics')).toMatchObject({ status: 'done' });
-    expect(await h.stage('candles')).toEqual(candlesBefore); // done, untouched
-    expect(h.sim.queries.length).toBe(requests); // no provider request
-  }, 90_000);
+      const after = await db.selectFrom('coins').select(columns).executeTakeFirstOrThrow();
+      expect(after).toEqual(current);
+      expect(await h.stage('metrics')).toMatchObject({ status: 'done' });
+      expect(await h.stage('candles')).toEqual(candlesBefore); // done, untouched
+      expect(h.sim.queries.length).toBe(requests); // no provider request
+    },
+    90_000,
+  );
 
   it('the candle rules version is never ahead of the metrics version', () => {
     expect(CANDLE_RULES_VERSION).toBeLessThanOrEqual(METRICS_VERSION);
   });
 
-  it('does not reopen candles fetched under candle rules version 5 when metrics run at version 6', async () => {
-    // Rules version 6 only adds an output, so it asks for no bars the fetch did not ask for.
+  it('does not reopen candles fetched under candle rules version 5 when metrics run at the current version', async () => {
+    // Rules versions 6 and 7 only add outputs, so it asks for no bars the fetch did not ask for.
     expect(METRICS_VERSION).toBeGreaterThan(5);
     const h = await setup(coinWith(rug()));
     await h.fetchedBefore();

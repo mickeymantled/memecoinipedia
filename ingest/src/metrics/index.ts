@@ -5,7 +5,7 @@ import { buildLevelSeries } from './level.js';
 import { buildCoinPoints } from './points.js';
 import { rugPattern } from './rug.js';
 import { secondsAbove } from './timeAbove.js';
-import { athNearVolume, athThinlyTraded } from './athNear.js';
+import { countedBars, nearAth } from './athNear.js';
 import { buildWindows } from './windows.js';
 import {
   DEFAULT_METRIC_PARAMS,
@@ -77,17 +77,22 @@ export const computeCoinMetrics: ComputeCoinMetrics = (
   // Sections 7 to 10: level series, time above, drawdown, rug pattern.
   const series = buildLevelSeries(points);
 
-  // Section 6: volume near the ATH and its flag. Nothing below reads them.
-  const athNearVolumeUsd = athNearVolume(cleaned.pools, ath.athPrice, params);
-  if (athThinlyTraded(athNearVolumeUsd, ath.fields.athMarketCapUsd, params)) {
-    flags.add('ath_thinly_traded');
-  }
+  // Section 6: volume near the ATH, its flag and the backed high. Nothing below reads them.
+  const near = nearAth(
+    countedBars(cleaned.pools),
+    ath.athPrice,
+    ath.fields.athMarketCapUsd,
+    input.totalSupply,
+    params,
+  );
+  if (near.thinlyTraded) flags.add('ath_thinly_traded');
 
   return {
     ...ath.fields,
     ...wick,
     athHourVolumeUsd: athHourVolume(cleaned.pools, ath.fields.athAt),
-    athNearVolumeUsd,
+    athNearVolumeUsd: near.athNearVolumeUsd,
+    athBackedMarketCapUsd: near.athBackedMarketCapUsd,
     secondsAbove: secondsAbove(
       series,
       params.thresholdsUsd,

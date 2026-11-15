@@ -52,6 +52,7 @@ export interface CoinsTable {
   ath_liquidity_usd: number | null;
   ath_hour_volume_usd: number | null;
   ath_near_volume_usd: number | null;
+  ath_backed_market_cap_usd: number | null;
   seconds_above_100k: number | null;
   seconds_above_1m: number | null;
   seconds_above_10m: number | null;
@@ -285,6 +286,7 @@ export const databaseShape: { [T in keyof Database]: Record<keyof Database[T], t
     ath_liquidity_usd: true,
     ath_hour_volume_usd: true,
     ath_near_volume_usd: true,
+    ath_backed_market_cap_usd: true,
     seconds_above_100k: true,
     seconds_above_1m: true,
     seconds_above_10m: true,
