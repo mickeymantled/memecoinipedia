@@ -26,7 +26,13 @@ import type { StageName } from '@memecoinipedia/db';
 import { consoleLogger, secretsFromEnv } from '../src/worker/log.js';
 import { DEFAULT_STAGES, runIngest } from '../src/worker/run.js';
 
-const STAGE_NAMES: readonly string[] = ['discovered', 'metadata', 'candles', 'metrics'];
+const STAGE_NAMES: readonly string[] = [
+  'discovered',
+  'metadata',
+  'metadata_file',
+  'candles',
+  'metrics',
+];
 
 function usage(message?: string): never {
   if (message) process.stderr.write(`${message}\n\n`);

@@ -29,6 +29,7 @@ import { LISTED_ATH_USD } from '../worker/stage.js';
 import { CANDLES_STAGE_VERSION, CANDLES_TIMEOUT_SECONDS } from '../worker/stages/candles.js';
 import { METADATA_STAGE_VERSION } from '../worker/stages/metadata.js';
 import { queueName } from '../worker/worker.js';
+import { METADATA_FILE_STAGE_VERSION } from '../worker/stages/metadataFile.js';
 import { DEFAULT_MIN_ROUGH_PEAK_USD } from './defaults.js';
 
 export const BACKFILL_RUN_KIND = 'backfill';
@@ -97,6 +98,15 @@ export function breakdownStages(now: Date): BreakdownStage[] {
     {
       stage: 'metadata',
       version: METADATA_STAGE_VERSION,
+      requires: 'metrics',
+      minAthMarketCapUsd: LISTED_ATH_USD,
+      runningSince: since(METADATA_TIMEOUT_SECONDS),
+    },
+    {
+      stage: 'metadata_file',
+      version: METADATA_FILE_STAGE_VERSION,
+      // Whether a coin is listed is known once its metrics are: the same test as `metadata`, so a
+      // coin known to be unlisted is "not run" here too, not "waiting" for a `metadata` it never gets.
       requires: 'metrics',
       minAthMarketCapUsd: LISTED_ATH_USD,
       runningSince: since(METADATA_TIMEOUT_SECONDS),
@@ -225,12 +235,12 @@ export function formatStatus(s: BackfillStatus): string {
   );
   lines.push(`Listed so far (ATH ${usd(LISTED_ATH_USD)} or more): ${n(s.listed)}`);
   lines.push('');
-  lines.push('Stage       done   failed  running  waiting     not run   queued');
+  lines.push('Stage            done   failed  running  waiting     not run   queued');
   for (const st of s.stages) {
     lines.push(
-      `${st.stage.padEnd(9)} ${n(st.done).padStart(7)} ${n(st.failed).padStart(8)} ` +
+      `${st.stage.padEnd(13)} ${n(st.done).padStart(7)} ${n(st.failed).padStart(8)} ` +
         `${n(st.running).padStart(8)} ${n(st.waiting).padStart(8)} ` +
-        `${(st.notApplicable > 0 || st.stage === 'metadata' ? n(st.notApplicable) : '-').padStart(11)} ` +
+        `${(st.notApplicable > 0 || st.stage === 'metadata' || st.stage === 'metadata_file' ? n(st.notApplicable) : '-').padStart(11)} ` +
         `${n(s.queued[st.stage] ?? 0).padStart(8)}`,
     );
   }

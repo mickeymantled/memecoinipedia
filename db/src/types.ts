@@ -133,7 +133,8 @@ export interface CandleCoverageTable {
 
 export interface CoinStagesTable {
   coin_id: number;
-  stage: 'discovered' | 'metadata' | 'candles' | 'metrics' | 'classified' | 'embedded';
+  stage:
+    'discovered' | 'metadata' | 'metadata_file' | 'candles' | 'metrics' | 'classified' | 'embedded';
   status: WithDefault<'pending' | 'running' | 'done' | 'failed' | 'skipped'>;
   attempts: WithDefault<number>;
   version: WithDefault<number>;

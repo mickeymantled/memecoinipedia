@@ -18,7 +18,11 @@ export const assetSchema = z.object({
   content: z
     .object({
       json_uri: z.string().nullish(),
-      metadata: onChainMetadata.nullish(),
+      metadata: onChainMetadata
+        // Read leniently: a description of the wrong type is ignored, it does not spoil the row.
+        .extend({ description: z.unknown().optional() })
+        .nullish(),
+      links: z.object({ image: z.unknown().optional() }).nullish(),
     })
     .nullish(),
   token_info: z

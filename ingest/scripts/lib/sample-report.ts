@@ -198,7 +198,7 @@ export function buildReport(d: ReportData): string {
 
   out.push('## Stage status');
   const statuses = ['done', 'skipped', 'failed', 'running', 'pending', 'missing'] as const;
-  const stageNames: StageName[] = ['discovered', 'metadata', 'candles', 'metrics'];
+  const stageNames: StageName[] = ['discovered', 'metadata', 'metadata_file', 'candles', 'metrics'];
   out.push(
     table(
       ['stage', ...statuses],
@@ -463,7 +463,7 @@ export async function loadReportData(
     };
   });
 
-  const stageNames: StageName[] = ['discovered', 'metadata', 'candles', 'metrics'];
+  const stageNames: StageName[] = ['discovered', 'metadata', 'metadata_file', 'candles', 'metrics'];
   const runs = await sql<{ n: string; seconds: string | null; units: string | null }>`
     select count(*)::text as n,
       sum(extract(epoch from (r.finished_at - r.started_at)))::text as seconds,

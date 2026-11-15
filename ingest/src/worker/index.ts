@@ -9,6 +9,7 @@ export * from './stages/candles.js';
 export * from './stages/discovered.js';
 export * from './stages/image.js';
 export * from './stages/metadata.js';
+export * from './stages/metadataFile.js';
 export * from './stages/metrics.js';
 export * from './summary.js';
 export * from './usage.js';
