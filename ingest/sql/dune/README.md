@@ -1,4 +1,4 @@
-# Dune queries for sizing the target set and drawing the Phase A sample
+# Dune queries for discovering pump.fun graduates
 
 **Status: NOT YET RUN.** There is no Dune key and the credit limit for this task is zero, so no query here has been executed. Everything below comes from Dune's documentation and from source code on GitHub, read on 2026-11-15. Nothing was tested against real data.
 
@@ -7,53 +7,55 @@ Labels used below:
 - **Verified in docs or source**: I read the definition at the linked page.
 - **Assumed**: I could not find a definition; the query depends on it anyway.
 
-## 1. The queries
 
-All four are DuneSQL (Trino). Parameters use Dune's `{{name}}` form; set each parameter's type and default in the Dune editor to the values in the file header. Dune puts a `date` parameter into the text as `YYYY-MM-DD hh:mm:ss`, and the queries read it with `CAST('{{name}}' AS timestamp)`, as Dune's parameter docs show ([Using Parameters](https://docs.dune.com/web-app/query-editor/parameters)).
+## 1. The files and the first live run
 
-| File | Returns | Parameters (default) | Expected rows and size | What bounds the scan |
-|---|---|---|---|---|
-| `sizing.sql` | One row per launch month: coins created, coins graduated, graduates at or above rough peaks of $50k, $80k, $100k, $125k, $1M, $10M, $100M, and the median, p90, p99 and maximum of trades per coin and of active days for coins at $100k or more | `launch_from` (2024-01-01), `launch_to` (2026-12-01), `window_days` (90) | 35 rows, under 10 KB (estimate) | See section 2 |
-| `candidates.sql` | One row per graduate whose rough peak is at least `min_peak_usd`: mint, created_at, creator, graduated_at, graduation_pool, graduation_venue, rough_peak_usd, rough_peak_at, trade_count, first_trade_at, last_trade_at | `launch_from` (2024-01-01), `launch_to` (2024-02-01), `window_days` (90), `min_peak_usd` (50000) | One month: about 2,000 to 15,000 rows, 0.5 to 5 MB. Whole range: about 100,000 to 300,000 rows (guess from `docs/data-sources.md`, not measured) | See section 2 |
-| `sample.sql` | At most 500 rows: the 20 probes plus 480 drawn by quota. Same columns as `candidates.sql`, plus `half_year`, `sample_cell`, `is_probe` | `launch_from` (2024-01-01), `launch_to` (2027-01-01), `window_days` (90) | At most 500 rows, about 150 KB | See section 2. It is the most expensive query, because the draw needs the rough peak of every graduate in the range |
-| `curve_edge.sql` | Coins that never graduated and whose curve price times 1e9 reached `min_peak_usd`, with a count on every row | `range1_from` to `range3_to` (the three ranges in section 4), `min_peak_usd` (100000), `grad_check_days` (30) | Guess: 10 to 500 rows, under 0.1 MB | Three short date ranges, partition column and time on `dex_solana.trades`; the same ranges on `solana.instruction_calls` |
+| File | What it is | Parameters (default) |
+|---|---|---|
+| `schema_probe.sql` | Metadata statements that list the tables of schema `pumpdotfun_solana` and the columns of the create, complete, withdraw and migrate tables. Two forms (`information_schema` and `SHOW`) as separate statements, each run on its own, because Dune may refuse one. Almost free. | none |
+| `graduates.sql` | The one heavy query. One row per coin created in `[launch_from, launch_to)` that graduated within `window_days` of creation. Columns, in this order: `mint, created_at, creator, graduated_at, graduation_pool, graduation_venue, rough_peak_usd, rough_peak_at, trade_count, first_trade_at, last_trade_at`. Coins with no counting bucket come back with a null rough peak. | `launch_from` (2024-01-01), `launch_to` (2024-02-01), `window_days` (90), `min_peak_usd` (0; null peaks are returned only at 0) |
+| `curve_edge.sql` | Coins that never graduated but whose curve price times 1e9 reached `min_peak_usd`, with a count on every row. | `range1_from` to `range3_to` (section 4), `min_peak_usd` (100000), `grad_check_days` (30) |
 
-Run order: first one-week slices to measure cost (set `window_days` to 7 as well, see section 2), then `sizing.sql` in slices of one to three months, then `candidates.sql` one month at a time, then `sample.sql`.
+Timestamps in `graduates.sql` are UTC text, `YYYY-MM-DD HH:MM:SS`, which sorts as text. They come from `date_format(ts, '%Y-%m-%d %H:%i:%s')` and assume Dune formats `block_time` in UTC (unverified).
 
-The expected megabytes of **scan** (what Dune bills) are unknown. The only number I found is from Spellbook's own test config: `dex_solana.trades` held 17.2 billion rows and 236 GB in total ([_schema.yml, comment on `amount_usd`](https://github.com/duneanalytics/spellbook/blob/main/dbt_subprojects/solana/models/_sector/dex/_schema.yml)). I found no size for `solana.instruction_calls`. Do not trust any figure for scan size until a one-week slice has been run.
+Sizing tables (graduates and peak counts per launch month, trades and active days per coin) and the 500-coin Phase A sample draw are **not** done in SQL. They are computed in tested code from the exported `graduates.sql` rows under issue #23.
 
-### How the pieces fit
+**Order of the first live run**
 
-Every query except `curve_edge.sql` is built from the same CTE chain, pasted word for word:
+1. `schema_probe.sql`, each statement on its own. It is close to free. Read which decoded create, complete and migrate tables exist and what their columns are.
+2. `graduates.sql` on a one-week launch range with `window_days` 7. This measures cost and checks the parsing (for example, that the probe coins' mints appear). If the probe found usable decoded tables, switch the event pass first (see the comment block at the top of the query).
+3. `graduates.sql` for full months, one month at a time.
+4. `curve_edge.sql`, first with `range1` cut to one day to measure cost.
 
-1. `pump_raw`: one scan of the pump.fun program's rows in `solana.instruction_calls`, keeping four kinds of row (create, create_v2, CompleteEvent, CompletePumpAmmMigrationEvent).
-2. `creates`, `completes`, `migrations`: parse those rows.
-3. `graduates`: coins created in the launch range that graduated within `window_days` of creation.
-4. `coin_trades`: each graduate's trades in `dex_solana.trades` after graduation, on every venue except the pump.fun curve, handling both the bought and the sold side.
-5. `trade_stats`: trade count, first and last trade, and the first Raydium v4 pool.
-6. `rough_peak`: the rule from the issue.
+Expected size: `graduates.sql` one month is tens of thousands of rows and a few MB (a guess). `curve_edge.sql` is a guess of 10 to 500 rows. Expected megabytes of **scan** (what Dune bills) are unknown. The only number I found is from Spellbook's test config: `dex_solana.trades` holds 17.2 billion rows and 236 GB in total ([_schema.yml, comment on `amount_usd`](https://github.com/duneanalytics/spellbook/blob/main/dbt_subprojects/solana/models/_sector/dex/_schema.yml)). I found no size for `solana.instruction_calls`.
 
-The text of `coin_trades`, `rough_peak` and the chain above them is generated from one source and is identical in `sizing.sql`, `candidates.sql` and `sample.sql`.
+### How each table is read once
+
+DuneSQL runs a `WITH` block again every time it is referenced. Every block that reads a table is therefore referenced once, in a chain:
+
+- `graduates.sql`: `pump_raw` (the only read of `solana.instruction_calls`) -> `pump_parsed` -> `pump_by_mint` -> `graduates` -> `trade_buckets` (the only read of `dex_solana.trades`, in a subquery) -> `coin_stats` -> final `SELECT`.
+- The two sides of a trade are split with `CROSS JOIN UNNEST(ARRAY[ROW(bought mint, bought raw), ROW(sold mint, sold raw)])`, so the coin is whichever side matches a graduate. The table is read once, not once per side.
+- Graduates with no trades are kept by a `RIGHT JOIN` from the trades subquery to `graduates` inside `trade_buckets`, so `graduates` is not referenced a second time.
+- `curve_edge.sql`: `curve_trades` and `completes` are each referenced once.
+
+### Decoded tables
+
+`pumpdotfun_solana.pump_call_create` and `pumpdotfun_solana.pump_call_withdraw` exist (a published analysis queries them: <https://seouldatalabs.substack.com/p/can-we-rescue-trapped-sol-from-pumpfun>). Their columns are not documented, so `graduates.sql` keeps the raw-instruction pass as the working version and carries a comment block showing which columns the decoded tables must supply (mint, creator or user, block time for create; mint or bonding curve and block time for graduation; mint and pool for the PumpSwap migration). No column name of a decoded pump.fun table is written in executable SQL.
 
 ## 2. The scan bound: `window_days`
 
-The issue asks the trades scan to run past `launch_to` by some amount and to make it a parameter if there is a real trade-off. There is one, so it is a parameter: `window_days`, default 90.
-
-What it does, per coin:
+`window_days` (default 90) bounds each coin, not the whole query:
 
 - A coin counts as graduated only if its CompleteEvent is within `window_days` of its creation.
-- Only trades between graduation and creation + `window_days` count toward its rough peak, trade count and active days.
-- Over the whole query, the trades scan covers the calendar months from `launch_from` to `launch_to + window_days`, using the partition column `block_month`. `block_time` then trims it.
+- Only trades from graduation to creation + `window_days` count toward its rough peak, trade count, first and last trade.
+- The trades scan covers the calendar months from `launch_from` to `launch_to + window_days` (partition column `block_month`), and `block_time` trims it.
 
-Why a per-coin window and not one cut-off after `launch_to`: with a single cut-off, a coin launched at the start of the range gets months more time to peak than one launched at the end, and slicing the range into months would change the answers. With a per-coin window, running the full range or twelve one-month slices gives the same rows for the same coin.
+A per-coin window means running a full range or twelve one-month slices gives the same row for the same coin.
 
-The trade-off:
+**The limitation, plainly.** With `window_days` = 90, a coin that first passes $100k more than 90 days after creation is missed. A rough peak inside 90 days understates coins that peaked later. FARTCOIN's all-time high came about three months after launch. Both are accepted for sizing and discovery. The real all-time high comes from our own pipeline, and late peaks are handled later, per coin, for the coins we ingest. A coin that took longer than `window_days` to graduate is not returned at all.
 
-- A larger value finds late peaks and slow graduations. It costs more, because it adds months of `dex_solana.trades` to every run.
-- A smaller value is cheaper and misses coins that revived after the window or graduated late. The issue's own examples are not hypothetical: the largest coins in `probes/coins.json` peaked months after graduating (the data-sources doc gives Fartcoin's public ATH as January 2025 against an October 2024 graduation, about 3 months).
-- 90 days is my guess. No measurement supports it. It is a lead decision (question 1 in the pull request).
+For a cost measurement on a one-week slice, set `window_days` to 7 too. Otherwise a one-week slice still reads about 4 months of trade partitions. The value 90 is a guess; no measurement supports it.
 
-For a cost measurement on a one-week slice, set `window_days` to 7 too. Otherwise a one-week slice still reads about 4 months of trade partitions.
 
 ## 3. Tables and columns used
 
@@ -100,7 +102,7 @@ Definition checked against: <https://docs.dune.com/data-catalog/solana/instructi
 
 ### 3.3 Decoded-table data and Spellbook data: which is which
 
-- **Decoded-table data (instruction-level, from IDLs):** Dune's decoded pump.fun tables exist in the schema `pumpdotfun_solana`, but the only tables I could confirm by name are the PumpSwap ones: `pump_amm_call_buy`, `pump_amm_call_sell`, `pump_amm_call_create_pool`, `pump_amm_call_create_config`, `pump_amm_call_update_fee_config`, `pump_amm_evt_buyevent` ([Spellbook `_sources.yml`](https://github.com/duneanalytics/spellbook/blob/main/dbt_subprojects/solana/models/_sources.yml)). I **could not confirm** the names of decoded tables for the bonding-curve program (create, CompleteEvent, migrate). Dune's docs do not list them, and Spellbook's curve model avoids them and reads raw instruction rows instead. So **no query here uses a decoded pump.fun table**. Using one would likely be cheaper (smaller table); it is the first thing to try if the first run is too expensive. Their names can be listed in the Dune editor.
+- **Decoded-table data (instruction-level, from IDLs):** Dune's decoded pump.fun tables exist in the schema `pumpdotfun_solana`, but the only tables I could confirm by name are the PumpSwap ones: `pump_amm_call_buy`, `pump_amm_call_sell`, `pump_amm_call_create_pool`, `pump_amm_call_create_config`, `pump_amm_call_update_fee_config`, `pump_amm_evt_buyevent` ([Spellbook `_sources.yml`](https://github.com/duneanalytics/spellbook/blob/main/dbt_subprojects/solana/models/_sources.yml)). `pump_call_create` and `pump_call_withdraw` also exist (a published analysis queries them, see section 1), but their columns are undocumented. I could not confirm any decoded table for CompleteEvent or the migration. Dune's docs do not list them, and Spellbook's curve model avoids them and reads raw instruction rows instead. So **no query here uses a decoded pump.fun table**. Using one would likely be cheaper (smaller table); `schema_probe.sql` lists their columns; switching to them is the first thing to try once it has run.
 - **Raw table with IDL-derived layouts (what the queries use):** create, create_v2, CompleteEvent and CompletePumpAmmMigrationEvent are read from `solana.instruction_calls` using discriminators and byte offsets from pump.fun's IDL.
 - **Spellbook-derived:** all trades come from `dex_solana.trades`.
 
@@ -177,18 +179,19 @@ The rough peak sizes and finds candidates. The real ATH comes from our metric li
 
 | Query | Expensive parts |
 |---|---|
-| All three of `sizing.sql`, `candidates.sql`, `sample.sql` | (a) `pump_raw` reads the pump.fun program's rows, which include every curve trade event, so it holds at least two rows for each pump.fun trade (the instruction and its event); the discriminator tests on `data` probably cannot prune, only the date filters do. (b) `coin_trades` scans `dex_solana.trades` twice (bought side, sold side) joined to the graduate list, over `launch_from` to `launch_to + window_days` in months. A hash join to hundreds of thousands of mints is the heavy step. |
-| `sizing.sql` | The percentiles are small. Cost is the same as `candidates.sql` for the same range. Use slices. |
-| `sample.sql` | Needs the whole range at once to draw by quota. About 3 years of trade partitions. If it is too costly: run `candidates.sql` month by month, export, and do the draw in code; the draw logic is in the file for reference. |
+| `graduates.sql` | (a) `pump_raw` reads the pump.fun program's rows, which include every curve trade event (at least two rows per pump.fun trade); the discriminator tests on `data` probably cannot prune, only the date filters do. (b) `trade_buckets` reads `dex_solana.trades` for `launch_from` to `launch_to + window_days` in months, splits each row into two sides, and only then joins to the graduate list, so nothing prunes the unnest by mint (dynamic filtering may not reach below the unnest). That is the heavy step. (c) The `RIGHT JOIN` is meant to build its hash table on the small side (`graduates`); if Dune builds on the trades side instead, memory use will be high. |
 | `curve_edge.sql` | The curve is probably the busiest venue in those weeks (unmeasured). Three ranges of 2 to 3 weeks. The CompleteEvent scan repeats the `pump_raw` cost for the same ranges. |
+| `schema_probe.sql` | Metadata only. |
 
 Possible failure points on a first run (all untested):
 
 - `executing_account_prefix` or `block_date` not existing or not pruning on `solana.instruction_calls` (section 3.2).
-- A `uint256` raw column in `CAST(... AS double)`; this is the standard Dune pattern but I did not run it.
-- `varbinary_starts_with`, `bytearray_substring`, `to_base58`, `min_by` with `FILTER`, `approx_percentile` with `FILTER` and `xxhash64` are Trino or DuneSQL functions I know and that Spellbook uses (`varbinary_starts_with`, `bytearray_substring`, `to_base58` are in Spellbook's models); I did not run `xxhash64` or `FILTER` forms here.
+- `CROSS JOIN UNNEST(ARRAY[ROW(...), ROW(...)]) AS s(mint, raw_amount)`: standard Trino, but not run. A fallback is two `UNION ALL` subqueries over `dex_solana.trades`, which reads the table twice.
+- `CAST(uint256 AS double)`, `date_format` on a timestamp, `min_by` and `max_by` with `FILTER`, and `min_by` over a column with nulls (`raydium_pool`) have not been executed.
+- A `RIGHT JOIN` whose `ON` clause holds range conditions on both sides.
 - The field offsets in section 3.4.
 - Memory in `pump_raw` if `data` of create rows (long names and URIs) is large.
+- `schema_probe.sql`: Dune may refuse `information_schema` or `SHOW` statements; that is why both forms exist.
 
 ## 7. Sources, with what each supports
 
