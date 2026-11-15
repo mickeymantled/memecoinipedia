@@ -434,6 +434,7 @@ describeDb('candles and metrics stages in the run', () => {
         'metricsVersion',
         'otherQuotePools',
         'path',
+        'poolsAdded',
         'poolsTakenOver',
         'refinementRequests',
         'units',

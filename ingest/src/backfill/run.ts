@@ -21,6 +21,7 @@ import {
   finishRun,
   recordUsageSample,
   requeueFailed,
+  reopenStagesForCoins,
   resolveSelection,
   stageBreakdown,
   startRun,
@@ -32,7 +33,7 @@ import {
 } from '@memecoinipedia/db';
 import { sql, type Kysely } from 'kysely';
 import { METRICS_VERSION } from '../candles/index.js';
-import { CODEX_PROVIDER } from '../sources/codex/index.js';
+import { CODEX_PROVIDER, PAIRS_BASE_UNITS, UNITS_PER_RESULT } from '../sources/codex/index.js';
 import {
   DEFAULT_MAX_ATTEMPTS,
   PipelineWorker,
@@ -59,6 +60,7 @@ import {
   OUTSTANDING_PER_SLOT,
 } from './defaults.js';
 import { Feeder } from './feeder.js';
+import { readCoinIds } from './refresh.js';
 import {
   BACKFILL_STAGES,
   buildBackfillRegistry,
@@ -100,6 +102,14 @@ export interface BackfillOptions {
   feedPage?: number;
   /** Give stages that were left failed a full set of retries before starting. */
   retryFailed?: boolean;
+  /**
+   * Refresh the pool list of these coins (ids) instead of fetching new ones: each coin whose
+   * candles are done is put back to pending and its candles stage lists the pools again, stores
+   * the ones not held and fetches their bars (`refreshPools` of `fetchCandlesForCoin`); metrics go
+   * back to pending for a coin that gained a pool. The selection is exactly these coins. Needs the
+   * candles stage.
+   */
+  refreshPools?: { coinIds: readonly number[] } | { coinsFile: string };
   confirm: boolean;
   env: IngestEnv;
   log: Logger;
@@ -121,6 +131,8 @@ export interface BackfillPlan {
   ready: Partial<Record<StageName, number>>;
   freshRunning: number;
   nothingToDo: boolean;
+  /** A pool-list refresh: how many selected coins have candles done (they will be reopened). */
+  refresh?: { coins: number; candlesDone: number };
 }
 
 export interface BackfillReport {
@@ -173,14 +185,35 @@ async function readyCounts(
   return out;
 }
 
+/** One pool-list request: its base cost, and a typical list of about twenty pools. */
+export const REFRESH_UNITS_PER_COIN = PAIRS_BASE_UNITS + UNITS_PER_RESULT * 20;
+
 export async function planBackfill(
   db: Kysely<Database>,
   selectionSpec: SelectionSpec,
   stages: readonly BackfillStageName[],
   maxAttempts: number,
   now: Date,
+  refresh = false,
 ): Promise<BackfillPlan> {
   const selection = await resolveSelection(db, selectionSpec);
+  if (refresh) {
+    const all = await stageBreakdown(db, selection, breakdownStages(now));
+    const candlesDone = all.find((b) => b.stage === 'candles')?.done ?? 0;
+    return {
+      selection,
+      stages: all.filter((b) => stages.includes(b.stage as BackfillStageName)),
+      estimate: {
+        rows: [],
+        coinsToDo: selection.size,
+        units: Math.round(selection.size * REFRESH_UNITS_PER_COIN),
+      },
+      ready: {},
+      freshRunning: 0,
+      nothingToDo: selection.size === 0,
+      refresh: { coins: selection.size, candlesDone },
+    };
+  }
   const all = await stageBreakdown(db, selection, breakdownStages(now));
   const breakdown = all.filter((b) => stages.includes(b.stage as BackfillStageName));
   const counts = await countByRoughPeak(db, selection, CELL_EDGES, {
@@ -238,17 +271,29 @@ export function formatBackfillPlan(
     );
   }
   if (o.stages.includes('candles')) {
-    lines.push('Codex.io estimate, by rough-peak cell (coins still to fetch):');
-    for (const r of plan.estimate.rows) {
+    if (plan.refresh) {
       lines.push(
-        `  ${r.label.padEnd(14)} ${n(r.toDo).padStart(9)} coins x ${r.unitsPerCoin} = ${n(r.units).padStart(11)} units` +
-          `${r.alreadyDone > 0 ? ` (${n(r.alreadyDone)} already done)` : ''}`,
+        `Pool-list refresh: ${n(plan.refresh.coins)} coins; ${n(plan.refresh.candlesDone)} of them have candles ` +
+          'done and will be put back to pending (the others are fetched as usual).',
+      );
+      lines.push(
+        `Codex.io estimate: one pool-list request a coin, about ${n(plan.estimate.units)} compute units ` +
+          `(${REFRESH_UNITS_PER_COIN.toFixed(2)} a coin). Bars for pools the list adds cannot be known ` +
+          'before the list is read: each adds about 4 units a request, and none is asked for a pool already held.',
+      );
+    } else {
+      lines.push('Codex.io estimate, by rough-peak cell (coins still to fetch):');
+      for (const r of plan.estimate.rows) {
+        lines.push(
+          `  ${r.label.padEnd(14)} ${n(r.toDo).padStart(9)} coins x ${r.unitsPerCoin} = ${n(r.units).padStart(11)} units` +
+            `${r.alreadyDone > 0 ? ` (${n(r.alreadyDone)} already done)` : ''}`,
+        );
+      }
+      lines.push(
+        `  Total: ${n(plan.estimate.coinsToDo)} coins, about ${n(plan.estimate.units)} compute units ` +
+          '(at the measured figures per coin; 11 under $30k: measured 10.7 on 100 coins (#40), figure kept at 11).',
       );
     }
-    lines.push(
-      `  Total: ${n(plan.estimate.coinsToDo)} coins, about ${n(plan.estimate.units)} compute units ` +
-        '(at the measured figures per coin; 11 under $30k: measured 10.7 on 100 coins (#40), figure kept at 11).',
-    );
     const minutes = plan.estimate.coinsToDo > 0 ? plan.estimate.units / 4 / o.codexRps / 60 : 0;
     lines.push(
       `Rate: ${o.codexRps} requests a second to Codex.io, ${o.candlesConcurrency} coins in flight. ` +
@@ -293,13 +338,34 @@ export async function runBackfill(opts: BackfillOptions): Promise<BackfillReport
         'it is the compute-unit ceiling for the run, and there is no default.',
     );
   }
+  if (opts.refreshPools && !wantsCandles)
+    throw new Error('--refresh-pools needs the candles stage');
   const databaseUrl = opts.env.DATABASE_URL;
   const ownsDb = opts.db === undefined;
   const db = opts.db ?? (databaseUrl ? createDb(databaseUrl, { max: dbPool }) : null);
   if (!db) throw new Error('DATABASE_URL is not set');
 
   try {
-    const plan = await planBackfill(db, opts.selection, stages, maxAttempts, now());
+    let refresh: { coinIds: readonly number[] } | undefined;
+    if (opts.refreshPools) {
+      refresh =
+        'coinIds' in opts.refreshPools
+          ? opts.refreshPools
+          : { coinIds: await readCoinIds(db, opts.refreshPools.coinsFile) };
+      if (refresh.coinIds.length === 0) throw new Error('--refresh-pools: no coins selected');
+    }
+    const selectionSpec: SelectionSpec = refresh
+      ? { ...opts.selection, includeNoPrice: true, coinIds: refresh.coinIds, limit: null }
+      : opts.selection;
+    const refreshSet = refresh ? new Set(refresh.coinIds) : null;
+    const plan = await planBackfill(
+      db,
+      selectionSpec,
+      stages,
+      maxAttempts,
+      now(),
+      refresh !== undefined,
+    );
     const planText = formatBackfillPlan(plan, {
       stages,
       codexRps,
@@ -349,7 +415,8 @@ export async function runBackfill(opts: BackfillOptions): Promise<BackfillReport
     const runId = await createRun(db, {
       kind: BACKFILL_RUN_KIND,
       params: {
-        selection: opts.selection,
+        selection: selectionSpec,
+        ...(refresh ? { refreshPools: true } : {}),
         stages,
         codexRps,
         candlesConcurrency,
@@ -405,7 +472,12 @@ export async function runBackfill(opts: BackfillOptions): Promise<BackfillReport
         const k = await requeueFailed(db, stages, { now: now() });
         opts.log.info(`requeued ${k} failed stages for a full set of retries`);
       }
+      if (refresh) {
+        const k = await reopenStagesForCoins(db, refresh.coinIds, ['candles'], now());
+        opts.log.info(`refresh: ${k} candles stages put back to pending`);
+      }
       const { registry, candles } = buildBackfillRegistry({
+        ...(refreshSet ? { refreshPools: (id: number) => refreshSet.has(id) } : {}),
         db,
         clients,
         meter,

@@ -118,6 +118,8 @@ export interface BackfillRegistryOptions {
   maxAttempts: number;
   /** Coin ids most recently queued for metadata, for the loaders to prefetch with. */
   metadataCandidateIds: () => readonly number[];
+  /** Coins whose candles stage lists the pools again (a refresh run). */
+  refreshPools?: (coinId: number) => boolean;
 }
 
 /** The stage `metadata` as the backfill runs it: after `metrics`, for listed coins only. */
@@ -133,7 +135,10 @@ export function buildBackfillRegistry(o: BackfillRegistryOptions): {
   let candles: CandlesStage | null = null;
   if (o.stages.includes('candles')) {
     if (!o.clients.codex) throw new Error('The candles stage needs a Codex.io client');
-    candles = createCandlesStage({ codex: o.clients.codex });
+    candles = createCandlesStage({
+      codex: o.clients.codex,
+      ...(o.refreshPools ? { refreshPools: o.refreshPools } : {}),
+    });
     registry.register(candles);
   }
   if (o.stages.includes('metrics')) registry.register(metricsStage);

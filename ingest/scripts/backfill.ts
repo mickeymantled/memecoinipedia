@@ -11,6 +11,14 @@
  *       [--db-pool 30] [--queue-pool 8] [--gateway-rps 1] [--max-attempts 3] [--retry-failed]
  *       [--max-codex-units N] [--max-helius-credits N] [--confirm]
  *
+ *   Refresh the pool list of chosen coins that are already fetched (dry run without --confirm):
+ *     tsx scripts/backfill.ts run --refresh-pools --coins FILE [--stages candles,metrics]
+ *       [--max-codex-units N] [--confirm]
+ *   FILE has one coin id or mint address a line. Each coin's candles stage lists the pools again,
+ *   stores the ones not held (side pools only when quoted in SOL, USDC or USDT), fetches bars for
+ *   them and no bar twice; a coin that gained a pool has its metrics put back to pending.
+ *   It refuses to run without --coins.
+ *
  *   What is running, and how far: tsx scripts/backfill-status.ts
  *
  * Run it from the `ingest` directory (`pnpm -C ingest exec tsx scripts/backfill.ts ...`), with
@@ -42,7 +50,8 @@ function usage(message?: string): never {
       '                       [--codex-rps N] [--concurrency N] [--metrics-concurrency N]\n' +
       '                       [--metadata-concurrency N] [--db-pool N] [--queue-pool N]\n' +
       '                       [--gateway-rps N] [--max-attempts N] [--retry-failed]\n' +
-      '                       [--max-codex-units N] [--max-helius-credits N] [--confirm]\n',
+      '                       [--max-codex-units N] [--max-helius-credits N] [--confirm]\n' +
+      '       backfill.ts run --refresh-pools --coins FILE [--max-codex-units N] [--confirm]\n',
   );
   process.exit(message ? 2 : 0);
 }
@@ -80,6 +89,8 @@ async function main(): Promise<void> {
       'max-attempts': { type: 'string' },
       'max-codex-units': { type: 'string' },
       'max-helius-credits': { type: 'string' },
+      'refresh-pools': { type: 'boolean', default: false },
+      coins: { type: 'string' },
       'retry-failed': { type: 'boolean', default: false },
       confirm: { type: 'boolean', default: false },
       help: { type: 'boolean', default: false },
@@ -112,9 +123,17 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (values['refresh-pools'] && !values.coins) {
+    usage('--refresh-pools needs a coin selection: --coins FILE (one coin id or address a line)');
+  }
+  if (values.coins && !values['refresh-pools']) usage('--coins is only used with --refresh-pools');
   const order = values.order ?? 'peak';
   if (order !== 'peak' && order !== 'hash') usage('--order is peak or hash');
-  const stages = (values.stages ?? BACKFILL_STAGES.join(',')).split(',').map((s) => s.trim());
+  const stages = (
+    values.stages ?? (values['refresh-pools'] ? 'candles,metrics' : BACKFILL_STAGES.join(','))
+  )
+    .split(',')
+    .map((s) => s.trim());
   for (const s of stages) {
     if (!(BACKFILL_STAGES as readonly string[]).includes(s)) usage(`Unknown stage "${s}"`);
   }
@@ -154,6 +173,9 @@ async function main(): Promise<void> {
     maxCodexUnits: maxCodexUnits ?? null,
     maxHeliusCredits: maxHelius ?? null,
     retryFailed: values['retry-failed'],
+    ...(values['refresh-pools'] && values.coins
+      ? { refreshPools: { coinsFile: values.coins } }
+      : {}),
     confirm: values.confirm,
     env: process.env,
     log,

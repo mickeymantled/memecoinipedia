@@ -130,6 +130,11 @@ export interface SelectionSpec {
   order: SelectionOrder;
   /** The first N coins in the order, done or not. Null or absent: all of them. */
   limit?: number | null;
+  /**
+   * Exactly these coins (by id) instead of the ones above the rough-peak floor: the floor is not
+   * applied. Set `includeNoPrice` with it so the order walks coins with no rough ATH too.
+   */
+  coinIds?: readonly number[] | null;
 }
 
 /** Where a coin stands in a selection's order. */
@@ -161,6 +166,9 @@ const colsOf = (alias: string) => ({
 
 const base = (spec: SelectionSpec, alias = 'c') => {
   const c = colsOf(alias);
+  if (spec.coinIds) {
+    return sql`${c.chain} = ${spec.chain} and ${c.id} = any(${[...spec.coinIds]}::bigint[])`;
+  }
   return spec.includeNoPrice
     ? sql`${c.chain} = ${spec.chain} and (${c.rough} >= ${spec.minRoughPeakUsd} or ${c.rough} is null)`
     : sql`${c.chain} = ${spec.chain} and ${c.rough} >= ${spec.minRoughPeakUsd}`;
@@ -189,6 +197,46 @@ const orderBy = (spec: SelectionSpec) =>
 export function selectionCondition(sel: ResolvedSelection, alias = 'c') {
   const b = base(sel.spec, alias);
   return sel.last ? sql`${b} and not ${after(sel.spec, sel.last, alias)}` : b;
+}
+
+/**
+ * Coin ids for a list of references, each a coin id (digits) or a mint address. Returns the ids
+ * found, in the order given and without repeats, and the references that match no coin.
+ */
+export async function resolveCoinRefs(
+  db: Kysely<Database>,
+  refs: readonly string[],
+  chain = 'solana',
+): Promise<{ ids: number[]; unknown: string[] }> {
+  const ids = new Map<string, number | null>();
+  const wantedIds = refs.filter((r) => /^\d+$/.test(r)).map(Number);
+  const wantedAddresses = refs.filter((r) => !/^\d+$/.test(r));
+  const found = new Map<string, number>();
+  for (let i = 0; i < wantedIds.length; i += 5000) {
+    const rows = await db
+      .selectFrom('coins')
+      .select('id')
+      .where('chain', '=', chain)
+      .where('id', 'in', wantedIds.slice(i, i + 5000))
+      .execute();
+    for (const r of rows) found.set(String(r.id), r.id);
+  }
+  for (let i = 0; i < wantedAddresses.length; i += 5000) {
+    const rows = await db
+      .selectFrom('coins')
+      .select(['id', 'address'])
+      .where('chain', '=', chain)
+      .where('address', 'in', wantedAddresses.slice(i, i + 5000))
+      .execute();
+    for (const r of rows) found.set(r.address, r.id);
+  }
+  const unknown: string[] = [];
+  for (const ref of refs) {
+    const id = found.get(ref);
+    if (id === undefined) unknown.push(ref);
+    else if (!ids.has(String(id))) ids.set(String(id), id);
+  }
+  return { ids: [...ids.values()].filter((x): x is number => x !== null), unknown };
 }
 
 /** Resolves the limit into a key (an index walk of `limit` rows) and counts the selection. */

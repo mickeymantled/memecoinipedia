@@ -81,6 +81,8 @@ export interface CandleFetchSummary {
    * pool, moved to this coin in this run.
    */
   poolsTakenOver: number;
+  /** Pools stored by a refresh (`refreshPools`) that the coin did not hold before; 0 otherwise. */
+  poolsAdded: number;
   /**
    * Launch info named the graduation pool, so no pool-list lookup was needed at stage 0. False
    * when stage 0 had to list the pools. Null when stage 0 did not happen in this run.

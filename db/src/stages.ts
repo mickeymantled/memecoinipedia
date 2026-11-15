@@ -201,6 +201,31 @@ export async function reopenStages(
   return Number(res.numUpdatedRows);
 }
 
+/**
+ * `reopenStages` for many coins at once. Returns how many rows changed. Only `done` or `skipped`
+ * rows change; pending, running and failed ones are left as they are.
+ */
+export async function reopenStagesForCoins(
+  db: Kysely<Database>,
+  coinIds: readonly number[],
+  stages: readonly StageName[],
+  now: Date,
+): Promise<number> {
+  let changed = 0;
+  if (stages.length === 0) return 0;
+  for (let i = 0; i < coinIds.length; i += 5000) {
+    const res = await db
+      .updateTable('coin_stages')
+      .set({ status: 'pending', attempts: 0, updated_at: now })
+      .where('coin_id', 'in', coinIds.slice(i, i + 5000))
+      .where('stage', 'in', [...stages])
+      .where('status', 'in', ['done', 'skipped'])
+      .executeTakeFirst();
+    changed += Number(res.numUpdatedRows);
+  }
+  return changed;
+}
+
 export interface ListNotDoneOptions {
   /** Current version of the stage. Default 1. */
   version?: number;
