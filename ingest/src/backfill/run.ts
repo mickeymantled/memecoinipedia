@@ -588,7 +588,7 @@ export async function runBackfill(opts: BackfillOptions): Promise<BackfillReport
         : candlesStopped
           ? 'Stopped at the Codex.io unit ceiling. Run again with a higher --max-codex-units to continue.'
           : jupiterStop !== null
-            ? `Stopped: ${jupiterStop} The coins of the batch are pending again, and no attempt was spent. Run the same command again later to continue.`
+            ? `Stopped: ${jupiterStop} The coins of the batch are left to be retried by the next run: the status report shows them as failed with the reason jupiter_rate_limited, and no attempt was spent. Run the same command again later to continue.`
             : 'Backfill run finished.';
     const left = (await stageBreakdown(db, plan.selection, breakdownStages(now())))
       .filter((b) => stages.includes(b.stage as BackfillStageName) && b.waiting > 0)

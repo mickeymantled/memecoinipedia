@@ -148,6 +148,16 @@ export class JupiterRateLimitedError extends Error {
   }
 }
 
+/** Thrown by an attempt that started (or found) a pause: not retried by the helper, the client waits and tries again. */
+class PauseStarted extends Error {
+  readonly retryable = false;
+
+  constructor() {
+    super('Jupiter asked for a pause');
+    this.name = 'PauseStarted';
+  }
+}
+
 export class JupiterResponseError extends Error {
   readonly issues: string[];
 
@@ -320,27 +330,27 @@ export class JupiterClient {
 
   private async fetchBatch(batch: readonly string[]): Promise<z.infer<typeof responseSchema>> {
     const base: GetFetchLike = this.fetchImpl ?? ((url, init) => fetch(url, init));
-    // The pause lives here, not in the HTTP helper: a 429 stops every request of the process, and
-    // the request that met it goes out again once the pause is over. The helper never sees a 429.
-    const limited: GetFetchLike = async (url, init) => {
-      for (;;) {
-        for (let wait = this.pausedForMs(); wait > 0; wait = this.pausedForMs()) {
-          await this.sleep(wait);
-        }
-        // A request that waited for the limiter while another met a 429 is not sent into the pause.
-        const res: GetFetchResponse | null = await this.limiter.run(async () => {
-          if (this.pausedForMs() > 0) return null;
-          this.requests++;
-          return base(url, init);
-        });
-        if (res === null) continue;
-        if (res.status !== 429) {
-          this.pausesInARow = 0;
-          return res;
-        }
+    // The pause lives here, not in the HTTP helper, and it is never slept inside one of the helper's
+    // attempts (the helper puts a real timer and an abort signal on each). An attempt that meets a
+    // 429, or finds the client paused after the limiter, starts the pause and leaves through
+    // `PauseStarted`, which the helper does not retry; the loop below waits and calls the helper
+    // again, so the resend gets a fresh attempt. The helper's own five tries stay for 5xx and
+    // network errors.
+    const attempt: GetFetchLike = async (url, init) => {
+      // A request that waited for the limiter while another met a 429 is not sent into the pause.
+      const res: GetFetchResponse | null = await this.limiter.run(async () => {
+        if (this.pausedForMs() > 0) return null;
+        this.requests++;
+        return base(url, init);
+      });
+      if (res === null) throw new PauseStarted();
+      if (res.status < 400) this.pausesInARow = 0;
+      if (res.status === 429) {
         await res.body?.cancel().catch(() => undefined);
         this.startPause(parseRetryAfter(res.headers.get('retry-after')));
+        throw new PauseStarted();
       }
+      return res;
     };
     const headers: Record<string, string> = {
       accept: 'application/json',
@@ -349,12 +359,23 @@ export class JupiterClient {
     if (this.apiKey) headers['x-api-key'] = this.apiKey;
 
     const url = `${this.baseUrl}/tokens/v2/search?query=${batch.map(encodeURIComponent).join(',')}`;
-    const res = await getBytes(url, {
-      ...this.httpOptions,
-      fetch: limited,
-      headers,
-      maxBytes: MAX_RESPONSE_BYTES,
-    });
+    let res: Awaited<ReturnType<typeof getBytes>>;
+    for (;;) {
+      for (let wait = this.pausedForMs(); wait > 0; wait = this.pausedForMs()) {
+        await this.sleep(wait);
+      }
+      try {
+        res = await getBytes(url, {
+          ...this.httpOptions,
+          fetch: attempt,
+          headers,
+          maxBytes: MAX_RESPONSE_BYTES,
+        });
+        break;
+      } catch (err) {
+        if (!(err instanceof PauseStarted)) throw err;
+      }
+    }
 
     if (res.status >= 300) throw new JupiterRedirectError(res.status);
 
