@@ -41,11 +41,11 @@ Bars may arrive unsorted. Sort each list by `t` before use. The result must not 
 | `rugWithinSec` | 1,800 | How soon after ATH the fall must happen |
 | `rugRecoveryFraction` | 0.5 | A later recovery to this share of ATH cancels the rug |
 | `nearAthFraction` | 0.5 | A bar counts as near the ATH when its close is at least this share of the ATH price (section 6) |
-| `minAthNearVolumeShare` | 0.05 | Volume near the ATH, as a share of the ATH market cap, below which the flag `ath_thinly_traded` is raised (section 6) |
+| `minAthNearVolumeShare` | 0.2 | The share of a market cap that the volume near it must reach for that market cap to count as backed. Below it at the ATH, the flag `ath_thinly_traded` is raised; it is also the share the backed high is found with (section 6) |
 
 All comparisons against a parameter are inclusive: a window with exactly $1,000 of volume counts, and a market cap of exactly $100,000 is above the $100k threshold. They allow a relative tolerance of 1e-12, so a value that sits exactly on a limit in decimal terms is not lost to binary rounding.
 
-`windowMinutes` must be 2 or more. `nearAthFraction` must be a finite number above 0 and at most 1. `minAthNearVolumeShare` must be a finite number of 0 or more.
+`windowMinutes` must be 2 or more. `nearAthFraction` must be a finite number above 0 and at most 1. `minAthNearVolumeShare` must be a finite number of 0 or more. One parameter serves the flag and the backed high; there is no second share.
 
 ## 3. Step 1: clean the bars
 
@@ -106,7 +106,27 @@ Using the busiest pool, not the highest price, means a small side pool that drif
 - **`athNearVolumeUsd`** is the sum of `volumeUsd` over the clean bars (section 3) of every pool that counts (section 1) whose close `c` is at or above `nearAthFraction` times the ATH price. Each stretch of time is counted once, at the finest resolution held, by the rule "finer data wins" in section 4: every clean 1-minute bar counts; a clean hourly or daily bar counts only when it is used as a window, that is, when "finer data wins" does not remove it. A bar is judged on its own close, never on the median price of its window. Bars before and after the ATH both count. The sum is taken over clean bars, before section 5 picks one window per timestamp, so the volume of every pool that counts is added, not the busiest pool's alone. Null when the ATH is null.
 - **Flag `ath_thinly_traded`** is raised when the ATH is not null and `athNearVolumeUsd` is strictly below `minAthNearVolumeShare` times `athMarketCapUsd`. A volume equal to that product, within the tolerance of section 2, is not below it and does not raise the flag. The flag is not raised when the ATH is null.
 
-These three say how much stood behind a peak. No rule reads them: the ATH, the wick, time above, drawdown and the rug pattern are the same with or without them. What the site does with a flagged coin is not decided here.
+**The backed high.** For a market cap `L`, let `V(L)` be the sum that `athNearVolumeUsd` is defined by, with the price `L / totalSupply` in place of the ATH price: the sum of `volumeUsd` over the same bars (the clean 1-minute bars of every pool that counts, and the hourly and daily bars that are used as windows, each stretch counted once), taken over the bars whose close is at least `nearAthFraction` times `L / totalSupply`. In particular `athNearVolumeUsd` is `V(athMarketCapUsd)`; the library computes both from one list of bars. `V` never rises as `L` rises.
+
+- **`athBackedMarketCapUsd`** is the largest market cap `L`, no larger than `athMarketCapUsd`, with `V(L)` at or above `minAthNearVolumeShare` times `L`. Null when the ATH is null.
+
+It is the highest market cap that enough trading stood behind: at `L`, the trading within a factor `nearAthFraction` of `L` amounts to at least `minAthNearVolumeShare` of `L`. It is found by a calculation, not a search, and a reader can work it by hand:
+
+1. Take the bars `V` is made of. Give each bar its market cap (its close times `totalSupply`) and its `volumeUsd`.
+2. Sort them by market cap, highest first. Bars with exactly the same close form one **group** and are always taken together, never split.
+3. After each group `i`, let `cap_i` be the group's market cap and `V_i` the volume of every bar in groups `1` to `i` (the bars at or above `cap_i`).
+4. The group's **candidate** is the smaller of `cap_i / nearAthFraction` and `V_i / minAthNearVolumeShare`.
+5. If the ATH is not thinly traded (the flag is not raised), the backed high is the ATH, the very same number as `athMarketCapUsd`. Otherwise it is the largest candidate over all groups, and never more than `athMarketCapUsd`. With a share of 0 the flag is never raised, so the backed high is the ATH and nothing is divided by zero.
+
+Why the largest candidate is the largest `L`. Between two neighbouring groups, for `L` with `cap_{i+1} / nearAthFraction < L <= cap_i / nearAthFraction`, the bars counted are exactly groups `1` to `i`, so `V(L) = V_i`, and the condition `V_i >= share * L` holds up to `L = V_i / share`. The largest `L` in that stretch is therefore the smaller of the two ends, which is the candidate. Each candidate satisfies the condition itself, because every bar of groups `1` to `i` is counted at it. And because `V` never rises and `share * L` rises, if `L` satisfies the condition so does every smaller market cap, so the largest candidate is the largest `L` that does, and capping it at the ATH keeps the largest `L` no larger than the ATH. A group made only of some of its equal bars would give a smaller `V_i` than the true one, so groups are never split.
+
+The tolerance of section 2 is applied once, to the question whether the ATH itself is backed (the flag). Below the ATH the candidates are exact arithmetic on the stored numbers.
+
+Worked example. `nearAthFraction` 0.5, share 0.2, ATH 100,000,000. Counted bars: $5,000,000 at a market cap of 100,000,000; $10,000,000 at 80,000,000; $20,000,000 at 30,000,000. Group 1: `V_1` = 5,000,000, candidate = smaller of 200,000,000 and 25,000,000 = 25,000,000. Group 2: `V_2` = 15,000,000, candidate = smaller of 160,000,000 and 75,000,000 = 75,000,000. Group 3: `V_3` = 35,000,000, candidate = smaller of 60,000,000 and 175,000,000 = 60,000,000. At the ATH the near volume is the bars at or above 50,000,000: 15,000,000, below 20,000,000, so the flag is raised, and the backed high is the largest candidate, 75,000,000. Check: at 75,000,000 the bars at or above 37,500,000 hold 15,000,000, which is exactly 0.2 times 75,000,000; just above that the volume is the same and the line is higher.
+
+**The flag and the backed high are one test.** `ath_thinly_traded` is raised exactly when `athBackedMarketCapUsd` is below `athMarketCapUsd`. The library decides the flag once, with the comparison above and the tolerance of section 2, and the backed high follows it: when the flag is not raised the backed high is the ATH itself; when it is raised the backed high is strictly below the ATH, because every group counted at the ATH has a `V_i` no larger than the near volume, which is below the line, so its candidate is below the ATH, and every group not counted at the ATH has a `cap_i / nearAthFraction` below the ATH.
+
+These four say how much stood behind a peak. No rule reads them: the ATH, the wick, time above, drawdown, the rug pattern and which coins are listed are the same with or without them. What the site does with a flagged coin, or shows as the backed high, is not decided here.
 
 **Coverage flag.** If a strict coin point from an hourly or daily bar has a high (`max(o, h, l, c)` of its bar) above the ATH price, or the ATH is null while such a point exists, raise `peak_outside_minute_coverage`. A period can hold a higher ATH only if it traded above the current one, and its close says nothing about that: a coin can spike and collapse inside one hour. The flag means the real peak may sit in a period we hold no 1-minute bars for, and the fetcher must fetch them and recompute.
 
@@ -154,7 +174,7 @@ This is a price pattern, not proof of intent. Graduated pump.fun pools cannot ha
 |---|---|
 | `athMarketCapUsd`, `athAt`, `athPoolAddress`, `secondsToAth` | number or string, or null |
 | `athWickMarketCapUsd`, `athWickAt`, `athWickPoolAddress` | number or string, or null |
-| `athLiquidityUsd`, `athHourVolumeUsd`, `athNearVolumeUsd` | number or null |
+| `athLiquidityUsd`, `athHourVolumeUsd`, `athNearVolumeUsd`, `athBackedMarketCapUsd` | number or null |
 | `secondsAbove` | one number of seconds for each threshold |
 | `maxDrawdownPct` | number from 0 to 100, or null |
 | `rugPattern` | boolean |
@@ -188,7 +208,7 @@ What these rules cost in accuracy: time above a threshold is measured to the min
 - A busier window that is not strict hides a strict one in the same minute. One large trade on a side pool can outweigh the main pool's three-minute volume, and that minute then yields a point that cannot raise the level or set the ATH. The error is on the cautious side: it can understate, never overstate. Preferring strict windows was considered and rejected, because it would let a marginal side pool set the price whenever the main pool traded heavily among a few wallets. A6 counts how often this happens at the peak.
 - The first two or three windows of a coin are noisy, because one early bad bar sits in every one of them.
 - A coin under the listing line can keep `peak_outside_minute_coverage` for good: the fetcher does not fetch periods whose high is under $90,000, so the flag stays on it.
-- `athNearVolumeUsd` counts the trades of the wallet that moved the price like anyone else's, so it is an upper bound on what outsiders traded.
-- Where only hourly or daily bars are held, a bar's whole volume is counted or not on its close alone, however the price moved inside it.
+- `athNearVolumeUsd`, and so the backed high, count the trades of the wallet that moved the price like anyone else's. For a manufactured coin the backed high is still an upper bound, of the order of the money that wallet put through the pool.
+- Where only hourly or daily bars are held, a bar's whole volume is counted or not on its close alone, however the price moved inside it; for the backed high such a bar is placed at its close alone.
 - A coin with large trading on an exchange we do not read is understated by `athNearVolumeUsd`, and can raise `ath_thinly_traded` without being thinly traded.
 - A side pool counts on its quote token as stored. `pools.quote_token` holds the symbol when Codex.io gave one, else the address. Rows stored before the fetcher matched by address can therefore pass on the symbol alone: a token that merely calls itself `USDC` would be counted on such a row. New fetches match by mint address and never store such a pool, so the gap closes as coins are refetched. It is not worth a second source of truth now.
