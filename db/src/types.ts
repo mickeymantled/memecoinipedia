@@ -118,6 +118,15 @@ export interface CandleChunksTable {
   liquidity_usd: (number | null)[];
 }
 
+export interface CandleCoverageTable {
+  pool_id: number;
+  resolution_sec: 60 | 3600 | 86400;
+  from_t: number;
+  to_t: number;
+  reason: string;
+  fetched_at: TsNow;
+}
+
 export interface CoinStagesTable {
   coin_id: number;
   stage: 'discovered' | 'metadata' | 'candles' | 'metrics' | 'classified' | 'embedded';
@@ -198,6 +207,7 @@ export interface Database {
   coins: CoinsTable;
   pools: PoolsTable;
   candle_chunks: CandleChunksTable;
+  candle_coverage: CandleCoverageTable;
   coin_stages: CoinStagesTable;
   ingest_runs: IngestRunsTable;
   provider_usage: ProviderUsageTable;
@@ -305,6 +315,14 @@ export const databaseShape: { [T in keyof Database]: Record<keyof Database[T], t
     trades: true,
     traders: true,
     liquidity_usd: true,
+  },
+  candle_coverage: {
+    pool_id: true,
+    resolution_sec: true,
+    from_t: true,
+    to_t: true,
+    reason: true,
+    fetched_at: true,
   },
   coin_stages: {
     coin_id: true,
