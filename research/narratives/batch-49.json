@@ -1,0 +1,636 @@
+[
+  {
+    "mint": "CxR1xWaVMbochoU8sQLn9FxDb3kA4RPCMATaC5Qsnow",
+    "ticker": "snowchain",
+    "primary_narrative": "utility",
+    "secondary_narratives": [
+      "tech"
+    ],
+    "origin": "Token metadata describes it as from the 'Architect of $snowball and $snowchain' and links snowchain.tech; the project claims to be a Solana memecoin protocol that reinvests creator fees via a 'Snowball Bot'.",
+    "origin_date": "",
+    "trigger_event": "No trigger event found; appears to be a product/protocol launch tied to the separate $SNOWBALL coin.",
+    "parent_mint": null,
+    "key_accounts": [
+      "snowchaintech"
+    ],
+    "sources": [
+      "https://github.com/snow-chain/main",
+      "https://snowchain.tech",
+      "https://www.sb.fun/",
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/CxR1xWaVMbochoU8sQLn9FxDb3kA4RPCMATaC5Qsnow/info"
+    ],
+    "confidence": 0.45,
+    "notes": "Narrative taken from claimed function (guide rule 2). Related to $SNOWBALL but no parent mint verified, so no derivative label. No X evidence of early drivers found; deployed-product claims unverified."
+  },
+  {
+    "mint": "5oVa1UTbRAyhN8Qe3EXbVNsxNJw4kV5KkFmDRgzdpump",
+    "ticker": "bushes",
+    "primary_narrative": "culture/meme",
+    "secondary_narratives": [
+      "news event",
+      "celebrity"
+    ],
+    "origin": "Coin named 'bush campers' referencing the people in bush costumes that appeared on the set of Bad Bunny's Super Bowl 60 halftime show, which went viral as a joke.",
+    "origin_date": "2026-02-08",
+    "trigger_event": "Bad Bunny's Super Bowl 60 halftime show on 2026-02-08 revealing that the bushes on stage were people in costumes.",
+    "parent_mint": null,
+    "key_accounts": [
+      "zeeprohet"
+    ],
+    "sources": [
+      "https://ftw.usatoday.com/story/entertainment/pop-culture/2026/02/08/bad-bunny-halftime-show-bushes-people/88583229007",
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/5oVa1UTbRAyhN8Qe3EXbVNsxNJw4kV5KkFmDRgzdpump/info"
+    ],
+    "confidence": 0.8,
+    "notes": "Coin launched about 5 days after the event. Guide: meme about the bushes is subject (rule 9/10); Bad Bunny is a secondary celebrity link only. Early-driver handle taken from token metadata link, not verified on X."
+  },
+  {
+    "mint": "zQxoJXhLAifPj5dUN5gwZ866Yt72zjZcbfGvvCNwVVJ",
+    "ticker": "TERMINAL",
+    "primary_narrative": "utility",
+    "secondary_narratives": [
+      "culture/meme"
+    ],
+    "origin": "'Meme Terminal' with the tagline 'Like 4chan found a Meme Terminal'; metadata links memeterminal.xyz and a Telegram group, suggesting a memecoin-themed terminal/tool concept.",
+    "origin_date": "",
+    "trigger_event": "No trigger found.",
+    "parent_mint": null,
+    "key_accounts": [
+      "memeterminal_"
+    ],
+    "sources": [
+      "https://memeterminal.xyz",
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/zQxoJXhLAifPj5dUN5gwZ866Yt72zjZcbfGvvCNwVVJ/info"
+    ],
+    "confidence": 0.2,
+    "notes": "Could not find independent coverage of this mint; web hits for 'Meme Terminal' were other mints. Label is a best reading from name and description. Guide does not settle whether a vague 'terminal' joke is utility or culture/meme."
+  },
+  {
+    "mint": "CsRrZvZ5D1eh7ZeTmkA7EaexVJGbsShBHP2PhVyApump",
+    "ticker": "Farthouse",
+    "primary_narrative": "derivative",
+    "secondary_narratives": [
+      "culture/meme"
+    ],
+    "origin": "Parody of the Chill House coin (itself a parody of Housecoin and Chill Guy) with the name swapped to 'Farthouse'; metadata twitter is ChillHouseSOL.",
+    "origin_date": "",
+    "trigger_event": "Launched mid-June 2025 as a spin-off of the Chill House coin; no specific trigger found.",
+    "parent_mint": "GkyPYa7NnCFbduLknCfBfP7p8564X1VZhwZYJ6CZpump",
+    "key_accounts": [
+      "ChillHouseSOL"
+    ],
+    "sources": [
+      "https://trenchwiki.com/w/chillhouse",
+      "https://decrypt.co/327392/chillhouse-flips-housecoin",
+      "https://pump.fun/coin/GkyPYa7NnCFbduLknCfBfP7p8564X1VZhwZYJ6CZpump",
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/CsRrZvZ5D1eh7ZeTmkA7EaexVJGbsShBHP2PhVyApump/info"
+    ],
+    "confidence": 0.4,
+    "notes": "Several coins named Farthouse exist (a different mint, 2RA1v8Nd..., was found in search); this mint was identified only via its metadata twitter handle. Parent chosen as Chill House, which may not be the largest Chill House-named coin. Crude-humour name; not hateful."
+  },
+  {
+    "mint": "1quFYDEfa3JhfKN5EG9rU97ahVXCVexNuHXUSvUpump",
+    "ticker": "SXSI",
+    "primary_narrative": "AI",
+    "secondary_narratives": [
+      "tech",
+      "news event"
+    ],
+    "origin": "Coin named SpaceXSuperIntelligence after the October 2026 rebrand of Musk's SpaceXAI (formerly xAI) to SpaceX Super Intelligence (@SpaceXSI).",
+    "origin_date": "2026-10-04",
+    "trigger_event": "Elon Musk posted 'No more AI / SI' on 2026-10-04 and said SpaceXAI would be renamed SpaceXSI; the account was renamed on 2026-10-10 and the coin launched 2026-10-20.",
+    "parent_mint": null,
+    "key_accounts": [
+      "SpaceXSI_SOL",
+      "elonmusk"
+    ],
+    "sources": [
+      "https://en.wikipedia.org/wiki/SpaceXAI",
+      "https://x.ai/news/partnernetworkannouncement",
+      "https://www.tokenpost.com/news/technology/29708",
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/1quFYDEfa3JhfKN5EG9rU97ahVXCVexNuHXUSvUpump/info"
+    ],
+    "confidence": 0.75,
+    "notes": "Metadata links sxsisol.fun and @SpaceXSI_SOL, which appear unofficial. Celebrity (Musk) not added as secondary since the subject is the company/brand."
+  },
+  {
+    "mint": "4AKYKa4JLKQau7m8B7hmFdN8ur1SvqUDqJt6D44Npump",
+    "ticker": "conviction",
+    "primary_narrative": "culture/meme",
+    "secondary_narratives": [],
+    "origin": "A coin about the abstract idea of 'conviction' (holding with belief), with a slogan-style description ('high conviction. have conviction. bet on conviction...') echoing crypto-trader language.",
+    "origin_date": "",
+    "trigger_event": "No trigger found; launched July 2024.",
+    "parent_mint": null,
+    "key_accounts": [
+      "ConvictionCTO"
+    ],
+    "sources": [
+      "https://convictiononsol.xyz",
+      "https://holder.io/coins/conviction/",
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/4AKYKa4JLKQau7m8B7hmFdN8ur1SvqUDqJt6D44Npump/info"
+    ],
+    "confidence": 0.4,
+    "notes": "Crypto-native in-joke/slogan reading; no specific person or event found. Guide's 'crypto-native in-jokes' fits but the abstract noun leaves it borderline with other. No X early-driver evidence beyond the metadata handle."
+  },
+  {
+    "mint": "2hAFnvmAcj7meNZYDxjK7hBdCWnDrfXt129CH1V8pump",
+    "ticker": "Lucia",
+    "primary_narrative": "utility",
+    "secondary_narratives": [
+      "tech"
+    ],
+    "origin": "Token of 'Lucia Labs' (lucialabs.xyz) whose description claims it will 'Turn Worthless Tokens Into SOL', i.e. a token-cleanup or swap tool.",
+    "origin_date": "",
+    "trigger_event": "No trigger found; launched March 2026.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://lucialabs.xyz",
+      "https://www.geckoterminal.com/solana/pools/ABdQENq18LjqjRMyMEQfmgNmgqGaNotPinoSG2ftL5N3",
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/2hAFnvmAcj7meNZYDxjK7hBdCWnDrfXt129CH1V8pump/info"
+    ],
+    "confidence": 0.45,
+    "notes": "Label from claimed function only; product not verified. No X handle in metadata and no early-driver accounts found."
+  },
+  {
+    "mint": "3P1MRxPqiMPLMA2TNfAG4pHd5TJAnbkJdVP6sgdApump",
+    "ticker": "APPL",
+    "primary_narrative": "culture/meme",
+    "secondary_narratives": [
+      "tech"
+    ],
+    "origin": "Named 'Apple Coin' with ticker APPL and the description 'Think Different', borrowing Apple Inc.'s slogan and stock-ticker style.",
+    "origin_date": "",
+    "trigger_event": "No trigger found; launched January 2025.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://www.geckoterminal.com/solana/pools/9qy3RDGGnfPT56yvuqEeqLbnZp4nz2U4WJg7BG2XTTZe",
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/3P1MRxPqiMPLMA2TNfAG4pHd5TJAnbkJdVP6sgdApump/info"
+    ],
+    "confidence": 0.25,
+    "notes": "No socials, website or image in metadata; reading is from name/description only. A different 'APPLE' pump.fun coin exists with the same slogan; not confused with this mint. Guide does not say where brand-parody coins go (culture/meme vs tech vs other)."
+  },
+  {
+    "mint": "7PnnmFGcWzwWs5tLaRfTjLSw1s4AJGdXbu3kyUkApump",
+    "ticker": "LionDad",
+    "primary_narrative": "celebrity",
+    "secondary_narratives": [
+      "animal",
+      "culture/meme"
+    ],
+    "origin": "Named after 'Lion Dad', James Smith, a Missouri wildlife caretaker and TikTok creator (@liondad_1987) known for close videos with lions, tigers and wolves.",
+    "origin_date": "",
+    "trigger_event": "Coin launched 2026-09-30; trigger not confirmed. An Oct 2026 Italian article on him recounts his viral wolf Nahkato who died January 2025.",
+    "parent_mint": null,
+    "key_accounts": [
+      "LionDad_",
+      "liondad_1987"
+    ],
+    "sources": [
+      "https://afmag.net/people/55076/james-smith",
+      "https://alphabetcity.it/2026/10/14/chi-e-james-smith-il-tiktoker-lion-dad-la-storia-del-lupo-nahkato-morto-nel-gennaio-2025-i-video-virali-su-tiktok-e-il-profilo-liondad_1987/",
+      "https://www.tiktok.com/@liondad_1987",
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/7PnnmFGcWzwWs5tLaRfTjLSw1s4AJGdXbu3kyUkApump/info"
+    ],
+    "confidence": 0.6,
+    "notes": "Person is famous as a long-running creator (celebrity per rule 6) with animals as secondary; coin may be unofficial. First viral date unknown so origin_date left empty."
+  },
+  {
+    "mint": "7LGsqpAvpUQfkhKWU7wEQieJefZzABFg8G34BuZRpump",
+    "ticker": "GUDVOOK",
+    "primary_narrative": "political",
+    "secondary_narratives": [
+      "culture/meme"
+    ],
+    "origin": "'Gudvook Ramswagi' is a garbled-name joke on Vivek Ramaswamy; description: 'waiting for daddy Vivek to pick me up at the white house', riffing on his Jan 2024 exit from the presidential race to endorse Trump and Trump-administration speculation.",
+    "origin_date": "2024-01-15",
+    "trigger_event": "Likely tied to Vivek Ramaswamy's campaign exit and Trump endorsement and surrounding desi-internet memes; coin launched June 2024.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://in.mashable.com/tech/67626/vivek-ramaswamy-exits-us-presidential-race-to-endorse-trump-desi-internet-reacts-with-hilarious-meme",
+      "https://knowyourmeme.com/memes/people/vivek-ramaswamy",
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/7LGsqpAvpUQfkhKWU7wEQieJefZzABFg8G34BuZRpump/info"
+    ],
+    "confidence": 0.4,
+    "notes": "Name-to-person link is my reading from the spelling and description; no X source for the exact 'Gudvook' joke found. origin_date is Vivek's exit date, not verified as the coin's specific trigger. 'Daddy' phrasing is mildly sexual-humour; flag as possibly sensitive. Guide: politician candidate -> political (rule 5)."
+  },
+  {
+    "mint": "C8kjMc1vpzEr1BQRrRbJ4fycDVayHEZpAFRSXhyapump",
+    "ticker": "STUDIO",
+    "primary_narrative": "utility",
+    "secondary_narratives": [
+      "AI"
+    ],
+    "origin": "Pump Studio, a pump.fun creator suite for humans and agents, per the coin's own metadata (X @pumpdotstudio, site pump.studio).",
+    "origin_date": "",
+    "trigger_event": "Not found; only the coin's self-description is available.",
+    "parent_mint": null,
+    "key_accounts": [
+      "pumpdotstudio"
+    ],
+    "sources": [
+      "https://pump.studio/",
+      "https://x.com/pumpdotstudio",
+      "https://www.geckoterminal.com/solana/tokens/C8kjMc1vpzEr1BQRrRbJ4fycDVayHEZpAFRSXhyapump"
+    ],
+    "confidence": 0.6,
+    "notes": "Label rests on metadata description; product existence not verified. Tie-break 2 (claims a function) gives utility; AI secondary only because of the 'agents' wording. No trigger event or origin date found."
+  },
+  {
+    "mint": "GL8PT5BvAfY598JW14q9pXGFRhyT2HawagMQZJmXpump",
+    "ticker": "Theorist",
+    "primary_narrative": "culture/meme",
+    "secondary_narratives": [
+      "news event"
+    ],
+    "origin": "A 'conspiracy theorist is just a person who's right too early' meme/slogan that was spreading on X in February 2026, tied to a topic trending on X. The coin's linked X community and post push this line.",
+    "origin_date": "2026-02-10",
+    "trigger_event": "Post by @esotericpigeon on 2026-02-10 saying the Conspiracy Theorist is being proven right, quoting another post about conspiracy theorists; coin launched the same evening.",
+    "parent_mint": null,
+    "key_accounts": [
+      "esotericpigeon"
+    ],
+    "sources": [
+      "https://x.com/i/status/2021345397189509167",
+      "https://x.com/i/status/2021314203508715549",
+      "https://www.geckoterminal.com/solana/tokens/GL8PT5BvAfY598JW14q9pXGFRhyT2HawagMQZJmXpump"
+    ],
+    "confidence": 0.5,
+    "notes": "Name 'Conspiracy Theorist'. The underlying news topic that drove the X trend was not identified. Taxonomy guide does not cover archetype/stereotype characters; chose culture/meme."
+  },
+  {
+    "mint": "AhbPuFSpj56YNnVCCkVYvpW6gH89MNY9wuMscGPHpump",
+    "ticker": "AMERICA",
+    "primary_narrative": "culture/meme",
+    "secondary_narratives": [
+      "news event",
+      "celebrity"
+    ],
+    "origin": "'The 8 Figure Shitter' refers to Maurizio Cattelan's 18-karat gold toilet artwork 'America', which Sotheby's was about to auction. The coin's linked post is the WSJ story on it.",
+    "origin_date": "2025-10-31",
+    "trigger_event": "WSJ post on 2025-10-31 about Sotheby's selling the gold toilet by the banana-duct-tape artist; coin's first pool was created about a minute after that post.",
+    "parent_mint": null,
+    "key_accounts": [
+      "WSJ"
+    ],
+    "sources": [
+      "https://x.com/i/status/1984202454506885164",
+      "https://www.geckoterminal.com/solana/tokens/AhbPuFSpj56YNnVCCkVYvpW6gH89MNY9wuMscGPHpump"
+    ],
+    "confidence": 0.8,
+    "notes": "Artist name Cattelan is from my reading of the WSJ teaser (it says 'artist behind the duct-tape banana'); 'America' as the work title is general knowledge, not in the sources. Guide does not settle art-world news (culture/meme vs news event); chose culture/meme. Ticker AMERICA could mislead as political; it is not. Crude/toilet humour."
+  },
+  {
+    "mint": "DczHaZM7xg8ZnJ8By4t1KpGLvJ14iPae9ATwMXjcpump",
+    "ticker": "BEARS",
+    "primary_narrative": "animal",
+    "secondary_narratives": [
+      "other"
+    ],
+    "origin": "Named 'Bears On Solana'; no description, website or socials. Best reading from the name is a bear mascot coin.",
+    "origin_date": "",
+    "trigger_event": "Not found.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://lite-api.jup.ag/tokens/v2/search?query=DczHaZM7xg8ZnJ8By4t1KpGLvJ14iPae9ATwMXjcpump",
+      "https://www.geckoterminal.com/solana/tokens/DczHaZM7xg8ZnJ8By4t1KpGLvJ14iPae9ATwMXjcpump"
+    ],
+    "confidence": 0.15,
+    "notes": "No socials, no X posts found, web search found no matching launch (other BEARS-named coins exist on different mints). Could instead mean bear market or sports bears; unresolved."
+  },
+  {
+    "mint": "EtKZoQCA7f1kYQ3ec4dTe1yLsHawFARkieaBbFe9pump",
+    "ticker": "ASCIIDOGE",
+    "primary_narrative": "political",
+    "secondary_narratives": [
+      "animal",
+      "culture/meme"
+    ],
+    "origin": "The official DOGE (Department of Government Efficiency) website went live on 2025-01-21 with the Dogecoin Shiba logo, and users found the same dog image hidden as ASCII art in the page source. The coin is named for that ASCII dog.",
+    "origin_date": "2025-01-21",
+    "trigger_event": "Post by @mr_rb3rt on 2025-01-21 noting the doge.gov source code contains an ASCII Dogecoin image, quoting the announcement that the DOGE website was live.",
+    "parent_mint": null,
+    "key_accounts": [
+      "mr_rb3rt"
+    ],
+    "sources": [
+      "https://x.com/i/status/1881666786057466091",
+      "https://x.com/i/status/1881664757981180000",
+      "https://doge.gov",
+      "https://www.geckoterminal.com/solana/tokens/EtKZoQCA7f1kYQ3ec4dTe1yLsHawFARkieaBbFe9pump"
+    ],
+    "confidence": 0.75,
+    "notes": "Guide ambiguity: could be derivative of Dogecoin, but Dogecoin is not a Solana mint so parent_mint is null and subject is the doge.gov easter egg; chose political (government department) with animal and culture/meme secondary."
+  },
+  {
+    "mint": "DK6bc6VpJ7eQbX8BbbyKPrcbKq2aizzCH2e1KEo3pump",
+    "ticker": "BTCTPFP",
+    "primary_narrative": "culture/meme",
+    "secondary_narratives": [
+      "tech"
+    ],
+    "origin": "'Bitcointalk PFP Cult' ties to a thread on the Bitcointalk forum (profile-picture community theme) and an X community; metadata says launched via a discord.",
+    "origin_date": "",
+    "trigger_event": "Not found; the linked Bitcointalk thread returned 404 when I fetched it.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://x.com/i/communities/2011703468545769964",
+      "https://bitcointalk.org/index.php?topic=5571543.new#new",
+      "https://www.geckoterminal.com/solana/tokens/DK6bc6VpJ7eQbX8BbbyKPrcbKq2aizzCH2e1KEo3pump"
+    ],
+    "confidence": 0.3,
+    "notes": "Could not read the thread or X community content. Reading is a PFP-cult in-joke from the Bitcointalk crypto forum community. Source URLs from the coin metadata; the Bitcointalk one did not load for me, GeckoTerminal one works."
+  },
+  {
+    "mint": "8MSnRy1dHuvEzF8Qp7BkHy3UiaTUi5Kycfqd2DKWpump",
+    "ticker": "RAHA",
+    "primary_narrative": "animal",
+    "secondary_narratives": [],
+    "origin": "Raha The Rhino, a black rhino orphan rescued at one week old and cared for by the Sheldrick Wildlife Trust, per the coin's metadata link and description.",
+    "origin_date": "",
+    "trigger_event": "Not found; no dated viral event identified.",
+    "parent_mint": null,
+    "key_accounts": [
+      "RahaSolana"
+    ],
+    "sources": [
+      "https://www.sheldrickwildlifetrust.org/orphans/raha",
+      "https://x.com/RahaSolana",
+      "https://www.geckoterminal.com/solana/tokens/8MSnRy1dHuvEzF8Qp7BkHy3UiaTUi5Kycfqd2DKWpump"
+    ],
+    "confidence": 0.55,
+    "notes": "Description quoted from coin metadata; I did not independently open the Sheldrick page or find the date Raha was rescued. No trigger event found."
+  },
+  {
+    "mint": "FGnzUzwqULDuZk3WX4CGdKeeZiSwp9kHQKL5HGeFpump",
+    "ticker": "𝕏GIFT",
+    "primary_narrative": "utility",
+    "secondary_narratives": [
+      "celebrity"
+    ],
+    "origin": "Coin metadata says '$25 free from Elon. 6% APY. Now we make it viral' and links an X account (@Xgiftgroup) and giftonx.vip. It claims a gift/yield product tied to Elon Musk and X.",
+    "origin_date": "",
+    "trigger_event": "Not found.",
+    "parent_mint": null,
+    "key_accounts": [
+      "Xgiftgroup"
+    ],
+    "sources": [
+      "https://www.giftonx.vip",
+      "https://x.com/Xgiftgroup",
+      "https://www.geckoterminal.com/solana/tokens/FGnzUzwqULDuZk3WX4CGdKeeZiSwp9kHQKL5HGeFpump"
+    ],
+    "confidence": 0.3,
+    "notes": "Claims are unverified and look like a giveaway/yield promotion; the Elon link is a claim by the coin, not confirmed. Could not find coverage. Flag as possibly deceptive-claims rather than hateful/sexual. Guide: celebrity-claimed products go to utility under tie-break 2."
+  },
+  {
+    "mint": "EggktuUWXFxg1sjgeFxJzK9Mig9TyhBScQeTqVDSpump",
+    "ticker": "USA",
+    "primary_narrative": "political",
+    "secondary_narratives": [
+      "news event"
+    ],
+    "origin": "Coin description 'The crypto capital of the world, USA USA USA!' links a post on President Trump pledging to make the US the Crypto Capital of the World.",
+    "origin_date": "2025-03-02",
+    "trigger_event": "Post by @gokhshtein on 2025-03-02 reporting Trump's pledge and David Sacks saying more to come ahead of the White House crypto summit.",
+    "parent_mint": null,
+    "key_accounts": [
+      "gokhshtein"
+    ],
+    "sources": [
+      "https://x.com/i/status/1896252725085831400",
+      "https://www.geckoterminal.com/solana/tokens/EggktuUWXFxg1sjgeFxJzK9Mig9TyhBScQeTqVDSpump"
+    ],
+    "confidence": 0.6,
+    "notes": "Coin launch date not checked, so the link between that post and the run is from the coin's own metadata. Sentiment is patriotic, generic; could also be culture/meme."
+  },
+  {
+    "mint": "94pcpCc4tbjyeL1fN8RUPEV61yGthxmeMCRnuXdVjNJk",
+    "ticker": "GG",
+    "primary_narrative": "culture/meme",
+    "secondary_narratives": [
+      "gaming"
+    ],
+    "origin": "Coin named 'GG' (gaming slang for 'good game') whose metadata links a Gemini exchange (@GeminiApp) X post from 2025-08-29's period; the post is no longer retrievable.",
+    "origin_date": "",
+    "trigger_event": "Not found; linked post (status 1961440523010638004) returns not found.",
+    "parent_mint": null,
+    "key_accounts": [
+      "GeminiApp"
+    ],
+    "sources": [
+      "https://twitter.com/GeminiApp/status/1961440523010638004",
+      "https://www.geckoterminal.com/solana/tokens/94pcpCc4tbjyeL1fN8RUPEV61yGthxmeMCRnuXdVjNJk"
+    ],
+    "confidence": 0.1,
+    "notes": "Linked Gemini post is deleted/unreadable, no description or website. Reading of GG as slang is a guess from the name only. Source URL is the coin's own metadata link and may not load; GeckoTerminal page works. Taxonomy does not settle bare slang tickers. Checker: none of the listed source URLs returned a working page (twitter.com status 404, GeckoTerminal token page 404), so the claims are unverified; kept at low confidence."
+  },
+  {
+    "mint": "65hNZXZyXpfW2z48Cq5iDUDaptKzPZKP95e23CvJ7zrA",
+    "ticker": "fent",
+    "primary_narrative": "other",
+    "secondary_narratives": [
+      "culture/meme"
+    ],
+    "origin": "Token metadata names the coin 'swingwif' with ticker 'fent'; no description, socials or origin story could be found. The name may play on the 'wif' dog-hat meme and the ticker on a slang drug reference, but this is a reading from the name only.",
+    "origin_date": "",
+    "trigger_event": "Unknown; no trigger found.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://lite-api.jup.ag/tokens/v2/search?query=65hNZXZyXpfW2z48Cq5iDUDaptKzPZKP95e23CvJ7zrA"
+    ],
+    "confidence": 0.1,
+    "notes": "Only Jupiter token metadata found (name swingwif, created 2024-06). Name/ticker mismatch. Possible drug reference in ticker: flag as possibly sensitive. Taxonomy guide doesn't settle name/ticker mismatches or whether 'wif' alone makes it a derivative; no parent identified so not labelled derivative. No X search hits usable."
+  },
+  {
+    "mint": "3LZq8TKNtX2kT8X1H2A4AHcvhUjQ5JTxYWTTc5JBpump",
+    "ticker": "¥1",
+    "primary_narrative": "culture/meme",
+    "secondary_narratives": [
+      "other"
+    ],
+    "origin": "A joke coin named 'just buy ¥1 of this coin', a self-referential pitch inviting buyers to spend one yuan on it. It has an X account @1yuancoin; no further backstory found.",
+    "origin_date": "",
+    "trigger_event": "None found; launched without a findable external event.",
+    "parent_mint": null,
+    "key_accounts": [
+      "@1yuancoin"
+    ],
+    "sources": [
+      "https://lite-api.jup.ag/tokens/v2/search?query=3LZq8TKNtX2kT8X1H2A4AHcvhUjQ5JTxYWTTc5JBpump",
+      "https://x.com/1yuancoin"
+    ],
+    "confidence": 0.3,
+    "notes": "Reading is from name and metadata only; X account not read in detail. Guide's 'absurd humour' line fits culture/meme loosely."
+  },
+  {
+    "mint": "ByMXWErqT4XFEyaALJiLP7FWQAx3pesudofPAPf2pump",
+    "ticker": "PXR",
+    "primary_narrative": "other",
+    "secondary_narratives": [],
+    "origin": "Metadata names the coin 'PROJECT OASIS COIN' (PXR). No description, socials or backstory could be found, so the subject can't be named.",
+    "origin_date": "",
+    "trigger_event": "Unknown.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://lite-api.jup.ag/tokens/v2/search?query=ByMXWErqT4XFEyaALJiLP7FWQAx3pesudofPAPf2pump",
+      "https://terminal.raiden.wtf/token/ByMXWErqT4XFEyaALJiLP7FWQAx3pesudofPAPf2pump"
+    ],
+    "confidence": 0.15,
+    "notes": "Could not find what 'Project Oasis' refers to (possibly a project/utility name, or a game/film reference). Guide's 'other' fits only because nothing is known. Search results also surfaced other unrelated PXR tokens; mint matched via Jupiter."
+  },
+  {
+    "mint": "CopSwLSZqp7kSavauEWvUJtqSmSjrsxzqHtxza5mpump",
+    "ticker": "wen",
+    "primary_narrative": "culture/meme",
+    "secondary_narratives": [],
+    "origin": "Coin named after the crypto in-joke 'wen' ('when', as in 'wen moon'). It links a Telegram called butwenbro and the site wensolana.com.",
+    "origin_date": "",
+    "trigger_event": "None found; no specific dated trigger.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://lite-api.jup.ag/tokens/v2/search?query=CopSwLSZqp7kSavauEWvUJtqSmSjrsxzqHtxza5mpump",
+      "https://wensolana.com",
+      "https://t.me/butwenbro"
+    ],
+    "confidence": 0.4,
+    "notes": "Not to be confused with the older Jupiter-launched WEN token; no evidence this coin derives from it, so no parent. Guide treats crypto in-jokes as culture/meme. Telegram/site not verified live."
+  },
+  {
+    "mint": "9G2vJnfFZwG1gtKnCkbwAz6mxuyhdy2ngqGZVdJTE2HF",
+    "ticker": "BAYC",
+    "primary_narrative": "animal",
+    "secondary_narratives": [
+      "culture/meme"
+    ],
+    "origin": "'Bored Ape Yacht Cat' is a cat-themed parody of the Bored Ape Yacht Club NFT collection (BAYC), launched April 2021.",
+    "origin_date": "2021-04-30",
+    "trigger_event": "None found for the coin itself; likely riding the BAYC brand.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://lite-api.jup.ag/tokens/v2/search?query=9G2vJnfFZwG1gtKnCkbwAz6mxuyhdy2ngqGZVdJTE2HF",
+      "https://en.wikipedia.org/wiki/Bored_Ape"
+    ],
+    "confidence": 0.4,
+    "notes": "Name and ticker point to BAYC NFT; no coin-specific research found. Not a coin-derivative (parent is an NFT), so not derivative per guide. Tie-break between animal (cat mascot, rule 4) and culture/meme (NFT art) is a judgement call; guide doesn't address NFT parodies. Mint is not a pump suffix address though issue says pump.fun; Jupiter shows no launchpad tag. Origin date is the BAYC launch date from general knowledge/Wikipedia."
+  },
+  {
+    "mint": "2JnkosGVoRhNQXfNwhE1dopKUVv5ZV25hMapYDn5pump",
+    "ticker": "PIMI",
+    "primary_narrative": "animal",
+    "secondary_narratives": [],
+    "origin": "Metadata names the coin 'PIMI PEACOCK', a peacock mascot coin. No backstory, socials or description could be found.",
+    "origin_date": "",
+    "trigger_event": "Unknown.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://lite-api.jup.ag/tokens/v2/search?query=2JnkosGVoRhNQXfNwhE1dopKUVv5ZV25hMapYDn5pump",
+      "https://www.solflare.com/prices/pimi-peacok/2JnkosGVoRhNQXfNwhE1dopKUVv5ZV25hMapYDn5pump/"
+    ],
+    "confidence": 0.3,
+    "notes": "Reading from name only; unclear whether a specific peacock (person's pet, viral clip) is meant. Guide: animal mascot rule 4."
+  },
+  {
+    "mint": "5gSAhjhryMaLurtSPTmmXcq83J2A7xkc9EqYCWT2pump",
+    "ticker": "Lil Don",
+    "primary_narrative": "culture/meme",
+    "secondary_narratives": [
+      "celebrity"
+    ],
+    "origin": "Coin's linked X post is from Helius CEO Mert saying a person in an image 'might be the greatest shittalker of all time'. The person pictured is not identified in the post text, so the coin's subject is uncertain; it looks like a viral-clip character called Lil Don.",
+    "origin_date": "2025-06-24",
+    "trigger_event": "Mert's X post (id 1937536003410915826) about the 'greatest shittalker', which the coin linked as its social.",
+    "parent_mint": null,
+    "key_accounts": [
+      "@mert"
+    ],
+    "sources": [
+      "https://lite-api.jup.ag/tokens/v2/search?query=5gSAhjhryMaLurtSPTmmXcq83J2A7xkc9EqYCWT2pump",
+      "https://x.com/0xMert_/status/1937536003410915826",
+      "https://api.fxtwitter.com/0xMert_/status/1937536003410915826"
+    ],
+    "confidence": 0.3,
+    "notes": "Post date inferred from the coin's creation date 2025-06-24 (tweet id timing consistent) not read from a date field. Could not identify the pictured person or confirm 'Lil Don' = that person; guide rule 6 (person known only from one viral moment = culture/meme) applied provisionally; celebrity secondary is a guess. Possibly sensitive? Not determined."
+  },
+  {
+    "mint": "4sxxEHW6XqX5YBYs29f1p2RhR7afXFS8wQWcMYQVpump",
+    "ticker": "POP",
+    "primary_narrative": "gaming",
+    "secondary_narratives": [
+      "animal",
+      "utility"
+    ],
+    "origin": "Token named '6Chicken9' (ticker POP) for ChickPop, a browser-based chicken fighting game ('Cluck. Clash. Climb.') with a website, X, Telegram, Discord, TikTok and Instagram.",
+    "origin_date": "",
+    "trigger_event": "Coin launched alongside the ChickPop game project; no specific viral trigger found.",
+    "parent_mint": null,
+    "key_accounts": [
+      "@chickenp638"
+    ],
+    "sources": [
+      "https://chickpop.online/",
+      "https://x.com/chickenp638",
+      "https://dexscreener.com/solana/1mrwhr8jsszrbwjujdnaff4uacljqrewimdgzhha6cp"
+    ],
+    "confidence": 0.6,
+    "notes": "Guide rule 2: coin claims a game product so gaming with utility secondary; animal (chicken) secondary. Game launch date not found so origin_date empty. Name '6Chicken9' vs. ticker POP is an inconsistency; mint matched via DexScreener socials."
+  },
+  {
+    "mint": "GNkt1TP53cu61sKTghsnXZ6S8iYZNvFq1xT5LqGQpump",
+    "ticker": "dreambot",
+    "primary_narrative": "other",
+    "secondary_narratives": [
+      "AI",
+      "tech"
+    ],
+    "origin": "Coin named 'dreambot' with website dreambot.systems and X account @lordOfAFew. The word suggests a bot or AI agent but no description or confirmed project was found.",
+    "origin_date": "",
+    "trigger_event": "Unknown.",
+    "parent_mint": null,
+    "key_accounts": [
+      "@lordOfAFew"
+    ],
+    "sources": [
+      "https://lite-api.jup.ag/tokens/v2/search?query=GNkt1TP53cu61sKTghsnXZ6S8iYZNvFq1xT5LqGQpump",
+      "https://dreambot.systems/",
+      "https://twitterscore.io/twitter/lordOfAFew/"
+    ],
+    "confidence": 0.15,
+    "notes": "A search suggested dreambot.systems may be an unrelated Old School RuneScape botting client, and @lordOfAFew ('loaf') is linked to Daydreams (AI-agent/onchain gaming) but I could not confirm a link between the coin and either. AI and gaming readings both possible; guide doesn't settle which wins when the claimed function is unverified. Sites not fetched directly."
+  },
+  {
+    "mint": "9St7v15CGMyKw7DaJFKm8SzyVQGFhNoW9gAJLjdRpump",
+    "ticker": "ByBit Cat",
+    "primary_narrative": "gaming",
+    "secondary_narratives": [
+      "animal",
+      "culture/meme"
+    ],
+    "origin": "Metadata names the coin 'Catizen' and links Bybit's X post 'Here's our #Catizen ready to pounce on that 1000 USDT!', a mascot-cat image tied to Catizen, the Telegram cat game (CATI token). Bybit announced the CATI listing on 2024-09-13.",
+    "origin_date": "2024-09-13",
+    "trigger_event": "Bybit's X post replying to @CatizenAI around its CATI listing campaign.",
+    "parent_mint": null,
+    "key_accounts": [
+      "@Bybit_Official",
+      "@CatizenAI"
+    ],
+    "sources": [
+      "https://lite-api.jup.ag/tokens/v2/search?query=9St7v15CGMyKw7DaJFKm8SzyVQGFhNoW9gAJLjdRpump",
+      "https://x.com/Bybit_Official/status/1834566405875814754",
+      "https://decrypt.co/248110/telegram-game-catizen-token-launch-date-pre-market-trading-expands",
+      "https://www.prnewswire.com/news-releases/cati-and-hmstr-set-to-list-on-bybit-expanding-the-ton-blockchain-offerings-302253325.html"
+    ],
+    "confidence": 0.6,
+    "notes": "Coin launched 2025-01, months after the post; origin_date is the referenced post/listing date. Not an official Catizen coin (TON-based game). Guide rule 7 gaming vs rule 4 animal (cat mascot) conflict: chose gaming as the subject is the Catizen game; ambiguity noted. Not a derivative of a coin on Solana."
+  }
+]
