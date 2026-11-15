@@ -203,24 +203,31 @@ export async function reopenStages(
 
 /**
  * `reopenStages` for many coins at once. Returns how many rows changed. Only `done` or `skipped`
- * rows change; pending, running and failed ones are left as they are.
+ * rows change; pending, running and failed ones are left as they are. With `finishedBefore`, a row
+ * that finished at or after that time is left alone too (a refresh being carried on: the coin was
+ * finished by the run that is being continued).
  */
 export async function reopenStagesForCoins(
   db: Kysely<Database>,
   coinIds: readonly number[],
   stages: readonly StageName[],
   now: Date,
+  opts: { finishedBefore?: Date | null } = {},
 ): Promise<number> {
   let changed = 0;
   if (stages.length === 0) return 0;
+  const before = opts.finishedBefore ?? null;
   for (let i = 0; i < coinIds.length; i += 5000) {
-    const res = await db
+    let q = db
       .updateTable('coin_stages')
       .set({ status: 'pending', attempts: 0, updated_at: now })
       .where('coin_id', 'in', coinIds.slice(i, i + 5000))
       .where('stage', 'in', [...stages])
-      .where('status', 'in', ['done', 'skipped'])
-      .executeTakeFirst();
+      .where('status', 'in', ['done', 'skipped']);
+    if (before !== null) {
+      q = q.where((eb) => eb.or([eb('finished_at', 'is', null), eb('finished_at', '<', before)]));
+    }
+    const res = await q.executeTakeFirst();
     changed += Number(res.numUpdatedRows);
   }
   return changed;

@@ -20,6 +20,7 @@ import {
   createRun,
   finishRun,
   recordUsageSample,
+  refreshFirstStart,
   requeueFailedInSelection,
   reopenStagesForCoins,
   resolveSelection,
@@ -497,8 +498,21 @@ export async function runBackfill(opts: BackfillOptions): Promise<BackfillReport
         opts.log.info(`requeued ${k} failed stages for a full set of retries`);
       }
       if (refresh) {
-        const k = await reopenStagesForCoins(db, refresh.coinIds, ['candles'], now());
-        opts.log.info(`refresh: ${k} candles stages put back to pending`);
+        // A refresh stopped and started again carries on: a coin whose candles finished after the
+        // refresh first started was refreshed by it, and is not reopened (not listed twice).
+        const firstStart = await refreshFirstStart(db, {
+          kind: BACKFILL_RUN_KIND,
+          coinIds: refresh.coinIds,
+          beforeRunId: runId,
+        });
+        const k = await reopenStagesForCoins(db, refresh.coinIds, ['candles'], now(), {
+          finishedBefore: firstStart,
+        });
+        opts.log.info(
+          firstStart
+            ? `refresh continued (first started ${firstStart.toISOString()}): ${k} candles stages put back to pending, coins finished since are left`
+            : `refresh: ${k} candles stages put back to pending`,
+        );
       }
       const { registry, candles } = buildBackfillRegistry({
         ...(refreshSet ? { refreshPools: (id: number) => refreshSet.has(id) } : {}),
