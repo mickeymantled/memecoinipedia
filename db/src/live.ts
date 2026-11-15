@@ -216,7 +216,7 @@ export async function listWatchedDue(
 
 export interface CurrentFigures {
   id: number;
-  priceUsd: number;
+  priceUsd: number | null;
   marketCapUsd: number | null;
   liquidityUsd: number | null;
   volume24hUsd: number | null;
