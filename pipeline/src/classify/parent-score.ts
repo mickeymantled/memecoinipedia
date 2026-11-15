@@ -56,8 +56,9 @@ export const STOP_WORDS: ReadonlySet<string> = new Set([
   'OFFICIAL',
 ]);
 
-// Weights. Containment outranks a whole-word hit, which outranks name similarity; a tie within
-// TIE_BUCKET points goes to the larger ATH.
+// Weights. Containment normally outranks a whole-word hit, which normally outranks name
+// similarity (not always: containment alone can score 61.9, a whole-word hit with identical names
+// and the ATH bonus 63). A tie within TIE_BUCKET points goes to the larger ATH.
 /** A ticker inside the other ticker is the strongest sign of a derivative ("BABYPNUT"). */
 export const W_TICKER_CONTAINS = 60;
 /** Scaled by shorter/longer length, so "PNUT2" beats "SUPERMEGAPNUTCOIN" for parent PNUT. */
@@ -70,6 +71,12 @@ export const W_WORD_IN_DESC = 25;
 export const W_NAME_SIMILARITY = 20;
 /** Its peak was over before this coin launched: a finished parent is likelier than a live rival. */
 export const W_ATH_BEFORE_LAUNCH = 8;
+/** Places in the returned list reserved by kind of evidence (the rest go to the best remaining).
+ * One kind cannot take all ten: short fragments of a long ticker all contain, but only some of
+ * them are the parent. Taken in this order, each kind's best by rank. */
+export const RESERVED_CONTAINMENT = 5;
+export const RESERVED_WHOLE_WORD = 3;
+export const RESERVED_SIMILARITY = 2;
 /** Scores in the same bucket of this many points count as near-ties (larger ATH, then earlier). */
 export const TIE_BUCKET = 5;
 
@@ -100,7 +107,21 @@ export function normTicker(s: string | null | undefined): string {
 
 /** The same, but single spaces between words are kept. */
 export function normName(s: string | null | undefined, maxChars = MAX_NAME_CHARS): string {
-  return fold(s).replace(NOT_ALNUM, ' ').trim().slice(0, maxChars).trim();
+  const rawCut = (s?.length ?? 0) > MAX_RAW_CHARS;
+  let n = fold(s).replace(NOT_ALNUM, ' ').trim();
+  const dropLastWord = (x: string): string => {
+    const at = x.lastIndexOf(' ');
+    return at < 0 ? '' : x.slice(0, at);
+  };
+  if (n.length > maxChars) {
+    // A cut inside a word would leave half a word that could match as a whole word: drop it.
+    const inside = n[maxChars] !== ' ' && n[maxChars - 1] !== ' ';
+    n = n.slice(0, maxChars).trimEnd();
+    if (inside) n = dropLastWord(n);
+  } else if (rawCut) {
+    n = dropLastWord(n);
+  }
+  return n.trim();
 }
 
 export function words(normalised: string): string[] {

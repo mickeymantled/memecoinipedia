@@ -44,6 +44,18 @@ describe('normalisation', () => {
     expect(normName('🐕🐕')).toBe('');
   });
 
+  it('drops a word the length limit cut in half', () => {
+    // 64 characters cut inside "PNUTTY": the half word must not survive to match PNUT.
+    const name = `${'a'.repeat(59)} pnutty`;
+    expect(normName(name)).toBe('A'.repeat(59));
+    expect(normName(`${'a'.repeat(59)} pnut`)).toBe(`${'A'.repeat(59)} PNUT`);
+    expect(normName(`${'a'.repeat(63)} b`)).toBe('A'.repeat(63));
+    const d = normName(`${'x '.repeat(740)}pnutty`, 1500);
+    expect(d.endsWith('PNUT')).toBe(false);
+    const raw = `${'!'.repeat(1990)}word pnutty`;
+    expect(normName(raw, 1500).endsWith('PNUTTY')).toBe(false);
+  });
+
   it('cuts huge input instead of choking on it', () => {
     expect(normTicker('A'.repeat(1_000_000)).length).toBeLessThanOrEqual(32);
     expect(normName('word '.repeat(1_000_000)).length).toBeLessThanOrEqual(64);

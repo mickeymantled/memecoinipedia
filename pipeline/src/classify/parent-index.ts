@@ -9,6 +9,9 @@ import {
   NAME_SIMILARITY_MIN,
   STOP_WORDS,
   compareRanked,
+  RESERVED_CONTAINMENT,
+  RESERVED_SIMILARITY,
+  RESERVED_WHOLE_WORD,
   normName,
   normTicker,
   prepareCoin,
@@ -18,6 +21,7 @@ import {
   usableTicker,
   words,
   coreName,
+  type Evidence,
   type ParentCoin,
   type PreparedCoin,
   type RankKey,
@@ -151,37 +155,62 @@ export class ParentIndex {
     }
   }
 
-  /** Everything that might have evidence. Over-inclusive is fine: scoring decides. */
-  private gather(child: ParentCoin, p: PreparedCoin): Set<number> {
-    const out = new Set<number>();
+  /**
+   * Coins that might have evidence, one set per kind of evidence, strongest first: ticker
+   * containment, whole word in the name, whole word in the description, name similarity.
+   * Over-inclusive is fine: scoring decides.
+   */
+  private gather(child: ParentCoin, p: PreparedCoin): Set<number>[] {
+    const contain = new Set<number>();
+    const inName = new Set<number>();
+    const inDesc = new Set<number>();
+    const similar = new Set<number>();
     const t = p.ticker;
-    // 1a. Parent ticker inside the coin's ticker: every substring of 3 or more characters.
+    // Parent ticker inside the coin's ticker: every substring of 3 or more characters.
     for (let a = 0; a + MIN_TICKER_CHARS <= t.length; a++)
       for (let b = a + MIN_TICKER_CHARS; b <= t.length; b++) {
         const s = t.slice(a, b);
-        if (!STOP_WORDS.has(s)) this.addAll(out, this.byTicker.get(s), child);
+        if (!STOP_WORDS.has(s)) this.addAll(contain, this.byTicker.get(s), child);
       }
-    // 1b. The coin's ticker inside a parent's ticker: start from its rarest 3-character run.
-    if (usableTicker(t)) this.addTickersContaining(out, t, child);
-    // 2. Whole-word ticker, and 3. whole-word name phrase, in the name and the description.
-    for (const w of [p.nameWords, p.descWords]) {
+    // The coin's ticker inside a parent's ticker: start from its rarest 3-character run.
+    if (usableTicker(t)) this.addTickersContaining(contain, t, child);
+    // Whole-word ticker and whole-word name phrase, in the name and in the description.
+    for (const [w, into] of [
+      [p.nameWords, inName],
+      [p.descWords, inDesc],
+    ] as const) {
       for (const word of w)
-        if (usableTicker(word)) this.addAll(out, this.byTicker.get(word), child);
+        if (usableTicker(word)) this.addAll(into, this.byTicker.get(word), child);
       for (let a = 0; a < w.length; a++)
         for (let n = 1; n <= MAX_NAME_WORDS && a + n <= w.length; n++)
-          this.addAll(out, this.byName.get(w.slice(a, a + n).join(' ')), child);
+          this.addAll(into, this.byName.get(w.slice(a, a + n).join(' ')), child);
     }
-    // 4. Name similarity. Jaccard >= t needs a shared trigram among the rarest
-    //    |A| - ceil(t|A|) + 1 of the coin's trigrams (prefix filter), so only those are scanned.
+    // Name similarity. Jaccard >= t needs a shared trigram among the rarest
+    // |A| - ceil(t|A|) + 1 of the coin's trigrams (prefix filter), so only those are scanned.
     const grams = [...trigrams(p.core)];
     if (grams.length > 0) {
       const lists = grams
         .map((g) => ({ g, l: this.nameTri.get(g) }))
         .sort((x, y) => (x.l?.length ?? 0) - (y.l?.length ?? 0) || (x.g < y.g ? -1 : 1));
       const keep = grams.length - Math.ceil(NAME_SIMILARITY_MIN * grams.length) + 1;
-      for (const { l } of lists.slice(0, keep)) this.addAll(out, l, child);
+      for (const { l } of lists.slice(0, keep)) this.addAll(similar, l, child);
     }
-    return out;
+    return [contain, inName, inDesc, similar];
+  }
+
+  /**
+   * The set to score: each kind adds its best by rank (positions are rank order), skipping coins
+   * already taken, until the set holds `maxConsidered`. Weaker evidence never displaces stronger.
+   */
+  private select(kinds: Set<number>[]): number[] {
+    const taken = new Set<number>();
+    for (const kind of kinds) {
+      for (const i of Int32Array.from(kind).sort()) {
+        if (taken.size >= this.maxConsidered) return [...taken];
+        taken.add(i);
+      }
+    }
+    return [...taken];
   }
 
   private preparedAt(i: number): PreparedCoin {
@@ -197,16 +226,13 @@ export class ParentIndex {
     };
   }
 
-  /** Up to `limit` earlier listed coins on this chain that could be the parent, best first. */
-  candidatesFor(child: ChildCoin, limit = MAX_CANDIDATES): ParentCandidate[] {
+  /** Up to MAX_CANDIDATES earlier listed coins on this chain that could be the parent, best first. */
+  candidatesFor(child: ChildCoin): ParentCandidate[] {
     if (child.launched_at === null) return [];
     const p = prepareCoin(child);
     if (p.ticker === '' && p.name === '') return [];
-    // Positions are rank order, so the cap keeps the largest ATHs: sort numbers, take the first.
-    let ids: number[] | Int32Array = Int32Array.from(this.gather(child, p)).sort();
-    if (ids.length > this.maxConsidered) ids = ids.subarray(0, this.maxConsidered);
-    const ranked: Array<RankKey & { i: number }> = [];
-    for (const i of ids) {
+    const ranked: Array<RankKey & { i: number; evidence: Evidence }> = [];
+    for (const i of this.select(this.gather(child, p))) {
       const s = scoreParent(p, this.preparedAt(i), {
         childLaunchedAt: child.launched_at,
         parentAthAt: this.athAt[i] ?? null,
@@ -215,19 +241,41 @@ export class ParentIndex {
         ranked.push({
           i,
           score: s.score,
+          evidence: s.evidence,
           ath: this.ath[i]!,
           launchedAt: this.launch[i]!,
           address: this.addr[i]!,
         });
     }
     ranked.sort(compareRanked);
-    return ranked.slice(0, Math.min(limit, MAX_CANDIDATES)).map(({ i }) => ({
-      address: this.addr[i]!,
-      name: this.rawName[i],
-      ticker: this.rawTicker[i],
-      launched_at: new Date(this.launch[i]!).toISOString(),
-      ath_market_cap_usd: this.ath[i]!,
-    }));
+    // Reserved places by kind of evidence, then the best of the rest; returned in rank order.
+    const chosen = new Set<(typeof ranked)[number]>();
+    const reserve = (places: number, has: (e: Evidence) => boolean): void => {
+      let n = 0;
+      for (const r of ranked) {
+        if (n >= places) break;
+        if (!chosen.has(r) && has(r.evidence)) {
+          chosen.add(r);
+          n++;
+        }
+      }
+    };
+    reserve(RESERVED_CONTAINMENT, (e) => e.tickerContains);
+    reserve(RESERVED_WHOLE_WORD, (e) => e.wordInName || e.wordInDescription);
+    reserve(RESERVED_SIMILARITY, (e) => e.nameSimilarity > 0);
+    for (const r of ranked) {
+      if (chosen.size >= MAX_CANDIDATES) break;
+      chosen.add(r);
+    }
+    return ranked
+      .filter((r) => chosen.has(r))
+      .map(({ i }) => ({
+        address: this.addr[i]!,
+        name: this.rawName[i],
+        ticker: this.rawTicker[i],
+        launched_at: new Date(this.launch[i]!).toISOString(),
+        ath_market_cap_usd: this.ath[i]!,
+      }));
   }
 }
 
@@ -238,8 +286,6 @@ export interface ParentProviderOptions {
   listedMinAthUsd?: number;
   /** Candidates scored per coin. Default MAX_CONSIDERED. */
   maxConsidered?: number;
-  /** Candidates returned per coin, at most MAX_CANDIDATES. */
-  limit?: number;
 }
 
 const ms = (d: Date | null): number | null => (d === null ? null : d.getTime());
@@ -322,18 +368,15 @@ export function createParentCandidateProvider(
         const index = idx.get(r.chain);
         out.set(r.id, {
           parent_candidates: index
-            ? index.candidatesFor(
-                {
-                  address: r.address,
-                  ticker: r.ticker,
-                  name: r.name,
-                  description: r.description,
-                  launched_at: ms(r.launched_at),
-                  ath_market_cap_usd: r.ath_market_cap_usd,
-                  ath_at: ms(r.ath_at),
-                },
-                options.limit,
-              )
+            ? index.candidatesFor({
+                address: r.address,
+                ticker: r.ticker,
+                name: r.name,
+                description: r.description,
+                launched_at: ms(r.launched_at),
+                ath_market_cap_usd: r.ath_market_cap_usd,
+                ath_at: ms(r.ath_at),
+              })
             : [],
         });
       }

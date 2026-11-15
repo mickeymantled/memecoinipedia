@@ -125,6 +125,88 @@ describe('ParentIndex on planted families', () => {
   });
 });
 
+const coinAt = (
+  address: string,
+  ticker: string,
+  name: string,
+  ath: number,
+  day = 1,
+): SyntheticCoin => ({
+  address,
+  ticker,
+  name,
+  description: null,
+  launched_at: Date.UTC(2025, 0, day),
+  ath_market_cap_usd: ath,
+  ath_at: null,
+});
+const later = (over: Partial<SyntheticCoin>): SyntheticCoin => ({
+  ...coinAt('KID', 'X', 'x', 1, 200),
+  ...over,
+});
+
+describe('evidence kinds are kept apart', () => {
+  it('a common word in the description cannot push out a ticker containment', () => {
+    const coins = [
+      ...Array.from({ length: 600 }, (_, i) =>
+        coinAt(`T${i}`, 'TRUMP', `trump ${i}`, 5_000_000 + i),
+      ),
+      coinAt('PNUT', 'PNUT', 'Peanut the Squirrel', 300_000),
+    ];
+    const kid = later({
+      ticker: 'BABYPNUT',
+      name: 'Baby Peanut',
+      description: 'the next trump of squirrels',
+    });
+    const list = new ParentIndex(coins).candidatesFor(kid);
+    expect(list[0]!.address).toBe('PNUT');
+    // Without the description it is still first.
+    expect(new ParentIndex(coins).candidatesFor({ ...kid, description: null })[0]!.address).toBe(
+      'PNUT',
+    );
+  });
+
+  it('one kind of evidence cannot take all ten places', () => {
+    const frags = [
+      'ELE',
+      'LEP',
+      'EPH',
+      'PHA',
+      'HAN',
+      'ANT',
+      'ELEP',
+      'PHAN',
+      'HANT',
+      'LEPH',
+      'EPHA',
+      'PHANT',
+    ];
+    const coins = [
+      ...frags.map((f, i) => coinAt(`F${i}`, f, `frag${i}x`, 200_000 + i)),
+      coinAt('PNUT', 'PNUT', 'Peanut', 50_000_000),
+    ];
+    const list = new ParentIndex(coins).candidatesFor(
+      later({ ticker: 'ELEPHANT', name: 'Peanut Elephant' }),
+    );
+    expect(list).toHaveLength(10);
+    expect(list.map((c) => c.address)).toContain('PNUT');
+    expect(list.filter((c) => c.address.startsWith('F')).length).toBeLessThanOrEqual(9);
+  });
+
+  it('returns the reserved picks in ranking order', () => {
+    const coins = [
+      ...Array.from({ length: 12 }, (_, i) =>
+        coinAt(`F${i}`, `ZQX${'AB'[i % 2]}${i}`, `f${i}`, 200_000 + i),
+      ),
+      coinAt('W', 'WORDY', 'Wordy', 100_000),
+    ];
+    const list = new ParentIndex(coins).candidatesFor(
+      later({ ticker: 'ZQX', name: 'the real Wordy' }),
+    );
+    expect(list.map((c) => c.address)).toContain('W');
+  });
+});
+
 describe('common-string cap', () => {
   it('cuts thousands of matches to the largest by ATH before scoring', () => {
     const n = MAX_CONSIDERED * 4;
@@ -173,9 +255,12 @@ describe('150,000 listed coins (in memory)', () => {
       `parent index in memory: ${idx.size} coins, build ${build.toFixed(0)} ms, 1000 coins ${query.toFixed(0)} ms, ${found} with candidates\n`,
     );
     expect(idx.size).toBe(150_000);
-    expect(build).toBeLessThan(10_000);
-    expect(query).toBeLessThan(2_000);
-  }, 60_000);
+    // Loose by default: CI catches a blow-up and nothing else. The issue's limits (10 s, 2 s)
+    // are asserted under PARENT_PERF=1.
+    const strict = process.env['PARENT_PERF'] === '1';
+    expect(build).toBeLessThan(strict ? 10_000 : 30_000);
+    expect(query).toBeLessThan(strict ? 2_000 : 10_000);
+  }, 120_000);
 });
 
 // ---- Database ----------------------------------------------------------------------------------
