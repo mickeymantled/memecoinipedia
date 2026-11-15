@@ -1,0 +1,1004 @@
+[
+  {
+    "cls": "A",
+    "id": 324443,
+    "mint": "ArUyEVWGCzZMtAxcPmNH8nDFZ4kMjxrMbpsQf3NEpump",
+    "graduatedAt": 1740113872,
+    "rough": 186804578,
+    "ath": 195096453,
+    "launch": {
+      "mint": "ArUyEVWGCzZMtAxcPmNH8nDFZ4kMjxrMbpsQf3NEpump",
+      "symbol": "BAYC",
+      "name": "BAYC AI",
+      "createdAt": 1739887206,
+      "creator": "EKk1GVUmtn9fsTWnGu1VRo4aKPbUHoW1ZxR1X5bazFxf",
+      "launchpadName": "Pump.fun",
+      "migrated": true,
+      "migratedAt": 1740113921,
+      "migratedPoolAddress": "BHv9Ps8zY2mZEbMsqGM9awAMrLKX8crjNkNCmqsi5kQG",
+      "completed": true,
+      "completedAt": 1740113921,
+      "launchpadPoolAddress": "AqiLpictfePnzbbVEowcAepUcKk3G2J5wZL6DkNyFQF3"
+    },
+    "pools": {
+      "pools": [
+        {
+          "address": "AqiLpictfePnzbbVEowcAepUcKk3G2J5wZL6DkNyFQF3",
+          "pairId": "AqiLpictfePnzbbVEowcAepUcKk3G2J5wZL6DkNyFQF3:1399811149",
+          "exchange": "Pump",
+          "protocol": "Pump",
+          "createdAt": 1739887204,
+          "liquidityUsd": 0,
+          "quoteToken": "SOL",
+          "quoteTokenAddress": "So11111111111111111111111111111111111111112"
+        },
+        {
+          "address": "GeSmyHMnYjTpcbVx6KVfvDQZRqCfKRmPU6a92rvaasYV",
+          "pairId": "GeSmyHMnYjTpcbVx6KVfvDQZRqCfKRmPU6a92rvaasYV:1399811149",
+          "exchange": "Raydium",
+          "protocol": "RaydiumV4",
+          "createdAt": 1740113971,
+          "liquidityUsd": 9860,
+          "quoteToken": "SOL",
+          "quoteTokenAddress": "So11111111111111111111111111111111111111112"
+        },
+        {
+          "address": "nTKMPuFQZkar1US7gszqqcs4SphFyijuZ2RbnARZ9Rv",
+          "pairId": "nTKMPuFQZkar1US7gszqqcs4SphFyijuZ2RbnARZ9Rv:1399811149",
+          "exchange": "Orca",
+          "protocol": "Orca",
+          "createdAt": 1747559350,
+          "liquidityUsd": 3,
+          "quoteToken": "USDT",
+          "quoteTokenAddress": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"
+        },
+        {
+          "address": "BHv9Ps8zY2mZEbMsqGM9awAMrLKX8crjNkNCmqsi5kQG",
+          "pairId": "BHv9Ps8zY2mZEbMsqGM9awAMrLKX8crjNkNCmqsi5kQG:1399811149",
+          "exchange": "PumpSwap",
+          "protocol": "PumpAmm",
+          "createdAt": 1747572475,
+          "liquidityUsd": 0,
+          "quoteToken": "USDT",
+          "quoteTokenAddress": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"
+        },
+        {
+          "address": "At79BLxdQnQ1XHxNGqQUxe7PmAR4crHLos9ut2FUGDw7",
+          "pairId": "At79BLxdQnQ1XHxNGqQUxe7PmAR4crHLos9ut2FUGDw7:1399811149",
+          "exchange": "Orca",
+          "protocol": "Orca",
+          "createdAt": 1747574512,
+          "liquidityUsd": 0,
+          "quoteToken": "USDC",
+          "quoteTokenAddress": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+        },
+        {
+          "address": "AZesTxWBSyF2dWoXG2TnBruk9dfBJp6M3biMhaUjyob9",
+          "pairId": "AZesTxWBSyF2dWoXG2TnBruk9dfBJp6M3biMhaUjyob9:1399811149",
+          "exchange": "Orca",
+          "protocol": "Orca",
+          "createdAt": 1747575984,
+          "liquidityUsd": 4,
+          "quoteToken": "USDC",
+          "quoteTokenAddress": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+        },
+        {
+          "address": "mMwQSQdxZ9wKw1EDJwqxLNbZ5aUMoWNP82dK3eGrLqR",
+          "pairId": "mMwQSQdxZ9wKw1EDJwqxLNbZ5aUMoWNP82dK3eGrLqR:1399811149",
+          "exchange": "Meteora DAMM",
+          "protocol": "MeteoraDAMMV2",
+          "createdAt": 1749773838,
+          "liquidityUsd": 0,
+          "quoteToken": "IMT",
+          "quoteTokenAddress": "3EMheh5MPVWpAGDdXnGBgs6uaukKL29zv65uuXxspump"
+        },
+        {
+          "address": "6KybbYqnPwNs2vWTKft1ZGfj7nmkrSecQvNQiLmNQGkw",
+          "pairId": "6KybbYqnPwNs2vWTKft1ZGfj7nmkrSecQvNQiLmNQGkw:1399811149",
+          "exchange": "Meteora DAMM",
+          "protocol": "MeteoraDAMMV2",
+          "createdAt": 1749776946,
+          "liquidityUsd": 0,
+          "quoteToken": "IMT",
+          "quoteTokenAddress": "3EMheh5MPVWpAGDdXnGBgs6uaukKL29zv65uuXxspump"
+        },
+        {
+          "address": "4pGA8AP9AUN8GDM83WfVGZcTeDbBPCbaX7Wuv8VbgsCE",
+          "pairId": "4pGA8AP9AUN8GDM83WfVGZcTeDbBPCbaX7Wuv8VbgsCE:1399811149",
+          "exchange": "Orca",
+          "protocol": "Orca",
+          "createdAt": 1750428495,
+          "liquidityUsd": 0,
+          "quoteToken": "SOL",
+          "quoteTokenAddress": "So11111111111111111111111111111111111111112"
+        },
+        {
+          "address": "ECtLoaXS7fMmodxs24MMUzt3VjCivyRmVrKpdJbUbtVh",
+          "pairId": "ECtLoaXS7fMmodxs24MMUzt3VjCivyRmVrKpdJbUbtVh:1399811149",
+          "exchange": "PumpSwap",
+          "protocol": "PumpAmm",
+          "createdAt": 1750802574,
+          "liquidityUsd": 0,
+          "quoteToken": "GTA",
+          "quoteTokenAddress": "5NJfQ6UQ1LJTxtKLrsZQcbiSUWequSD6aZLNJaN7Zviv"
+        }
+      ],
+      "truncated": false
+    }
+  },
+  {
+    "cls": "A",
+    "id": 144073,
+    "mint": "2HZdRs4Cxkg1WbiPxPZcramcEPo22dzeemMAYZhZpump",
+    "graduatedAt": 1740262255,
+    "rough": 148205323,
+    "ath": 3244350,
+    "launch": {
+      "mint": "2HZdRs4Cxkg1WbiPxPZcramcEPo22dzeemMAYZhZpump",
+      "symbol": "$ROGERS",
+      "name": "MISTER ROGERS",
+      "createdAt": 1740103798,
+      "creator": null,
+      "launchpadName": "Pump.fun",
+      "migrated": true,
+      "migratedAt": 1740262305,
+      "migratedPoolAddress": "7ia5HzyTv3tttudgvu8jFsgBRLe2VGiCKcUPsdhG1kWX",
+      "completed": true,
+      "completedAt": 1740262305,
+      "launchpadPoolAddress": "7D1pqQHuFrrLoNwR9J62tEVTJNM7Z3spEgUGnsVJ2YNr"
+    },
+    "pools": {
+      "pools": [
+        {
+          "address": "7D1pqQHuFrrLoNwR9J62tEVTJNM7Z3spEgUGnsVJ2YNr",
+          "pairId": "7D1pqQHuFrrLoNwR9J62tEVTJNM7Z3spEgUGnsVJ2YNr:1399811149",
+          "exchange": "Pump",
+          "protocol": "Pump",
+          "createdAt": 1740103797,
+          "liquidityUsd": 0,
+          "quoteToken": "SOL",
+          "quoteTokenAddress": "So11111111111111111111111111111111111111112"
+        },
+        {
+          "address": "2QN5vbH8MrmAKETMuFvjipc8mtefR56RHVbjAXBuVQZ4",
+          "pairId": "2QN5vbH8MrmAKETMuFvjipc8mtefR56RHVbjAXBuVQZ4:1399811149",
+          "exchange": "Raydium",
+          "protocol": "RaydiumV4",
+          "createdAt": 1740262355,
+          "liquidityUsd": 6146,
+          "quoteToken": "SOL",
+          "quoteTokenAddress": "So11111111111111111111111111111111111111112"
+        },
+        {
+          "address": "FQWHCbDXt87fdhtTB1Bv7V5WdpTJGbfxNfzKs7r9ipT3",
+          "pairId": "FQWHCbDXt87fdhtTB1Bv7V5WdpTJGbfxNfzKs7r9ipT3:1399811149",
+          "exchange": "Meteora",
+          "protocol": "Meteora",
+          "createdAt": 1741608097,
+          "liquidityUsd": 24,
+          "quoteToken": "SOL",
+          "quoteTokenAddress": "So11111111111111111111111111111111111111112"
+        },
+        {
+          "address": "FLXHnKrCzsz96A6z3pcaFv6nVg8GM3jPUccjjDC2SzLV",
+          "pairId": "FLXHnKrCzsz96A6z3pcaFv6nVg8GM3jPUccjjDC2SzLV:1399811149",
+          "exchange": "Meteora",
+          "protocol": "Meteora",
+          "createdAt": 1741609094,
+          "liquidityUsd": 259,
+          "quoteToken": "SOL",
+          "quoteTokenAddress": "So11111111111111111111111111111111111111112"
+        },
+        {
+          "address": "96CHqdfceQETCjRbFLyBLGKR6pCZe92Nfr7h2EtTPy8P",
+          "pairId": "96CHqdfceQETCjRbFLyBLGKR6pCZe92Nfr7h2EtTPy8P:1399811149",
+          "exchange": "Raydium CLMM",
+          "protocol": "RaydiumClmm",
+          "createdAt": 1742276549,
+          "liquidityUsd": 10,
+          "quoteToken": "TRUMP",
+          "quoteTokenAddress": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN"
+        },
+        {
+          "address": "APMkjG4Js8RM1sYc5kWNvfULYDy4TRRYxYQevVdbwYun",
+          "pairId": "APMkjG4Js8RM1sYc5kWNvfULYDy4TRRYxYQevVdbwYun:1399811149",
+          "exchange": "Raydium CLMM",
+          "protocol": "RaydiumClmm",
+          "createdAt": 1743291496,
+          "liquidityUsd": 0,
+          "quoteToken": "TRUMP",
+          "quoteTokenAddress": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN"
+        },
+        {
+          "address": "2ftnMVyEn2Ns1131E8Skq3jtWkQq26NsMLLbpQwmSAz2",
+          "pairId": "2ftnMVyEn2Ns1131E8Skq3jtWkQq26NsMLLbpQwmSAz2:1399811149",
+          "exchange": "Raydium CLMM",
+          "protocol": "RaydiumClmm",
+          "createdAt": 1743292165,
+          "liquidityUsd": 0,
+          "quoteToken": "TRUMP",
+          "quoteTokenAddress": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN"
+        },
+        {
+          "address": "4StoyC5UopEN3sYG1z1tJhDRo4MRP4Fta5ezq9FeQYJk",
+          "pairId": "4StoyC5UopEN3sYG1z1tJhDRo4MRP4Fta5ezq9FeQYJk:1399811149",
+          "exchange": "Raydium CLMM",
+          "protocol": "RaydiumClmm",
+          "createdAt": 1743295814,
+          "liquidityUsd": 0,
+          "quoteToken": "TRUMP",
+          "quoteTokenAddress": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN"
+        },
+        {
+          "address": "6poFygjsNEdBEPDHKEJzptyYj758motFMJszGxpB9GmW",
+          "pairId": "6poFygjsNEdBEPDHKEJzptyYj758motFMJszGxpB9GmW:1399811149",
+          "exchange": "Raydium CLMM",
+          "protocol": "RaydiumClmm",
+          "createdAt": 1743296175,
+          "liquidityUsd": 0,
+          "quoteToken": "TRUMP",
+          "quoteTokenAddress": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN"
+        },
+        {
+          "address": "K6dbLxZLrDbKj3Xiq7wp19K2FYr5v2HbWckuu4xKDP2",
+          "pairId": "K6dbLxZLrDbKj3Xiq7wp19K2FYr5v2HbWckuu4xKDP2:1399811149",
+          "exchange": "Raydium CLMM",
+          "protocol": "RaydiumClmm",
+          "createdAt": 1743296766,
+          "liquidityUsd": 0,
+          "quoteToken": "TRUMP",
+          "quoteTokenAddress": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN"
+        },
+        {
+          "address": "Bzrqm8SNdVhMsUsgfRpD541AzdPtK26Zkm5qF4rsLwyo",
+          "pairId": "Bzrqm8SNdVhMsUsgfRpD541AzdPtK26Zkm5qF4rsLwyo:1399811149",
+          "exchange": "Raydium CLMM",
+          "protocol": "RaydiumClmm",
+          "createdAt": 1743297261,
+          "liquidityUsd": 0,
+          "quoteToken": "TRUMP",
+          "quoteTokenAddress": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN"
+        },
+        {
+          "address": "kV6387kmSHMderQSgde5zqogQBzv4nvfte8SskVrNmj",
+          "pairId": "kV6387kmSHMderQSgde5zqogQBzv4nvfte8SskVrNmj:1399811149",
+          "exchange": "Raydium CLMM",
+          "protocol": "RaydiumClmm",
+          "createdAt": 1743297532,
+          "liquidityUsd": 0,
+          "quoteToken": "TRUMP",
+          "quoteTokenAddress": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN"
+        },
+        {
+          "address": "5QnGLGTivWc1fxnANwPWBpYxVVUmmZKSMbQSHjF5yHp",
+          "pairId": "5QnGLGTivWc1fxnANwPWBpYxVVUmmZKSMbQSHjF5yHp:1399811149",
+          "exchange": "Raydium CLMM",
+          "protocol": "RaydiumClmm",
+          "createdAt": 1743298849,
+          "liquidityUsd": 0,
+          "quoteToken": "TRUMP",
+          "quoteTokenAddress": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN"
+        },
+        {
+          "address": "BX71ZXT2zq8SExgSpLSyJJaAxaVYZqLyYBytvYvFvnfL",
+          "pairId": "BX71ZXT2zq8SExgSpLSyJJaAxaVYZqLyYBytvYvFvnfL:1399811149",
+          "exchange": "Raydium CLMM",
+          "protocol": "RaydiumClmm",
+          "createdAt": 1743299416,
+          "liquidityUsd": 0,
+          "quoteToken": "TRUMP",
+          "quoteTokenAddress": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN"
+        },
+        {
+          "address": "Hwh4jC8Ta9QNv4ymMHjGoNUzDNqkCZVAfp9zSMx3uHdg",
+          "pairId": "Hwh4jC8Ta9QNv4ymMHjGoNUzDNqkCZVAfp9zSMx3uHdg:1399811149",
+          "exchange": "Raydium CLMM",
+          "protocol": "RaydiumClmm",
+          "createdAt": 1743300823,
+          "liquidityUsd": 0,
+          "quoteToken": "TRUMP",
+          "quoteTokenAddress": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN"
+        },
+        {
+          "address": "LgPmAgJB1q94xu9tJN6WAG8ujYMnkoC6pv1FyPCAeKS",
+          "pairId": "LgPmAgJB1q94xu9tJN6WAG8ujYMnkoC6pv1FyPCAeKS:1399811149",
+          "exchange": "Raydium CLMM",
+          "protocol": "RaydiumClmm",
+          "createdAt": 1743301394,
+          "liquidityUsd": 0,
+          "quoteToken": "TRUMP",
+          "quoteTokenAddress": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN"
+        },
+        {
+          "address": "5pJ5xQdywbnWF4GeYHjTzkbKkrRFFeMXnRGMTQ6hjHjL",
+          "pairId": "5pJ5xQdywbnWF4GeYHjTzkbKkrRFFeMXnRGMTQ6hjHjL:1399811149",
+          "exchange": "Raydium CLMM",
+          "protocol": "RaydiumClmm",
+          "createdAt": 1743304497,
+          "liquidityUsd": 0,
+          "quoteToken": "TRUMP",
+          "quoteTokenAddress": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN"
+        },
+        {
+          "address": "7ic3jYAfD5qEMfuu1LjRthRLaqnXUv16bYF8AoYAyW1d",
+          "pairId": "7ic3jYAfD5qEMfuu1LjRthRLaqnXUv16bYF8AoYAyW1d:1399811149",
+          "exchange": "Raydium CLMM",
+          "protocol": "RaydiumClmm",
+          "createdAt": 1743305629,
+          "liquidityUsd": 0,
+          "quoteToken": "TRUMP",
+          "quoteTokenAddress": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN"
+        },
+        {
+          "address": "DhAPE6aK4Fb76SDn5nYD3hJVwc4iGJoaAtDsfyT6ehW7",
+          "pairId": "DhAPE6aK4Fb76SDn5nYD3hJVwc4iGJoaAtDsfyT6ehW7:1399811149",
+          "exchange": "Raydium CLMM",
+          "protocol": "RaydiumClmm",
+          "createdAt": 1743306548,
+          "liquidityUsd": 0,
+          "quoteToken": "TRUMP",
+          "quoteTokenAddress": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN"
+        },
+        {
+          "address": "73iZmhCzuVjkrycTaoyNqBaSUcwwD3g42HVk5VfYsGF7",
+          "pairId": "73iZmhCzuVjkrycTaoyNqBaSUcwwD3g42HVk5VfYsGF7:1399811149",
+          "exchange": "Raydium CLMM",
+          "protocol": "RaydiumClmm",
+          "createdAt": 1743314016,
+          "liquidityUsd": 0,
+          "quoteToken": "TRUMP",
+          "quoteTokenAddress": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN"
+        },
+        {
+          "address": "G9b5oYBgu1u5RHN9zeDBBenv9ipruzNdhpFc6PxUa6qq",
+          "pairId": "G9b5oYBgu1u5RHN9zeDBBenv9ipruzNdhpFc6PxUa6qq:1399811149",
+          "exchange": "Raydium CLMM",
+          "protocol": "RaydiumClmm",
+          "createdAt": 1743314575,
+          "liquidityUsd": 0,
+          "quoteToken": "TRUMP",
+          "quoteTokenAddress": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN"
+        },
+        {
+          "address": "2KfN8i5ev6UGWZdFuMn9T34aHAWyWv3KER4yNedLK2PE",
+          "pairId": "2KfN8i5ev6UGWZdFuMn9T34aHAWyWv3KER4yNedLK2PE:1399811149",
+          "exchange": "Raydium CLMM",
+          "protocol": "RaydiumClmm",
+          "createdAt": 1743316138,
+          "liquidityUsd": 0,
+          "quoteToken": "TRUMP",
+          "quoteTokenAddress": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN"
+        },
+        {
+          "address": "4HPXwqQxFg86BHgnTAVKXH536pyTmSn9gBPn5EPzmUso",
+          "pairId": "4HPXwqQxFg86BHgnTAVKXH536pyTmSn9gBPn5EPzmUso:1399811149",
+          "exchange": "Meteora Pools",
+          "protocol": "MeteoraPools",
+          "createdAt": 1743494825,
+          "liquidityUsd": 0,
+          "quoteToken": "TRUMP",
+          "quoteTokenAddress": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN"
+        },
+        {
+          "address": "Gjdizc258jS6nVcJHNF5tckxhgkbhTJH5NWBy9xWzhpY",
+          "pairId": "Gjdizc258jS6nVcJHNF5tckxhgkbhTJH5NWBy9xWzhpY:1399811149",
+          "exchange": "Meteora Pools",
+          "protocol": "MeteoraPools",
+          "createdAt": 1743567753,
+          "liquidityUsd": 0,
+          "quoteToken": "TRUMP",
+          "quoteTokenAddress": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN"
+        },
+        {
+          "address": "5mx16NPuLcfVakfzmoaZJFmjfxHhRWXjqvVYU9hFnmyX",
+          "pairId": "5mx16NPuLcfVakfzmoaZJFmjfxHhRWXjqvVYU9hFnmyX:1399811149",
+          "exchange": "Meteora Pools",
+          "protocol": "MeteoraPools",
+          "createdAt": 1743568614,
+          "liquidityUsd": 0,
+          "quoteToken": "TRUMP",
+          "quoteTokenAddress": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN"
+        },
+        {
+          "address": "2fdL3z9wsHTBBN9fpFkcWY1uiGFLGR1qrmqeznm3t2LP",
+          "pairId": "2fdL3z9wsHTBBN9fpFkcWY1uiGFLGR1qrmqeznm3t2LP:1399811149",
+          "exchange": "Meteora Pools",
+          "protocol": "MeteoraPools",
+          "createdAt": 1743569592,
+          "liquidityUsd": 0,
+          "quoteToken": "TRUMP",
+          "quoteTokenAddress": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN"
+        },
+        {
+          "address": "8RDuiLgmhVTcxxyqBegu2nVdqp8NWF5moMboJ7YpbUqG",
+          "pairId": "8RDuiLgmhVTcxxyqBegu2nVdqp8NWF5moMboJ7YpbUqG:1399811149",
+          "exchange": "Meteora Pools",
+          "protocol": "MeteoraPools",
+          "createdAt": 1743569758,
+          "liquidityUsd": 0,
+          "quoteToken": "TRUMP",
+          "quoteTokenAddress": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN"
+        },
+        {
+          "address": "B9mWcRmvikqi7oLq5fyPkqn8nptmGqtAfA3LCnfrTzD7",
+          "pairId": "B9mWcRmvikqi7oLq5fyPkqn8nptmGqtAfA3LCnfrTzD7:1399811149",
+          "exchange": "Meteora Pools",
+          "protocol": "MeteoraPools",
+          "createdAt": 1743569944,
+          "liquidityUsd": 0,
+          "quoteToken": "TRUMP",
+          "quoteTokenAddress": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN"
+        },
+        {
+          "address": "Aa6A6Xz9cc7MEePcXk3YgCFVk2d3tJcSQkW9z4F2KgGw",
+          "pairId": "Aa6A6Xz9cc7MEePcXk3YgCFVk2d3tJcSQkW9z4F2KgGw:1399811149",
+          "exchange": "Raydium CLMM",
+          "protocol": "RaydiumClmm",
+          "createdAt": 1743718435,
+          "liquidityUsd": 0,
+          "quoteToken": "USDC",
+          "quoteTokenAddress": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+        },
+        {
+          "address": "HZQawfutG6a4Hnp89n8HsFHJT12dqwC3SSsA53St6NbG",
+          "pairId": "HZQawfutG6a4Hnp89n8HsFHJT12dqwC3SSsA53St6NbG:1399811149",
+          "exchange": "Raydium CLMM",
+          "protocol": "RaydiumClmm",
+          "createdAt": 1743723091,
+          "liquidityUsd": 0,
+          "quoteToken": "👽",
+          "quoteTokenAddress": "2QcJHi1JquR58LC836swpkmEn4bqh2Wifhphr2XxkLDT"
+        },
+        {
+          "address": "HNymUU5EtvJ3KvHutbVedPEG9ThuULt8nV6MwEJScJUX",
+          "pairId": "HNymUU5EtvJ3KvHutbVedPEG9ThuULt8nV6MwEJScJUX:1399811149",
+          "exchange": "Raydium CLMM",
+          "protocol": "RaydiumClmm",
+          "createdAt": 1743729009,
+          "liquidityUsd": 0,
+          "quoteToken": "GOAT",
+          "quoteTokenAddress": "6MRD8WinGYF8ciCjHScNtkvCF57aUkpHeHbsmnJKpump"
+        },
+        {
+          "address": "EuhM7EaSetZvCJp1nCwGtziUu9ZaiNVbWD89jqLQtTw",
+          "pairId": "EuhM7EaSetZvCJp1nCwGtziUu9ZaiNVbWD89jqLQtTw:1399811149",
+          "exchange": "Meteora",
+          "protocol": "Meteora",
+          "createdAt": 1743791346,
+          "liquidityUsd": 404,
+          "quoteToken": "TRUMP",
+          "quoteTokenAddress": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN"
+        },
+        {
+          "address": "6UTpCTVCseYi2Uc4KMH8G2UJG6Bdu2ZK3j4XEkGFtcgp",
+          "pairId": "6UTpCTVCseYi2Uc4KMH8G2UJG6Bdu2ZK3j4XEkGFtcgp:1399811149",
+          "exchange": "Raydium CLMM",
+          "protocol": "RaydiumClmm",
+          "createdAt": 1743825199,
+          "liquidityUsd": 0,
+          "quoteToken": "SHAMAN",
+          "quoteTokenAddress": "5YnjBp1eidhx7MhATU6hPwg8PtE72vx2ApC2sjXApump"
+        },
+        {
+          "address": "G42oivDpcXGf3jZ42tb2xWTi9EeUTj1H82XacUG9pjPU",
+          "pairId": "G42oivDpcXGf3jZ42tb2xWTi9EeUTj1H82XacUG9pjPU:1399811149",
+          "exchange": "Raydium CLMM",
+          "protocol": "RaydiumClmm",
+          "createdAt": 1743896047,
+          "liquidityUsd": 2,
+          "quoteToken": "RFC",
+          "quoteTokenAddress": "C3DwDjT17gDvvCYC2nsdGHxDHVmQRdhKfpAdqQ29pump"
+        },
+        {
+          "address": "4oqr4DMftU3WLjYBT9X7NDWxaqbJX4cNsjGzQXHfPSF8",
+          "pairId": "4oqr4DMftU3WLjYBT9X7NDWxaqbJX4cNsjGzQXHfPSF8:1399811149",
+          "exchange": "Raydium CLMM",
+          "protocol": "RaydiumClmm",
+          "createdAt": 1744314005,
+          "liquidityUsd": 0,
+          "quoteToken": "SOL",
+          "quoteTokenAddress": "So11111111111111111111111111111111111111112"
+        },
+        {
+          "address": "46krBE3NpPRnZidLzTSWx8VF7F1NqrFHYmQXkcnaEe2d",
+          "pairId": "46krBE3NpPRnZidLzTSWx8VF7F1NqrFHYmQXkcnaEe2d:1399811149",
+          "exchange": "Raydium CPMM",
+          "protocol": "RaydiumCpmm",
+          "createdAt": 1744314860,
+          "liquidityUsd": 10,
+          "quoteToken": "SOL",
+          "quoteTokenAddress": "So11111111111111111111111111111111111111112"
+        },
+        {
+          "address": "7ia5HzyTv3tttudgvu8jFsgBRLe2VGiCKcUPsdhG1kWX",
+          "pairId": "7ia5HzyTv3tttudgvu8jFsgBRLe2VGiCKcUPsdhG1kWX:1399811149",
+          "exchange": "PumpSwap",
+          "protocol": "PumpAmm",
+          "createdAt": 1744555821,
+          "liquidityUsd": 0,
+          "quoteToken": "TRUMP",
+          "quoteTokenAddress": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN"
+        },
+        {
+          "address": "3PabzPuWdgqT78L8wyNwS5grGKSLhU9nD65gf8Vgq5QF",
+          "pairId": "3PabzPuWdgqT78L8wyNwS5grGKSLhU9nD65gf8Vgq5QF:1399811149",
+          "exchange": "Raydium CPMM",
+          "protocol": "RaydiumCpmm",
+          "createdAt": 1744589993,
+          "liquidityUsd": 0,
+          "quoteToken": "TRUMP",
+          "quoteTokenAddress": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN"
+        },
+        {
+          "address": "AJb9LBrWiTssUkCfLMkAYGtCsDzVeoWBQbPrMbRH8TVo",
+          "pairId": "AJb9LBrWiTssUkCfLMkAYGtCsDzVeoWBQbPrMbRH8TVo:1399811149",
+          "exchange": "Meteora",
+          "protocol": "Meteora",
+          "createdAt": 1749901751,
+          "liquidityUsd": 64,
+          "quoteToken": "TRUMP",
+          "quoteTokenAddress": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN"
+        },
+        {
+          "address": "67dr2V4LLQ8hGrGPJTRuRvjadkEoiisfRxxq8czhLTFS",
+          "pairId": "67dr2V4LLQ8hGrGPJTRuRvjadkEoiisfRxxq8czhLTFS:1399811149",
+          "exchange": "Meteora DAMM",
+          "protocol": "MeteoraDAMMV2",
+          "createdAt": 1749911227,
+          "liquidityUsd": 0,
+          "quoteToken": "TRUMP",
+          "quoteTokenAddress": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN"
+        },
+        {
+          "address": "7sxJvmFHFPrCCef5QkrnXCGLTiWwQ2PuEYPxU8qsJdNV",
+          "pairId": "7sxJvmFHFPrCCef5QkrnXCGLTiWwQ2PuEYPxU8qsJdNV:1399811149",
+          "exchange": "Meteora",
+          "protocol": "Meteora",
+          "createdAt": 1751720075,
+          "liquidityUsd": 168,
+          "quoteToken": "USDC",
+          "quoteTokenAddress": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+        },
+        {
+          "address": "AgMXHYJuLLPhrKwq12jMDV6UjJDLB9gAzUW5AZM3z6aT",
+          "pairId": "AgMXHYJuLLPhrKwq12jMDV6UjJDLB9gAzUW5AZM3z6aT:1399811149",
+          "exchange": "Meteora",
+          "protocol": "Meteora",
+          "createdAt": 1751759629,
+          "liquidityUsd": 319,
+          "quoteToken": "TRUMP",
+          "quoteTokenAddress": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN"
+        },
+        {
+          "address": "ET6W7dyoLLd6DMV4MyhpNPbb3AvkAHyzxsWyswpJwkRE",
+          "pairId": "ET6W7dyoLLd6DMV4MyhpNPbb3AvkAHyzxsWyswpJwkRE:1399811149",
+          "exchange": "Meteora",
+          "protocol": "Meteora",
+          "createdAt": 1751900744,
+          "liquidityUsd": 0,
+          "quoteToken": "401K",
+          "quoteTokenAddress": "ACyP5VHmSYhixsHwFXh8BTqypPGBTjHGcJZjYdBvPKaE"
+        },
+        {
+          "address": "G3kd9sJ1e4GveCq4RSgDpqqV2aWuh7TZsFML2VfsTN9Z",
+          "pairId": "G3kd9sJ1e4GveCq4RSgDpqqV2aWuh7TZsFML2VfsTN9Z:1399811149",
+          "exchange": "Meteora",
+          "protocol": "Meteora",
+          "createdAt": 1752021667,
+          "liquidityUsd": 0,
+          "quoteToken": "SOL",
+          "quoteTokenAddress": "So11111111111111111111111111111111111111112"
+        },
+        {
+          "address": "37rR7fJ72w994GXtm58vLzXqTosjkw4c3HcngXLsBMa4",
+          "pairId": "37rR7fJ72w994GXtm58vLzXqTosjkw4c3HcngXLsBMa4:1399811149",
+          "exchange": "Meteora",
+          "protocol": "Meteora",
+          "createdAt": 1752136777,
+          "liquidityUsd": 0,
+          "quoteToken": "CLOUD",
+          "quoteTokenAddress": "CLoUDKc4Ane7HeQcPpE3YHnznRxhMimJ4MyaUqyHFzAu"
+        },
+        {
+          "address": "FVFn2D9RZyXQzBUzMLkS4CmbvpNKHv1qNik6jKcCfFdJ",
+          "pairId": "FVFn2D9RZyXQzBUzMLkS4CmbvpNKHv1qNik6jKcCfFdJ:1399811149",
+          "exchange": "Meteora",
+          "protocol": "Meteora",
+          "createdAt": 1752152000,
+          "liquidityUsd": 713,
+          "quoteToken": "CLOUD",
+          "quoteTokenAddress": "CLoUDKc4Ane7HeQcPpE3YHnznRxhMimJ4MyaUqyHFzAu"
+        },
+        {
+          "address": "63F6pSDxDpxVnf7bTDiNUai9dKgDoRZYQ7nAdaXRew5F",
+          "pairId": "63F6pSDxDpxVnf7bTDiNUai9dKgDoRZYQ7nAdaXRew5F:1399811149",
+          "exchange": "Meteora",
+          "protocol": "Meteora",
+          "createdAt": 1752349186,
+          "liquidityUsd": 2,
+          "quoteToken": "TRUMP",
+          "quoteTokenAddress": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN"
+        },
+        {
+          "address": "7kSwLy5rPxyqF6wD9U1rdYnfAvdPuKM6heqYGFMbjVxE",
+          "pairId": "7kSwLy5rPxyqF6wD9U1rdYnfAvdPuKM6heqYGFMbjVxE:1399811149",
+          "exchange": "Meteora",
+          "protocol": "Meteora",
+          "createdAt": 1752350380,
+          "liquidityUsd": 145,
+          "quoteToken": "TRUMP",
+          "quoteTokenAddress": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN"
+        },
+        {
+          "address": "8FhQiRF5sgkJBUqNC9TvHfeFSS9nrcyccT8YoaCwHfyG",
+          "pairId": "8FhQiRF5sgkJBUqNC9TvHfeFSS9nrcyccT8YoaCwHfyG:1399811149",
+          "exchange": "Meteora",
+          "protocol": "Meteora",
+          "createdAt": 1752356485,
+          "liquidityUsd": 20,
+          "quoteToken": "TRUMP",
+          "quoteTokenAddress": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN"
+        },
+        {
+          "address": "U2m9khjXNNUy7ECBBsgrBhxjs7hXnJsVH1a4d9ATCQv",
+          "pairId": "U2m9khjXNNUy7ECBBsgrBhxjs7hXnJsVH1a4d9ATCQv:1399811149",
+          "exchange": "Meteora",
+          "protocol": "Meteora",
+          "createdAt": 1753027091,
+          "liquidityUsd": 229,
+          "quoteToken": "TRUMP",
+          "quoteTokenAddress": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN"
+        },
+        {
+          "address": "9dnLfuonkFP3fhVAsZUAGZFc9GMQ1vnkT9jNt7HhniR7",
+          "pairId": "9dnLfuonkFP3fhVAsZUAGZFc9GMQ1vnkT9jNt7HhniR7:1399811149",
+          "exchange": "Meteora",
+          "protocol": "Meteora",
+          "createdAt": 1753040587,
+          "liquidityUsd": 10,
+          "quoteToken": "TRUMP",
+          "quoteTokenAddress": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN"
+        },
+        {
+          "address": "7M5WKGP37FhgxCxkmS5TSTj19FPb6MRwNhveoSDkJT9H",
+          "pairId": "7M5WKGP37FhgxCxkmS5TSTj19FPb6MRwNhveoSDkJT9H:1399811149",
+          "exchange": "Meteora",
+          "protocol": "Meteora",
+          "createdAt": 1753170252,
+          "liquidityUsd": 0,
+          "quoteToken": "PUMP",
+          "quoteTokenAddress": "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn"
+        },
+        {
+          "address": "EkSWejJpgSdK9kLeMxSwwNameW8V2cZgj8LHFJCBvpfo",
+          "pairId": "EkSWejJpgSdK9kLeMxSwwNameW8V2cZgj8LHFJCBvpfo:1399811149",
+          "exchange": "Meteora",
+          "protocol": "Meteora",
+          "createdAt": 1753508941,
+          "liquidityUsd": 112,
+          "quoteToken": "401K",
+          "quoteTokenAddress": "ACyP5VHmSYhixsHwFXh8BTqypPGBTjHGcJZjYdBvPKaE"
+        },
+        {
+          "address": "DGsxzHm9jZLCrRvhVXmtRXyj9En3ETiWLgTvJPBYNopR",
+          "pairId": "DGsxzHm9jZLCrRvhVXmtRXyj9En3ETiWLgTvJPBYNopR:1399811149",
+          "exchange": "Meteora",
+          "protocol": "Meteora",
+          "createdAt": 1753748837,
+          "liquidityUsd": 0,
+          "quoteToken": "TRUMP",
+          "quoteTokenAddress": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN"
+        },
+        {
+          "address": "Bk9zKNuYMeHQDU3J7DbjjCis9f93TtbUJwQQ5kAAhQmX",
+          "pairId": "Bk9zKNuYMeHQDU3J7DbjjCis9f93TtbUJwQQ5kAAhQmX:1399811149",
+          "exchange": "Meteora",
+          "protocol": "Meteora",
+          "createdAt": 1754073928,
+          "liquidityUsd": 1,
+          "quoteToken": "TRUMP",
+          "quoteTokenAddress": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN"
+        },
+        {
+          "address": "5wHuMPBDAbAtBQBdcHVeHNrLUgbayRkZ2pLQTiWEwDGV",
+          "pairId": "5wHuMPBDAbAtBQBdcHVeHNrLUgbayRkZ2pLQTiWEwDGV:1399811149",
+          "exchange": "Meteora",
+          "protocol": "Meteora",
+          "createdAt": 1754102777,
+          "liquidityUsd": 106,
+          "quoteToken": "TRUMP",
+          "quoteTokenAddress": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN"
+        },
+        {
+          "address": "9nEkFSygKJDJomqGbjJSvCTkhk2STwEVvvQ6NBN4KdXp",
+          "pairId": "9nEkFSygKJDJomqGbjJSvCTkhk2STwEVvvQ6NBN4KdXp:1399811149",
+          "exchange": "Meteora DAMM",
+          "protocol": "MeteoraDAMMV2",
+          "createdAt": 1768270650,
+          "liquidityUsd": 0,
+          "quoteToken": "SOL",
+          "quoteTokenAddress": "So11111111111111111111111111111111111111112"
+        }
+      ],
+      "truncated": false
+    }
+  },
+  {
+    "cls": "A516",
+    "id": 171437,
+    "mint": "5LfjZQ4nbx2Kkodksdr7e4tTZKhB3Tqk6bDQ43nGUNna",
+    "graduatedAt": 1715874646,
+    "rough": 115709971,
+    "ath": 0,
+    "launch": {
+      "mint": "5LfjZQ4nbx2Kkodksdr7e4tTZKhB3Tqk6bDQ43nGUNna",
+      "symbol": "BO",
+      "name": "Ebobo",
+      "createdAt": 1705691504,
+      "creator": "4qc7izVNATCu4kx6ZL3hKTxiw8YnQxriTLyV7hYC49ka",
+      "launchpadName": "Pump.fun",
+      "migrated": true,
+      "migratedAt": 1784826515,
+      "migratedPoolAddress": "6wjCCupn6QvAUXqetZwvUibZvKofLJcRmkGw6FMpSxo8",
+      "completed": true,
+      "completedAt": 1784826515,
+      "launchpadPoolAddress": null
+    },
+    "pools": {
+      "pools": [
+        {
+          "address": "NYaacrJc1tNmvJV5PCG2NiFpX6QrVwJaSPUD6iLLcyh",
+          "pairId": "NYaacrJc1tNmvJV5PCG2NiFpX6QrVwJaSPUD6iLLcyh:1399811149",
+          "exchange": "Pump",
+          "protocol": "Pump",
+          "createdAt": 1715308089,
+          "liquidityUsd": 0,
+          "quoteToken": "SOL",
+          "quoteTokenAddress": "So11111111111111111111111111111111111111112"
+        },
+        {
+          "address": "6wjCCupn6QvAUXqetZwvUibZvKofLJcRmkGw6FMpSxo8",
+          "pairId": "6wjCCupn6QvAUXqetZwvUibZvKofLJcRmkGw6FMpSxo8:1399811149",
+          "exchange": "PumpSwap",
+          "protocol": "PumpAmm",
+          "createdAt": 1784826515,
+          "liquidityUsd": 3796,
+          "quoteToken": "SOL",
+          "quoteTokenAddress": "So11111111111111111111111111111111111111112"
+        }
+      ],
+      "truncated": false
+    }
+  },
+  {
+    "cls": "B",
+    "id": 4339,
+    "mint": "ExbN9KVhLMZT1Pt6uEQ5eMyWdfbTAvdLP9cBTwaK8EHL",
+    "graduatedAt": 1710579446,
+    "rough": 187494604,
+    "ath": 1370194,
+    "launch": {
+      "mint": "ExbN9KVhLMZT1Pt6uEQ5eMyWdfbTAvdLP9cBTwaK8EHL",
+      "symbol": "$SORANA",
+      "name": "SkywalkerTrumpSOLMeowCat69Saga",
+      "createdAt": 1705615267,
+      "creator": "GcffMnwAX1tnAHBgcqgKVMbuPZFi2M4ccYUbzyDrXCui",
+      "launchpadName": null,
+      "migrated": null,
+      "migratedAt": null,
+      "migratedPoolAddress": null,
+      "completed": null,
+      "completedAt": null,
+      "launchpadPoolAddress": null
+    },
+    "pools": {
+      "pools": [
+        {
+          "address": "81kFmWDGhtKequR6XnPsjHcyWmRkDfdmuCgCxkqFEjVv",
+          "pairId": "81kFmWDGhtKequR6XnPsjHcyWmRkDfdmuCgCxkqFEjVv:1399811149",
+          "exchange": "Raydium",
+          "protocol": "RaydiumV4",
+          "createdAt": 1710979801,
+          "liquidityUsd": 8130,
+          "quoteToken": "SOL",
+          "quoteTokenAddress": "So11111111111111111111111111111111111111112"
+        },
+        {
+          "address": "7ZMKUUk847QvfmAy4q13Wqyy2CeBXDQbBRSdxQ6zueGq",
+          "pairId": "7ZMKUUk847QvfmAy4q13Wqyy2CeBXDQbBRSdxQ6zueGq:1399811149",
+          "exchange": "Raydium",
+          "protocol": "RaydiumV4",
+          "createdAt": 1710981837,
+          "liquidityUsd": 0,
+          "quoteToken": "SOL",
+          "quoteTokenAddress": "So11111111111111111111111111111111111111112"
+        },
+        {
+          "address": "45TMqeGeSgJVENzqQTfrU1hLLF3AASDcYVCHtcNfZV8X",
+          "pairId": "45TMqeGeSgJVENzqQTfrU1hLLF3AASDcYVCHtcNfZV8X:1399811149",
+          "exchange": "Meteora",
+          "protocol": "Meteora",
+          "createdAt": 1731178113,
+          "liquidityUsd": 15,
+          "quoteToken": "SOL",
+          "quoteTokenAddress": "So11111111111111111111111111111111111111112"
+        },
+        {
+          "address": "D4kMGKpsEW38EU9y9NGnNLD7q651tsznmNV3aS3SwEBz",
+          "pairId": "D4kMGKpsEW38EU9y9NGnNLD7q651tsznmNV3aS3SwEBz:1399811149",
+          "exchange": "Meteora DAMM",
+          "protocol": "MeteoraDAMMV2",
+          "createdAt": 1754508653,
+          "liquidityUsd": 0,
+          "quoteToken": "SOL",
+          "quoteTokenAddress": "So11111111111111111111111111111111111111112"
+        },
+        {
+          "address": "AVvj2qDd5g4WQ5WLnpiLLGNtwUgP3t2XVTzXQ36p5LkH",
+          "pairId": "AVvj2qDd5g4WQ5WLnpiLLGNtwUgP3t2XVTzXQ36p5LkH:1399811149",
+          "exchange": "Meteora DAMM",
+          "protocol": "MeteoraDAMMV2",
+          "createdAt": 1791986899,
+          "liquidityUsd": 6,
+          "quoteToken": "RNLD",
+          "quoteTokenAddress": "6VoGmoGsCP7eraJoXiQ6n3fTeJW4g6tap7cNRBEsXbD1"
+        }
+      ],
+      "truncated": false
+    }
+  },
+  {
+    "cls": "B",
+    "id": 142812,
+    "mint": "GnE4ENEezNzxLoxdfZa714KC8utWbqGnsT99DYCDpump",
+    "graduatedAt": 1741513427,
+    "rough": 1638871,
+    "ath": 45332,
+    "launch": {
+      "mint": "GnE4ENEezNzxLoxdfZa714KC8utWbqGnsT99DYCDpump",
+      "symbol": "401K",
+      "name": "401K",
+      "createdAt": 1741512030,
+      "creator": null,
+      "launchpadName": "Pump.fun",
+      "migrated": true,
+      "migratedAt": 1741513475,
+      "migratedPoolAddress": "8QNzskG2C5canu5aew4mNhB9bMoxQsbPnRG4iNobxqjb",
+      "completed": true,
+      "completedAt": 1741513475,
+      "launchpadPoolAddress": "FoXZ5m3iRt3Ny6d7G8HVgWjZRLxTtcZT9n6BzTjpfswr"
+    },
+    "pools": {
+      "pools": [
+        {
+          "address": "FoXZ5m3iRt3Ny6d7G8HVgWjZRLxTtcZT9n6BzTjpfswr",
+          "pairId": "FoXZ5m3iRt3Ny6d7G8HVgWjZRLxTtcZT9n6BzTjpfswr:1399811149",
+          "exchange": "Pump",
+          "protocol": "Pump",
+          "createdAt": 1741512029,
+          "liquidityUsd": 0,
+          "quoteToken": "SOL",
+          "quoteTokenAddress": "So11111111111111111111111111111111111111112"
+        },
+        {
+          "address": "4dvuaBvKuAJSZq9rHSj2d4nWiDuS96gLoG941wes6fDL",
+          "pairId": "4dvuaBvKuAJSZq9rHSj2d4nWiDuS96gLoG941wes6fDL:1399811149",
+          "exchange": "Raydium",
+          "protocol": "RaydiumV4",
+          "createdAt": 1741513525,
+          "liquidityUsd": 3983,
+          "quoteToken": "SOL",
+          "quoteTokenAddress": "So11111111111111111111111111111111111111112"
+        },
+        {
+          "address": "8QNzskG2C5canu5aew4mNhB9bMoxQsbPnRG4iNobxqjb",
+          "pairId": "8QNzskG2C5canu5aew4mNhB9bMoxQsbPnRG4iNobxqjb:1399811149",
+          "exchange": "PumpSwap",
+          "protocol": "PumpAmm",
+          "createdAt": 1743822526,
+          "liquidityUsd": 5,
+          "quoteToken": "GOLD",
+          "quoteTokenAddress": "9YnfbEaXPaPmoXnKZFmNH8hzcLyjbRf56MQP7oqGpump"
+        },
+        {
+          "address": "BSumZPtJPAZoRYnMfUqYDHHCEoz9hUTFbCLDmySQCvMq",
+          "pairId": "BSumZPtJPAZoRYnMfUqYDHHCEoz9hUTFbCLDmySQCvMq:1399811149",
+          "exchange": "Raydium CLMM",
+          "protocol": "RaydiumClmm",
+          "createdAt": 1743827085,
+          "liquidityUsd": 3,
+          "quoteToken": "SOL",
+          "quoteTokenAddress": "So11111111111111111111111111111111111111112"
+        },
+        {
+          "address": "5q1iBjvoeugr3V76qWowHWpUKzoF5kwpimxTzcztuqr5",
+          "pairId": "5q1iBjvoeugr3V76qWowHWpUKzoF5kwpimxTzcztuqr5:1399811149",
+          "exchange": "Meteora",
+          "protocol": "Meteora",
+          "createdAt": 1743827690,
+          "liquidityUsd": 75,
+          "quoteToken": "SOL",
+          "quoteTokenAddress": "So11111111111111111111111111111111111111112"
+        },
+        {
+          "address": "6SbnV39Wub24Pgd5pZKGoDgTwSUMEUSYhceo27n4cdfP",
+          "pairId": "6SbnV39Wub24Pgd5pZKGoDgTwSUMEUSYhceo27n4cdfP:1399811149",
+          "exchange": "Raydium CLMM",
+          "protocol": "RaydiumClmm",
+          "createdAt": 1743845131,
+          "liquidityUsd": 3,
+          "quoteToken": "SOL",
+          "quoteTokenAddress": "So11111111111111111111111111111111111111112"
+        },
+        {
+          "address": "5JGK1KUaGMpBkA5dmjMejfNMb7aGevzEA9ohawW4KJou",
+          "pairId": "5JGK1KUaGMpBkA5dmjMejfNMb7aGevzEA9ohawW4KJou:1399811149",
+          "exchange": "Meteora",
+          "protocol": "Meteora",
+          "createdAt": 1743859605,
+          "liquidityUsd": 936,
+          "quoteToken": "SOL",
+          "quoteTokenAddress": "So11111111111111111111111111111111111111112"
+        },
+        {
+          "address": "YBuoGrf2dgF7wyeG3P7R2djALoRvGUJZAu639zZMDuh",
+          "pairId": "YBuoGrf2dgF7wyeG3P7R2djALoRvGUJZAu639zZMDuh:1399811149",
+          "exchange": "Meteora DAMM",
+          "protocol": "MeteoraDAMMV2",
+          "createdAt": 1754561453,
+          "liquidityUsd": 0,
+          "quoteToken": "SOL",
+          "quoteTokenAddress": "So11111111111111111111111111111111111111112"
+        }
+      ],
+      "truncated": false
+    }
+  },
+  {
+    "cls": "B",
+    "id": 248937,
+    "mint": "D1soEK6sWxbVfcyCANqLxRQoG33u7aMBLhTAcB1diZDv",
+    "graduatedAt": 1709873313,
+    "rough": 2215411194,
+    "ath": 502566,
+    "launch": {
+      "mint": "D1soEK6sWxbVfcyCANqLxRQoG33u7aMBLhTAcB1diZDv",
+      "symbol": "VAMPIRE",
+      "name": "Vampire Inu",
+      "createdAt": 1706823763,
+      "creator": "cBguppZtRnLxD48F7HNFYPYWqgG19CN8GEPn2FxFtK3",
+      "launchpadName": null,
+      "migrated": null,
+      "migratedAt": null,
+      "migratedPoolAddress": null,
+      "completed": null,
+      "completedAt": null,
+      "launchpadPoolAddress": null
+    },
+    "pools": {
+      "pools": [
+        {
+          "address": "2eEXwsdpYpvcRRWJFNsEP12Vp72Gqx9KZyAsvPQsrga7",
+          "pairId": "2eEXwsdpYpvcRRWJFNsEP12Vp72Gqx9KZyAsvPQsrga7:1399811149",
+          "exchange": "Raydium",
+          "protocol": "RaydiumV4",
+          "createdAt": 1710954806,
+          "liquidityUsd": 10085,
+          "quoteToken": "SOL",
+          "quoteTokenAddress": "So11111111111111111111111111111111111111112"
+        },
+        {
+          "address": "AEfu1Li3ajUnBNRUyJApos69gmyUthJcct8u5ovJtShJ",
+          "pairId": "AEfu1Li3ajUnBNRUyJApos69gmyUthJcct8u5ovJtShJ:1399811149",
+          "exchange": "Raydium",
+          "protocol": "RaydiumV4",
+          "createdAt": 1716702672,
+          "liquidityUsd": 0,
+          "quoteToken": "SOL",
+          "quoteTokenAddress": "So11111111111111111111111111111111111111112"
+        }
+      ],
+      "truncated": false
+    }
+  }
+]

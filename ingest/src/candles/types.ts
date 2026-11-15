@@ -84,6 +84,11 @@ export interface CandleFetchSummary {
   /** Pools stored by a refresh (`refreshPools`) that the coin did not hold before; 0 otherwise. */
   poolsAdded: number;
   /**
+   * The graduation role was moved to another pool of the coin in this run (the pool list showed a
+   * pool created at the migration where another one held the role). Metrics reopen.
+   */
+  graduationMoved: boolean;
+  /**
    * Launch info named the graduation pool, so no pool-list lookup was needed at stage 0. False
    * when stage 0 had to list the pools. Null when stage 0 did not happen in this run.
    */

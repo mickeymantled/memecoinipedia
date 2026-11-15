@@ -239,6 +239,53 @@ export async function resolveCoinRefs(
   return { ids: [...ids.values()].filter((x): x is number => x !== null), unknown };
 }
 
+/** Rules that pick coins from the database alone (`selectCoinsByRule`). */
+export const COIN_RULES = ['late-graduation-pool'] as const;
+export type CoinRule = (typeof COIN_RULES)[number];
+
+/** Default for `late-graduation-pool`: `maxGraduationPoolDelaySeconds` of the candle plan. */
+export const DEFAULT_GRADUATION_POOL_DELAY_SEC = 3_600;
+
+/**
+ * Coin ids picked by a rule, from stored data only (no provider is asked), ascending.
+ *
+ * `late-graduation-pool`: a coin whose graduation pool was created more than `maxDelaySeconds`
+ * after the coin's graduation time (both known), or whose candles stage is done and that holds no
+ * graduation pool. A pool or a coin with no time is never late.
+ */
+export async function selectCoinsByRule(
+  db: Kysely<Database>,
+  rule: CoinRule,
+  options: { chain?: string; maxDelaySeconds?: number } = {},
+): Promise<number[]> {
+  const chain = options.chain ?? 'solana';
+  const maxDelay = options.maxDelaySeconds ?? DEFAULT_GRADUATION_POOL_DELAY_SEC;
+  if (rule !== 'late-graduation-pool') throw new Error(`Unknown rule "${String(rule)}"`);
+  const r = await sql<{ id: string }>`
+    select c.id::text as id
+    from coins c
+    where c.chain = ${chain}
+      and (
+        exists (
+          select 1 from pools p
+          where p.coin_id = c.id and p.is_graduation_pool
+            and p.created_at_chain is not null and c.graduated_at is not null
+            and extract(epoch from (p.created_at_chain - c.graduated_at)) > ${maxDelay}
+        )
+        or (
+          exists (
+            select 1 from coin_stages s
+            where s.coin_id = c.id and s.stage = 'candles' and s.status = 'done'
+          )
+          and not exists (
+            select 1 from pools p where p.coin_id = c.id and p.is_graduation_pool
+          )
+        )
+      )
+    order by c.id`.execute(db);
+  return r.rows.map((x) => Number(x.id));
+}
+
 /** Resolves the limit into a key (an index walk of `limit` rows) and counts the selection. */
 export async function resolveSelection(
   db: Kysely<Database>,

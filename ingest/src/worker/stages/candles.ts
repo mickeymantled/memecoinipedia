@@ -14,8 +14,8 @@
  *   coin is fetched twice.
  * - A per-coin `detail` on the stage row (see `candlesDetail`).
  *
- * Data issues: the fetcher finds `graduation_pool_not_found`, `candle_hourly_cap_hit` and
- * `peak_refinement_incomplete` and returns them; the stage writes them with `replaceCoinIssues`.
+ * Data issues: the fetcher finds `graduation_pool_not_found`, `graduation_pool_late`,
+ * `candle_hourly_cap_hit` and `peak_refinement_incomplete` and returns them; the stage writes them with `replaceCoinIssues`.
  * They belong to this stage (`CANDLES_ISSUE_KINDS`), and no other stage writes or removes them.
  * A run replaces only the kinds it examined to the end (`issueKindsChecked`), so one that finds
  * no hourly cap hit clears an old `candle_hourly_cap_hit`, while a run that did not list the
@@ -33,6 +33,7 @@ export const CANDLES_TIMEOUT_SECONDS = 600;
 /** Issue kinds the candles stage owns. */
 export const CANDLES_ISSUE_KINDS = [
   'graduation_pool_not_found',
+  'graduation_pool_late',
   'candle_hourly_cap_hit',
   'peak_refinement_incomplete',
 ] as const;
@@ -63,6 +64,8 @@ export interface CandlesDetail extends Record<string, unknown> {
   poolsTakenOver: number;
   /** Pools a refresh added to the coin's list. Their bars are fetched, and metrics reopen. */
   poolsAdded: number;
+  /** The refresh moved the graduation role to another pool; metrics reopen. */
+  graduationMoved: boolean;
   hourlyCapHit: boolean;
   /**
    * The `METRICS_VERSION` the fetch's peak refinement ran under. The metrics stage reopens a coin
@@ -87,6 +90,7 @@ export function candlesDetail(summary: CandleFetchSummary): CandlesDetail {
     otherQuotePools: summary.otherQuotePools,
     poolsTakenOver: summary.poolsTakenOver,
     poolsAdded: summary.poolsAdded,
+    graduationMoved: summary.graduationMoved,
     hourlyCapHit: summary.hourlyCapHit,
     metricsVersion: METRICS_VERSION,
   };
@@ -161,7 +165,9 @@ export function createCandlesStage(deps: CandlesStageDeps): CandlesStage {
       if (result.ok) {
         const detail = candlesDetail(result.summary);
         // Pools were added or moved in: the coin's metrics were computed without them.
-        return result.summary.poolsAdded > 0 ? doneAndReopen(detail, ['metrics']) : done(detail);
+        return result.summary.poolsAdded > 0 || result.summary.graduationMoved
+          ? doneAndReopen(detail, ['metrics'])
+          : done(detail);
       }
       if (result.reason === 'budget_exhausted') {
         stop(result.message);

@@ -47,7 +47,23 @@ export function isBondingCurvePool(pool: Pick<PoolInfo, 'protocol' | 'exchange'>
   return /pump/i.test(protocol) && !/amm/i.test(protocol) && !/amm|swap|raydium/i.test(exchange);
 }
 
-export type GraduationPoolSource = 'migrated_pool_address' | 'closest_to_migration';
+export type GraduationPoolSource =
+  | 'migrated_pool_address'
+  | 'closest_to_migration'
+  /** The named pool was created far from the migration; this one was created within the distance. */
+  | 'created_at_migration';
+
+/** How far a chosen graduation pool's creation is from the migration, when that is too far. */
+export interface LateGraduationPool {
+  /** Absolute distance between the pool's creation and the migration, seconds. */
+  distanceSec: number;
+  /** The distance allowed (`maxGraduationPoolDelaySeconds`). */
+  maxDelaySec: number;
+  /** The pool's exchange as Codex.io reports it, or null. */
+  venue: string | null;
+  /** How the pool was chosen. */
+  source: GraduationPoolSource;
+}
 
 export interface GraduationPick {
   address: string;
@@ -62,19 +78,31 @@ export interface GraduationPick {
    * the pick as unverified. Always false for a migrated pool address.
    */
   truncated: boolean;
+  /**
+   * Set when `maxGraduationPoolDelaySeconds` was given, the migration time and the pool's creation
+   * time are known, and no pool lies within the distance. A pool with no creation time is never late.
+   */
+  late?: LateGraduationPool;
 }
 
 /**
- * Chooses the pool the coin graduated into.
+ * Chooses the pool the coin graduated into: the pool created at the migration.
  *
- * 1. When Codex gives a migrated pool address (it does for coins from about
- *    March 2025), use it, even if the pairs list does not contain it.
- * 2. Otherwise (the address is null for most earlier coins) take the pool that
- *    is not the bonding curve and whose creation time is closest to the
- *    migration time. Ties go to the earlier pool. When the migration time is
- *    unknown, the earliest non-curve pool wins. Pools without a creation time
- *    are only used when nothing else exists.
- * 3. Returns null when no candidate exists.
+ * 1. When Codex gives a migrated pool address (it does for coins from about March 2025) and that
+ *    pool was created within `maxGraduationPoolDelaySeconds` of the migration time, or has no
+ *    creation time, or is not in the list, use it (source `migrated_pool_address`).
+ * 2. A named pool created further away: when another pool, not the bonding curve, was created
+ *    within the distance, the one closest to the migration time (ties to the earlier) is the
+ *    graduation pool (source `created_at_migration`). When none is, the named pool stands and
+ *    `late` says how far away it is.
+ * 3. No migrated pool address (null for most earlier coins): the pool that is not the bonding
+ *    curve and whose creation time is closest to the migration time. Ties go to the earlier pool.
+ *    When the migration time is unknown, the earliest non-curve pool wins. Pools without a
+ *    creation time are only used when nothing else exists. `late` is set when that pool is further
+ *    away than the distance.
+ * 4. Returns null when no candidate exists.
+ *
+ * Without `maxGraduationPoolDelaySeconds` a named pool is always kept and `late` is never set.
  */
 export function pickGraduationPool(args: {
   pools: readonly PoolInfo[];
@@ -82,31 +110,68 @@ export function pickGraduationPool(args: {
   migratedAt: number | null | undefined;
   /** `PoolsResult.truncated` of the list passed in. */
   truncated?: boolean;
+  /** How far from the migration a pool may be created and still be the graduation pool. */
+  maxGraduationPoolDelaySeconds?: number;
 }): GraduationPick | null {
   const { pools, migratedPoolAddress, migratedAt } = args;
+  const maxDelay = args.maxGraduationPoolDelaySeconds;
   const migrationTime = migratedAt ?? null;
   const deltaOf = (p: PoolInfo | null): number | null =>
     p && p.createdAt !== null && migrationTime !== null ? p.createdAt - migrationTime : null;
+  /** `{ late }` when the pool is further from the migration than allowed, else nothing. */
+  const lateOf = (
+    p: PoolInfo | null,
+    source: GraduationPoolSource,
+  ): { late: LateGraduationPool } | Record<string, never> => {
+    const delta = deltaOf(p);
+    if (maxDelay === undefined || delta === null || Math.abs(delta) <= maxDelay) return {};
+    return {
+      late: {
+        distanceSec: Math.abs(delta),
+        maxDelaySec: maxDelay,
+        venue: p?.exchange ?? null,
+        source,
+      },
+    };
+  };
+  const byDistance = (a: PoolInfo, b: PoolInfo): number => {
+    const da = a.createdAt === null ? Infinity : distance(a.createdAt, migrationTime);
+    const db = b.createdAt === null ? Infinity : distance(b.createdAt, migrationTime);
+    if (da !== db) return da - db;
+    return (a.createdAt ?? Infinity) - (b.createdAt ?? Infinity);
+  };
 
   if (migratedPoolAddress) {
     const pool = pools.find((p) => p.address === migratedPoolAddress) ?? null;
-    return {
+    const named: GraduationPick = {
       address: migratedPoolAddress,
       source: 'migrated_pool_address',
       pool,
       deltaToMigrationSec: deltaOf(pool),
+      truncated: false,
+      ...lateOf(pool, 'migrated_pool_address'),
+    };
+    if (named.late === undefined || maxDelay === undefined) return named;
+    const near = pools
+      .filter((p) => p.address !== migratedPoolAddress && !isBondingCurvePool(p))
+      .filter((p) => {
+        const delta = deltaOf(p);
+        return delta !== null && Math.abs(delta) <= maxDelay;
+      })
+      .sort(byDistance)[0];
+    if (!near) return named;
+    return {
+      address: near.address,
+      source: 'created_at_migration',
+      pool: near,
+      deltaToMigrationSec: deltaOf(near),
       truncated: false,
     };
   }
 
   const candidates = pools.filter((p) => !isBondingCurvePool(p));
   const dated = candidates.filter((p) => p.createdAt !== null);
-  const pool = (dated.length > 0 ? dated : candidates).slice().sort((a, b) => {
-    const da = a.createdAt === null ? Infinity : distance(a.createdAt, migrationTime);
-    const db = b.createdAt === null ? Infinity : distance(b.createdAt, migrationTime);
-    if (da !== db) return da - db;
-    return (a.createdAt ?? Infinity) - (b.createdAt ?? Infinity);
-  })[0];
+  const pool = (dated.length > 0 ? dated : candidates).slice().sort(byDistance)[0];
   if (!pool) return null;
   return {
     address: pool.address,
@@ -114,6 +179,7 @@ export function pickGraduationPool(args: {
     pool,
     deltaToMigrationSec: deltaOf(pool),
     truncated: args.truncated ?? false,
+    ...lateOf(pool, 'closest_to_migration'),
   };
 }
 

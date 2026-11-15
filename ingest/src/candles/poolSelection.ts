@@ -28,12 +28,18 @@ export interface PoolSelection {
    */
   otherQuotePools: number;
   /** Data issues the caller should record. */
-  issues: { kind: 'graduation_pool_not_found'; detail: Record<string, unknown> }[];
+  issues: {
+    kind: 'graduation_pool_not_found' | 'graduation_pool_late';
+    detail: Record<string, unknown>;
+  }[];
 }
+
+const DEFAULT_GRADUATION_DELAY_SEC = 3_600;
 
 export interface SelectPoolsArgs {
   pools: PoolsResult;
   migratedPoolAddress: string | null;
+  /** The migration time: Codex.io's `migratedAt`, else the coin's stored graduation time. */
   migratedAt: number | null;
   /** Codex.io's `launchpad.migrated`. */
   migrated: boolean | null;
@@ -41,14 +47,19 @@ export interface SelectPoolsArgs {
   minSecondaryPoolLiquidityUsd: number;
   /** At most this many other pools. */
   maxSecondaryPools: number;
+  /** `maxGraduationPoolDelaySeconds` of the plan limits. Default 3,600. */
+  maxGraduationPoolDelaySeconds?: number;
 }
 
 /**
  * Splits the pool list into the bonding curve, the graduation pool and the
  * other pools worth fetching.
  *
- * Graduation pool: Codex.io's migrated pool address when it gives one, else the
- * non-curve pool created closest to the migration time (`pickGraduationPool`).
+ * Graduation pool: the pool created at the migration (`pickGraduationPool`). Codex.io's migrated
+ * pool address when that pool was created within `maxGraduationPoolDelaySeconds` of the migration;
+ * else the non-curve pool created within that distance and closest to the migration time; else (no
+ * pool within the distance) the named pool or the closest one as before, with a
+ * `graduation_pool_late` issue. A named pool passed over is an ordinary other pool below.
  *
  * The curve and the graduation pool are kept whatever their quote token: since September 2026
  * pump.fun coins launch against many quote tokens.
@@ -60,9 +71,10 @@ export interface SelectPoolsArgs {
  * that held liquidity once and is drained now is left out; that is the price of
  * bounding the cost.
  *
- * When the list was cut off at 250 or the coin is known to have graduated, and
- * no graduation pool is found, an issue of kind `graduation_pool_not_found` is
- * returned and the rest of the selection carries on with what there is.
+ * When the coin is known to have graduated (`migrated` true; the caller passes true for a coin
+ * whose graduation time is stored) or the list was cut off at 250, and no graduation pool is
+ * found, an issue of kind `graduation_pool_not_found` is returned, cut off or not, and the rest of
+ * the selection carries on with what there is.
  */
 export function selectPools(args: SelectPoolsArgs): PoolSelection {
   const { pools: result } = args;
@@ -76,6 +88,8 @@ export function selectPools(args: SelectPoolsArgs): PoolSelection {
     migratedPoolAddress: args.migratedPoolAddress,
     migratedAt: args.migratedAt,
     truncated: result.truncated,
+    maxGraduationPoolDelaySeconds:
+      args.maxGraduationPoolDelaySeconds ?? DEFAULT_GRADUATION_DELAY_SEC,
   });
   const graduation = pick
     ? {
@@ -102,6 +116,17 @@ export function selectPools(args: SelectPoolsArgs): PoolSelection {
   const others = liquid.slice(0, args.maxSecondaryPools);
 
   const issues: PoolSelection['issues'] = [];
+  if (pick?.late) {
+    issues.push({
+      kind: 'graduation_pool_late',
+      detail: {
+        distanceSec: pick.late.distanceSec,
+        maxDelaySec: pick.late.maxDelaySec,
+        venue: pick.late.venue,
+        source: pick.late.source,
+      },
+    });
+  }
   if (!graduation && (result.truncated || args.migrated === true)) {
     issues.push({
       kind: 'graduation_pool_not_found',

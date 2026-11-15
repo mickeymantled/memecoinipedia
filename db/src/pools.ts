@@ -148,6 +148,148 @@ export async function takeOverPool(
   });
 }
 
+/** Two coins hold the same pool as their own curve or graduation pool. */
+export class PoolClaimedByTwoCoinsError extends Error {
+  constructor(
+    readonly address: string,
+    readonly coinId: number,
+    readonly ownerCoinId: number,
+  ) {
+    super(
+      `Pool ${address} is the curve or graduation pool of both coin ${coinId} and coin ${ownerCoinId}`,
+    );
+    this.name = 'PoolClaimedByTwoCoinsError';
+  }
+}
+
+export interface MoveGraduationPoolResult {
+  /** False when the pool already was the coin's one graduation pool: nothing changed. */
+  moved: boolean;
+  /** The pool that held the role before and no longer does, or null. */
+  previousAddress: string | null;
+  /** The pool was stored by this call (it was not held by any coin). */
+  inserted: boolean;
+  /** The pool was moved here from a coin that held it as an ordinary other pool. */
+  previousOwnerCoinId: number | null;
+}
+
+/**
+ * Makes `pool` the coin's graduation pool, in one transaction. Before and after, the coin has at
+ * most one graduation pool. Rows are locked: the coin's pools, then the target.
+ *
+ * - The pool is not stored: it is inserted for the coin.
+ * - Another coin holds it as an ordinary other pool (not primary, not graduation): it is taken over
+ *   as `takeOverPool` does, its bars and coverage moving with it, and that coin's metrics stage goes
+ *   back to pending. Another coin holding it as its own curve or graduation pool:
+ *   `PoolClaimedByTwoCoinsError`, nothing written.
+ * - The coin's pool that held the role loses it and `is_primary` and stays stored (an ordinary
+ *   other pool; `poolCountsForMetrics` decides whether its bars count). Nothing is deleted.
+ * - The coin's metrics stage goes back to pending (zero attempts) when it is done or skipped,
+ *   because its inputs changed.
+ *
+ * The pool's dex, quote token, creation time and pair id are set to what `pool` says.
+ * `pool.isPrimary` and `pool.isGraduationPool` are ignored: the role is the point.
+ */
+export async function moveGraduationPool(
+  db: Kysely<Database>,
+  pool: PoolInput,
+  now: Date,
+): Promise<MoveGraduationPoolResult> {
+  return db.transaction().execute(async (trx) => {
+    const mine = await trx
+      .selectFrom('pools')
+      .selectAll()
+      .where('coin_id', '=', pool.coinId)
+      .orderBy('id')
+      .forUpdate()
+      .execute();
+    const holders = mine.filter((p) => p.is_graduation_pool);
+    if (
+      holders.length === 1 &&
+      holders[0]!.address === pool.address &&
+      holders[0]!.chain === pool.chain
+    ) {
+      return { moved: false, previousAddress: null, inserted: false, previousOwnerCoinId: null };
+    }
+    await trx
+      .insertInto('pools')
+      .values({
+        chain: pool.chain,
+        address: pool.address,
+        coin_id: pool.coinId,
+        dex: pool.dex,
+        is_primary: true,
+        is_graduation_pool: true,
+        quote_token: pool.quoteToken ?? null,
+        created_at_chain: toDate(pool.createdAtChain),
+        source_pair_id: pool.sourcePairId ?? null,
+      })
+      .onConflict((oc) => oc.columns(['chain', 'address']).doNothing())
+      .execute();
+    const target = await trx
+      .selectFrom('pools')
+      .selectAll()
+      .where('chain', '=', pool.chain)
+      .where('address', '=', pool.address)
+      .forUpdate()
+      .executeTakeFirstOrThrow();
+    const inserted = !mine.some((p) => p.id === target.id) && target.coin_id === pool.coinId;
+    let previousOwnerCoinId: number | null = null;
+    if (target.coin_id !== pool.coinId) {
+      if (target.is_primary || target.is_graduation_pool) {
+        throw new PoolClaimedByTwoCoinsError(pool.address, pool.coinId, target.coin_id);
+      }
+      previousOwnerCoinId = target.coin_id;
+      await trx
+        .updateTable('coin_stages')
+        .set({ status: 'pending', attempts: 0, updated_at: now })
+        .where('coin_id', '=', target.coin_id)
+        .where('stage', '=', 'metrics')
+        .where('status', 'in', ['done', 'skipped'])
+        .execute();
+    }
+    const previous = holders.filter((p) => p.id !== target.id);
+    if (previous.length > 0) {
+      await trx
+        .updateTable('pools')
+        .set({ is_primary: false, is_graduation_pool: false, updated_at: sql`now()` })
+        .where(
+          'id',
+          'in',
+          previous.map((p) => p.id),
+        )
+        .execute();
+    }
+    await trx
+      .updateTable('pools')
+      .set({
+        coin_id: pool.coinId,
+        dex: pool.dex,
+        is_primary: true,
+        is_graduation_pool: true,
+        quote_token: pool.quoteToken ?? null,
+        created_at_chain: toDate(pool.createdAtChain),
+        source_pair_id: pool.sourcePairId ?? null,
+        updated_at: sql`now()`,
+      })
+      .where('id', '=', target.id)
+      .execute();
+    await trx
+      .updateTable('coin_stages')
+      .set({ status: 'pending', attempts: 0, updated_at: now })
+      .where('coin_id', '=', pool.coinId)
+      .where('stage', '=', 'metrics')
+      .where('status', 'in', ['done', 'skipped'])
+      .execute();
+    return {
+      moved: true,
+      previousAddress: previous[0]?.address ?? null,
+      inserted,
+      previousOwnerCoinId,
+    };
+  });
+}
+
 /** Every pool of a coin, oldest id first. */
 export async function getCoinPools(db: Kysely<Database>, coinId: number): Promise<StoredPool[]> {
   const rows = await db

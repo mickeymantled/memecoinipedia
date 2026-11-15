@@ -17,7 +17,15 @@
  *   FILE has one coin id or mint address a line. Each coin's candles stage lists the pools again,
  *   stores the ones not held (side pools only when quoted in SOL, USDC or USDT), fetches bars for
  *   them and no bar twice; a coin that gained a pool has its metrics put back to pending.
- *   It refuses to run without --coins.
+ *   It refuses to run without --coins or --rule.
+ *   --rule NAME picks the coins from the database instead of a file; the rule is
+ *   late-graduation-pool: a graduation pool created more than 3,600 seconds after the coin's
+ *   graduation time, or no graduation pool on a coin whose candles are done. It asks no provider.
+ *     tsx scripts/backfill.ts run --refresh-pools --rule late-graduation-pool [--confirm ...]
+ *
+ *   Print the coins a rule picks, one id a line, to a file for --coins (no provider call, no write;
+ *   the count goes to stderr):
+ *     tsx scripts/backfill.ts select --rule late-graduation-pool > coins.txt
  *
  *   What is running, and how far: tsx scripts/backfill-status.ts
  *
@@ -33,7 +41,8 @@
  * carries on; nothing is fetched twice.
  */
 import { parseArgs } from 'node:util';
-import { createDb } from '@memecoinipedia/db';
+import { COIN_RULES, createDb, selectCoinsByRule, type CoinRule } from '@memecoinipedia/db';
+import { DEFAULT_PLAN_LIMITS } from '../src/candles/plan.js';
 import { BACKFILL_STAGES, type BackfillStageName } from '../src/backfill/setup.js';
 import { DEFAULT_MIN_ROUGH_PEAK_USD } from '../src/backfill/defaults.js';
 import { runBackfill } from '../src/backfill/run.js';
@@ -51,7 +60,9 @@ function usage(message?: string): never {
       '                       [--metadata-concurrency N] [--db-pool N] [--queue-pool N]\n' +
       '                       [--gateway-rps N] [--max-attempts N] [--retry-failed]\n' +
       '                       [--max-codex-units N] [--max-helius-credits N] [--confirm]\n' +
-      '       backfill.ts run --refresh-pools --coins FILE [--max-codex-units N] [--confirm]\n',
+      '       backfill.ts run --refresh-pools (--coins FILE | --rule late-graduation-pool)\n' +
+      '                       [--max-codex-units N] [--confirm]\n' +
+      '       backfill.ts select --rule late-graduation-pool\n',
   );
   process.exit(message ? 2 : 0);
 }
@@ -67,7 +78,7 @@ function positive(name: string, value: string | undefined, integer = true): numb
 
 async function main(): Promise<void> {
   const [command, ...rest] = process.argv.slice(2);
-  if (command !== 'seed' && command !== 'run')
+  if (command !== 'seed' && command !== 'run' && command !== 'select')
     usage(command ? `Unknown command "${command}"` : undefined);
   const { values } = parseArgs({
     args: rest,
@@ -91,6 +102,7 @@ async function main(): Promise<void> {
       'max-helius-credits': { type: 'string' },
       'refresh-pools': { type: 'boolean', default: false },
       coins: { type: 'string' },
+      rule: { type: 'string' },
       'retry-failed': { type: 'boolean', default: false },
       confirm: { type: 'boolean', default: false },
       help: { type: 'boolean', default: false },
@@ -123,10 +135,41 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (values['refresh-pools'] && !values.coins) {
-    usage('--refresh-pools needs a coin selection: --coins FILE (one coin id or address a line)');
+  let rule: CoinRule | undefined;
+  if (values.rule !== undefined) {
+    if (!(COIN_RULES as readonly string[]).includes(values.rule)) {
+      usage(`Unknown rule "${values.rule}" (known: ${COIN_RULES.join(', ')})`);
+    }
+    rule = values.rule as CoinRule;
   }
-  if (values.coins && !values['refresh-pools']) usage('--coins is only used with --refresh-pools');
+
+  if (command === 'select') {
+    if (!rule) usage('select needs --rule NAME');
+    const url = process.env['DATABASE_URL'];
+    if (!url) usage('DATABASE_URL is not set');
+    const db = createDb(url, { max: 2 });
+    try {
+      const ids = await selectCoinsByRule(db, rule, {
+        maxDelaySeconds: DEFAULT_PLAN_LIMITS.maxGraduationPoolDelaySeconds,
+      });
+      for (const id of ids) out(String(id));
+      process.stderr.write(`${ids.length} coins picked by ${rule}\n`);
+    } finally {
+      await db.destroy();
+    }
+    return;
+  }
+
+  if (values['refresh-pools'] && !values.coins && !rule) {
+    usage(
+      '--refresh-pools needs a coin selection: --coins FILE (one coin id or address a line) ' +
+        'or --rule late-graduation-pool',
+    );
+  }
+  if (values.coins && rule) usage('--coins and --rule are alternatives: give one');
+  if ((values.coins || rule) && !values['refresh-pools']) {
+    usage('--coins and --rule are only used with --refresh-pools');
+  }
   const order = values.order ?? 'peak';
   if (order !== 'peak' && order !== 'hash') usage('--order is peak or hash');
   const stages = (
@@ -176,6 +219,7 @@ async function main(): Promise<void> {
     ...(values['refresh-pools'] && values.coins
       ? { refreshPools: { coinsFile: values.coins } }
       : {}),
+    ...(values['refresh-pools'] && rule ? { refreshPools: { rule } } : {}),
     confirm: values.confirm,
     env: process.env,
     log,

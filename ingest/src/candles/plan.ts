@@ -111,6 +111,11 @@ export interface PlanLimits {
   maxRefinementRequests: number;
   /** Liquidity a secondary pool needs, USD. Default 5,000 (docs/metrics.md section 2). */
   minSecondaryPoolLiquidityUsd: number;
+  /**
+   * How far from the migration a pool's creation may be and still be the graduation pool, seconds.
+   * Default 3,600 (docs/data-sources.md, "How the graduation pool is chosen").
+   */
+  maxGraduationPoolDelaySeconds: number;
 }
 
 export const DEFAULT_PLAN_LIMITS: PlanLimits = {
@@ -127,6 +132,7 @@ export const DEFAULT_PLAN_LIMITS: PlanLimits = {
   maxHourlyRequestsFull: 24,
   maxRefinementRequests: 12,
   minSecondaryPoolLiquidityUsd: 5_000,
+  maxGraduationPoolDelaySeconds: 3_600,
 };
 
 /**
