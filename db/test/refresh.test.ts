@@ -18,7 +18,6 @@ import { describe } from 'vitest';
 const NOW = new Date('2026-11-15T10:00:00Z');
 const DAYSEC = 86_400;
 const ago = (seconds: number) => new Date(NOW.getTime() - seconds * 1000);
-const sec = (d: Date) => Math.floor(d.getTime() / 1000);
 
 describe('statusFromEvidence', () => {
   const base = { rugPattern: false, lastAliveAt: null, hasWeekOfHistory: true, now: 1_000_000_000 };

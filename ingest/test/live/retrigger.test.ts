@@ -16,7 +16,6 @@ import {
   worldCoin,
   type LiveFixture,
   type WorldCoin,
-  type WorldStats,
 } from './helpers.js';
 
 let fx: LiveFixture | undefined;
@@ -28,7 +27,6 @@ afterEach(async () => {
 const MIN = 60;
 const HOUR = 3_600;
 const DAY = 86_400;
-type Bar = WorldStats['bars'][number];
 
 /** A coin in the world and in `coins`, graduated `ageSeconds` ago. */
 async function addCoin(

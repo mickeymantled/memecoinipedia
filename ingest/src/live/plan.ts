@@ -8,10 +8,13 @@
  * in `constants.ts`, and works out the passes and requests those imply.
  */
 import {
+  countListedCoins,
+  countTopUp,
   countWatchedByAge,
   getLiveState,
   latestGraduatedAt,
   type Database,
+  type TopUpCounts,
   type WatchedCounts,
 } from '@memecoinipedia/db';
 import { sql, type Kysely } from 'kysely';
@@ -26,6 +29,12 @@ import {
   DISCOVERY_OVERLAP_SECONDS,
   DISCOVERY_PAGE_SIZE,
   DISCOVERY_WINDOW_SECONDS,
+  JUPITER_FREE_RPS,
+  REFRESH_LISTED_USD,
+  REFRESH_MINTS_PER_REQUEST,
+  ASSUMED_LISTED_COINS,
+  TOPUP_STOP_SHARE,
+  UNITS_PER_TOPUP,
   STATE_DISCOVERY_CURSOR,
   SWEEP_REREAD_SECONDS,
   UNITS_PER_LAST_LOOK,
@@ -41,6 +50,7 @@ import {
   WATCH_PASS_SECONDS,
 } from './constants.js';
 import type { Cursor } from './discover.js';
+import { topUpSpec } from './topup.js';
 import { watchSpec } from './util.js';
 
 const DAY = 86_400;
@@ -63,7 +73,15 @@ export interface LiveLoad {
     requests: number;
     units: number;
   };
-  jupiter: { watchRequests: number; metadataRequests: number; requests: number };
+  jupiter: {
+    watchRequests: number;
+    /** The daily refresh of every listed coin, 100 mints a request. */
+    refreshRequests: number;
+    metadataRequests: number;
+    requests: number;
+    /** Requests a day the free rate allows (`JUPITER_FREE_RPS` all day). */
+    freeRateRequests: number;
+  };
   helius: { requests: number; credits: number };
 }
 
@@ -86,7 +104,12 @@ function discoveryCost(rows: number, windows: number): { requests: number; units
  * more by the last look at 13 days (the coins that are not listed), and again whenever it
  * reaches a new high (the allowance for later triggers).
  */
-export function predictLoad(o: { graduatesPerDay: number; triggerShare?: number }): LiveLoad {
+export function predictLoad(o: {
+  graduatesPerDay: number;
+  triggerShare?: number;
+  /** Listed coins the daily refresh reads (0: leave the refresh out). */
+  listedCoins?: number;
+}): LiveLoad {
   const g = o.graduatesPerDay;
   const share = o.triggerShare ?? ASSUMED_TRIGGER_SHARE;
   const triggered = g * share;
@@ -126,6 +149,7 @@ export function predictLoad(o: { graduatesPerDay: number; triggerShare?: number 
   const codexUnits =
     discoveryPasses * pass.units + sweep.units + candlesUnits + lastLookUnits + laterUnits;
   const metadataJupiter = meta.jupiter?.requests ?? 0;
+  const refreshRequests = Math.ceil((o.listedCoins ?? 0) / REFRESH_MINTS_PER_REQUEST);
   return {
     graduatesPerDay: g,
     watched,
@@ -146,7 +170,9 @@ export function predictLoad(o: { graduatesPerDay: number; triggerShare?: number 
     jupiter: {
       watchRequests: watchRequests,
       metadataRequests: metadataJupiter,
-      requests: watchRequests + metadataJupiter,
+      refreshRequests,
+      requests: watchRequests + refreshRequests + metadataJupiter,
+      freeRateRequests: Math.floor(JUPITER_FREE_RPS * DAY),
     },
     helius: { requests: meta.helius?.requests ?? 0, credits: meta.helius?.credits ?? 0 },
   };
@@ -159,6 +185,13 @@ export interface LivePlan {
   graduatesPerDay: number;
   graduatesSource: 'database' | 'assumed' | 'given';
   load: LiveLoad;
+  /** Listed coins (ATH of $100,000 or more), counted, or assumed when the database has none. */
+  listedCoins: number;
+  listedSource: 'database' | 'assumed';
+  /** What each top-up rule selects now, refresh condition left out (the refresh has not run). */
+  topUp: TopUpCounts;
+  /** Codex.io units the top-up would spend if every selected coin were fetched. */
+  topUpUnits: number;
   maxCodexUnitsPerDay: number;
   /** False when the model's Codex.io units a day are above the ceiling. */
   withinCeiling: boolean;
@@ -193,7 +226,10 @@ export async function planLive(
     ).rows[0]!.n,
   );
   const graduatesPerDay = o.graduatesPerDay ?? (counted > 0 ? counted : ASSUMED_GRADUATES_PER_DAY);
-  const load = predictLoad({ graduatesPerDay });
+  const listedCounted = await countListedCoins(db, REFRESH_LISTED_USD);
+  const listedCoins = listedCounted > 0 ? listedCounted : ASSUMED_LISTED_COINS;
+  const topUp = await countTopUp(db, topUpSpec(o.now, null));
+  const load = predictLoad({ graduatesPerDay, listedCoins });
   return {
     watched,
     cursorAt: cursor ? new Date(cursor.at * 1000) : null,
@@ -202,6 +238,10 @@ export async function planLive(
     graduatesSource:
       o.graduatesPerDay !== undefined ? 'given' : counted > 0 ? 'database' : 'assumed',
     load,
+    listedCoins,
+    listedSource: listedCounted > 0 ? 'database' : 'assumed',
+    topUp,
+    topUpUnits: topUp.total * UNITS_PER_TOPUP,
     maxCodexUnitsPerDay: o.maxCodexUnitsPerDay,
     withinCeiling: load.codex.units <= o.maxCodexUnitsPerDay,
     stateTable,
@@ -251,7 +291,20 @@ export function formatLivePlan(p: LivePlan): string {
       `later triggers ${n(l.codex.laterRequests)} / ${n(l.codex.laterUnits)}.`,
   );
   lines.push(
-    `  Jupiter   ${n(l.jupiter.requests)} requests a day (watch ${n(l.jupiter.watchRequests)}, metadata ${n(l.jupiter.metadataRequests)}); no units.`,
+    `  Jupiter   ${n(l.jupiter.requests)} requests a day (watch ${n(l.jupiter.watchRequests)}, daily refresh ${n(l.jupiter.refreshRequests)}, metadata ${n(l.jupiter.metadataRequests)}); no units. ` +
+      `The free rate allows ${n(l.jupiter.freeRateRequests)} a day (${JUPITER_FREE_RPS} a second): ` +
+      `${l.jupiter.requests <= l.jupiter.freeRateRequests ? 'within it' : 'ABOVE IT, so the refresh would not finish'} ` +
+      `(${Math.round((l.jupiter.requests / l.jupiter.freeRateRequests) * 100)}% of it, the watch loop going first).`,
+  );
+  lines.push(
+    `  Refresh   ${n(p.listedCoins)} listed coins (${p.listedSource === 'database' ? 'counted in the database' : 'assumed: none in the database'}), ` +
+      `${REFRESH_MINTS_PER_REQUEST} mints a request, no Codex.io units.`,
+  );
+  lines.push(
+    `  Top-up    selects ${n(p.topUp.total)} coins now: ${n(p.topUp.byMarketCap)} by rule 1 (current market cap at least half the ATH), ` +
+      `${n(p.topUp.byStaleBars)} by rule 2 (newest bar over 7 days old), a coin can match both; ` +
+      `expected ${n(p.topUpUnits)} Codex.io units at ${UNITS_PER_TOPUP} each, spent after discovery, new coins and later triggers, ` +
+      `and stopping at ${Math.round(TOPUP_STOP_SHARE * 100)}% of the ceiling.`,
   );
   lines.push(
     `  Helius    ${n(l.helius.requests)} requests, ${n(l.helius.credits)} credits a day (metadata of listed coins, at most).`,

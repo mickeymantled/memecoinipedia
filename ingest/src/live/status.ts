@@ -20,12 +20,14 @@ import {
   STATE_DISCOVERY_CURSOR,
   STATE_LAST_DISCOVERY,
   STATE_LAST_SWEEP,
+  STATE_REFRESH,
   STATE_SETTINGS,
   WATCH_FRESH_UNDER_SECONDS,
   WATCH_MID_UNDER_SECONDS,
   dayKey,
 } from './constants.js';
 import type { Cursor } from './discover.js';
+import type { RefreshState } from './refresh.js';
 import type { LastSweep } from './sweep.js';
 import { startOfUtcDay, watchSpec } from './util.js';
 
@@ -49,12 +51,19 @@ export interface LiveStatus {
     lastLook: number;
     /** Watched coins whose failed candles the sweep retried. */
     retried: number;
+    /** Listed coins refreshed from Jupiter today, and those it did not know. */
+    refreshed: number;
+    refreshUnknown: number;
+    /** Listed coins reopened for new bars by the top-up. */
+    topUp: number;
     fetched: number;
     listed: number;
     codexUnits: number;
     codexRequests: number;
     jupiterRequests: number;
   };
+  /** Where today's refresh is (null when it has not started today). */
+  refresh: { done: boolean; requests: number; coins: number; changed: number } | null;
   /** The ceiling the running (or last) process was started with. */
   maxCodexUnitsPerDay: number | null;
   lastSweep: Date | null;
@@ -69,6 +78,9 @@ interface DayCounters {
   retriggered?: number;
   lastlook?: number;
   retried?: number;
+  refreshed?: number;
+  refresh_unknown?: number;
+  topup?: number;
 }
 
 export async function collectLiveStatus(
@@ -85,6 +97,7 @@ export async function collectLiveStatus(
   }>(db, STATE_LAST_DISCOVERY);
   const sweep = await getLiveState<LastSweep>(db, STATE_LAST_SWEEP);
   const settings = await getLiveState<{ maxCodexUnitsPerDay?: number }>(db, STATE_SETTINGS);
+  const refreshState = await getLiveState<RefreshState>(db, STATE_REFRESH);
   const counters = (await getLiveState<DayCounters>(db, dayKey(now))) ?? {};
   const holder = await getLiveState<PipelineLockHolder>(db, PIPELINE_LOCK_STATE_KEY);
   const fetched = await liveFetchedSince(db, dayStart, now, LISTED_ATH_USD);
@@ -114,12 +127,24 @@ export async function collectLiveStatus(
       retriggered: counters.retriggered ?? 0,
       lastLook: counters.lastlook ?? 0,
       retried: counters.retried ?? 0,
+      refreshed: counters.refreshed ?? 0,
+      refreshUnknown: counters.refresh_unknown ?? 0,
+      topUp: counters.topup ?? 0,
       fetched: fetched.fetched,
       listed: fetched.listed,
       codexUnits: codex.units,
       codexRequests: codex.requests,
       jupiterRequests: jupiter.requests,
     },
+    refresh:
+      refreshState && refreshState.day === dayKey(now)
+        ? {
+            done: refreshState.done,
+            requests: refreshState.requests,
+            coins: refreshState.coins,
+            changed: refreshState.changed,
+          }
+        : null,
     maxCodexUnitsPerDay: settings?.maxCodexUnitsPerDay ?? null,
     lastSweep: sweep ? new Date(sweep.at) : null,
     holder: holder ?? null,
@@ -166,6 +191,10 @@ export function formatLiveStatus(s: LiveStatus): string {
   );
   lines.push(
     `  later triggers ${n(t.retriggered)}, last-look fetches ${n(t.lastLook)}, failed candles retried ${n(t.retried)}.`,
+  );
+  lines.push(
+    `  refresh: ${s.refresh ? `${s.refresh.done ? 'done' : 'in progress'}, ${n(s.refresh.requests)} requests, ${n(s.refresh.coins)} coins, ${n(s.refresh.changed)} changed status` : 'not started'}; ` +
+      `${n(t.refreshed)} listed coins refreshed, ${n(t.refreshUnknown)} unknown to Jupiter; top-up reopened ${n(t.topUp)} coins.`,
   );
   lines.push(
     `  Codex.io ${n(t.codexUnits)} units in ${n(t.codexRequests)} requests` +
