@@ -48,6 +48,8 @@ export interface BackfillStatus {
   /** The selection's options came from the last recorded run (true) or from the command line. */
   selectionFromRun: boolean;
   stages: StageBreakdown[];
+  /** Jobs waiting or in retry in each stage's queue (not those running); 0 when no queue exists. */
+  queued: Record<string, number>;
   listed: number;
   usage: UsageWindow[];
   /** Coins whose metrics finished in the last ten minutes (or since the first of them), per minute. */
@@ -160,6 +162,7 @@ export async function collectStatus(
     selection,
     selectionFromRun: recorded !== null && opts.selection === undefined,
     stages,
+    queued: await queuedJobsByStage(db),
     listed: await countListed(db, selection, LISTED_ATH_USD),
     usage: await usageWindow(db, now),
     coinsPerMinute: perMinute,
@@ -169,6 +172,23 @@ export async function collectStatus(
     issues: await openIssuesByKind(db, selection),
     databaseBytes: await databaseSizeBytes(db),
   };
+}
+
+/** Jobs waiting or in retry per stage queue. Reads the queue's table; none if it is not there yet. */
+export async function queuedJobsByStage(
+  db: Kysely<Database>,
+  schema = 'pgboss',
+): Promise<Record<string, number>> {
+  const out: Record<string, number> = {};
+  const exists = await sql<{ t: string | null }>`
+    select to_regclass(${`${schema}.job`})::text as t`.execute(db);
+  if (!exists.rows[0]?.t) return out;
+  const res = await sql<{ name: string; n: string }>`
+    select name, count(*)::text as n from ${sql.id(schema, 'job')}
+    where name like 'ingest.%' and state in ('created', 'retry')
+    group by name`.execute(db);
+  for (const r of res.rows) out[r.name.slice('ingest.'.length)] = Number(r.n);
+  return out;
 }
 
 const n = (x: number) => Math.round(x).toLocaleString('en-US');
@@ -202,12 +222,13 @@ export function formatStatus(s: BackfillStatus): string {
   );
   lines.push(`Listed so far (ATH ${usd(LISTED_ATH_USD)} or more): ${n(s.listed)}`);
   lines.push('');
-  lines.push('Stage       done   failed  running  waiting     not run');
+  lines.push('Stage       done   failed  running  waiting     not run   queued');
   for (const st of s.stages) {
     lines.push(
       `${st.stage.padEnd(9)} ${n(st.done).padStart(7)} ${n(st.failed).padStart(8)} ` +
         `${n(st.running).padStart(8)} ${n(st.waiting).padStart(8)} ` +
-        `${(st.notApplicable > 0 || st.stage === 'metadata' ? n(st.notApplicable) : '-').padStart(11)}`,
+        `${(st.notApplicable > 0 || st.stage === 'metadata' ? n(st.notApplicable) : '-').padStart(11)} ` +
+        `${n(s.queued[st.stage] ?? 0).padStart(8)}`,
     );
   }
   lines.push('');

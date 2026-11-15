@@ -247,7 +247,7 @@ export function formatBackfillPlan(
     }
     lines.push(
       `  Total: ${n(plan.estimate.coinsToDo)} coins, about ${n(plan.estimate.units)} compute units ` +
-        '(at the measured figures per coin; 11 under $30k is an assumption until #40 reports).',
+        '(at the measured figures per coin; 11 under $30k: measured 10.7 on 100 coins (#40), figure kept at 11).',
     );
     const minutes = plan.estimate.coinsToDo > 0 ? plan.estimate.units / 4 / o.codexRps / 60 : 0;
     lines.push(
@@ -331,6 +331,7 @@ export async function runBackfill(opts: BackfillOptions): Promise<BackfillReport
         maxCodexUnits,
         maxHeliusCredits: opts.maxHeliusCredits ?? null,
         gatewayRps: opts.gatewayRps ?? DEFAULT_GATEWAY_RPS,
+        onWarning: (m) => opts.log.warn(`Codex.io: ${m}`),
         needCodex: wantsCandles,
         needHelius: stages.includes('metadata'),
       });
@@ -447,6 +448,7 @@ export async function runBackfill(opts: BackfillOptions): Promise<BackfillReport
         selection: plan.selection,
         maxOutstanding:
           opts.maxQueued ?? Math.max(FEED_PAGE * 2, candlesConcurrency * OUTSTANDING_PER_SLOT),
+        gateStage: BACKFILL_STAGES.find((x) => stages.includes(x)),
         pageSize: opts.feedPage ?? FEED_PAGE,
         log: opts.log,
         signal: opts.signal,
@@ -457,8 +459,8 @@ export async function runBackfill(opts: BackfillOptions): Promise<BackfillReport
       const waitIdle = async () => {
         let quiet = 0;
         while (!aborted()) {
-          const outstanding = await worker!.outstandingJobs();
-          if (outstanding === 0 && worker!.runningHere === 0) {
+          const busy = await worker!.hasOutstandingJobs();
+          if (!busy && worker!.runningHere === 0) {
             if (++quiet >= 2) return;
           } else quiet = 0;
           await sleep(250);
@@ -539,8 +541,12 @@ export async function runBackfill(opts: BackfillOptions): Promise<BackfillReport
         : candlesStopped
           ? 'Stopped at the Codex.io unit ceiling. Run again with a higher --max-codex-units to continue.'
           : 'Backfill run finished.';
+    const left = (await stageBreakdown(db, plan.selection, breakdownStages(now())))
+      .filter((b) => stages.includes(b.stage as BackfillStageName) && b.waiting > 0)
+      .map((b) => `${n(b.waiting)} for ${b.stage}`);
+    const leftover = left.length > 0 ? `\nCoins still waiting: ${left.join(', ')}.` : '';
     opts.out(
-      `${headline}\nRun ${runId}: read ${n(scanned)} coins from the selection in ${formatDuration(seconds / 60)}.\n\n` +
+      `${headline}${leftover}\nRun ${runId}: read ${n(scanned)} coins from the selection in ${formatDuration(seconds / 60)}.\n\n` +
         formatStatus(await collectStatus(db, { now })),
     );
     return { plan, status, runId, ceilingStop: candlesStopped, scanned, seconds };

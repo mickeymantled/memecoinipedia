@@ -1,9 +1,13 @@
 import { createReadOnlyDb } from '@memecoinipedia/db';
 import { sql } from 'kysely';
+import { resolveSelection, type StageName } from '@memecoinipedia/db';
 import { afterAll, beforeAll, expect, it } from 'vitest';
+import { Feeder } from '../../src/backfill/feeder.js';
+import type { PipelineWorker } from '../../src/worker/worker.js';
 import { runBackfill, countRunningStages, type BackfillOptions } from '../../src/backfill/run.js';
 import { collectStatus } from '../../src/backfill/status.js';
 import { RateLimiter } from '../../src/sources/ratelimit.js';
+import { okResult } from '../worker/helpers.js';
 import { describeDb, seededDatabase, testClients, testLog, type Fixture } from './helpers.js';
 import { synthProvider } from './synthetic.js';
 
@@ -259,4 +263,136 @@ describeDb('backfill run: limits, rate limits, stop and resume', () => {
     // The coins done before the stop are not offered again.
     expect(second.plan.ready.candles).toBe(second.plan.selection.size - done);
   }, 120_000);
+});
+
+describeDb('backfill run: a slow later stage does not hold back the first', () => {
+  let f: Fixture;
+  beforeAll(async () => {
+    f = await seededDatabase(900, 4);
+  });
+  afterAll(async () => {
+    await f.cleanup();
+  });
+
+  it('candles and metrics finish for every coin while the metadata backlog is larger than the gate', async () => {
+    const tc = testClients({ provider: synthProvider({ seed: 4 }) });
+    // Metadata is held shut until the test lets it through: the slowest later stage there can be.
+    let release!: () => void;
+    const hold = new Promise<void>((r) => (release = r));
+    tc.clients.fetchMetadata = async (uri) => {
+      await hold;
+      return okResult({ description: `about ${uri.slice(-12)}` });
+    };
+    const maxQueued = 6;
+    let peakMetadata = 0;
+    let queuedSeenInStatus = 0;
+    let metadataDoneAtRelease: number | null = null;
+    let metadataWaiting = 0;
+    let released = false;
+    const timer = setInterval(async () => {
+      try {
+        const q = await sql<{ n: string }>`
+          select count(*)::text as n from pgboss.job
+          where name = 'ingest.metadata' and state in ('created', 'retry', 'active')`.execute(
+          f.t.db,
+        );
+        peakMetadata = Math.max(peakMetadata, Number(q.rows[0]!.n));
+        const s = await collectStatus(f.t.db, {
+          selection: { minRoughPeakUsd: 30_000, order: 'hash' },
+        });
+        queuedSeenInStatus = Math.max(queuedSeenInStatus, s.queued['metadata'] ?? 0);
+        const metrics = s.stages.find((x) => x.stage === 'metrics')!;
+        const metadata = s.stages.find((x) => x.stage === 'metadata')!;
+        if (!released && metrics.done === s.selection.size) {
+          released = true;
+          metadataDoneAtRelease = metadata.done;
+          metadataWaiting = metadata.waiting + metadata.running;
+          release();
+        }
+      } catch {
+        // the queue schema may not exist yet
+      }
+    }, 100);
+    const report = await runBackfill(
+      baseOptions(f, { clients: tc.clients, maxQueued, feedPage: 3, candlesConcurrency: 8 }),
+    ).finally(() => {
+      clearInterval(timer);
+      release();
+    });
+    expect(report.status).toBe('done');
+    const size = report.plan.selection.size;
+    expect(report.scanned).toBe(size);
+    expect(await stageCounts(f, 'candles', 'done')).toBe(size);
+    expect(await stageCounts(f, 'metrics', 'done')).toBe(size);
+    // Every page was read and candles and metrics were done while no metadata had finished,
+    // and the metadata backlog was larger than the gate.
+    expect(metadataDoneAtRelease).toBe(0);
+    expect(metadataWaiting).toBeGreaterThan(maxQueued);
+    expect(peakMetadata).toBeGreaterThan(maxQueued);
+    // The status view showed the queued jobs.
+    expect(queuedSeenInStatus).toBeGreaterThan(0);
+    // After release the backlog drained.
+    expect(await stageCounts(f, 'metadata', 'done')).toBe(metadataWaiting);
+  }, 180_000);
+});
+
+describeDb('feeder gate', () => {
+  let f: Fixture;
+  beforeAll(async () => {
+    f = await seededDatabase(200, 5);
+  });
+  afterAll(async () => {
+    await f.cleanup();
+  });
+
+  const fake = (active: StageName[], counts: Partial<Record<StageName, number>>) =>
+    ({
+      activeStages: active,
+      outstandingJobs: async (stage?: StageName) =>
+        stage ? (counts[stage] ?? 0) : Object.values(counts).reduce((a, b) => a + (b ?? 0), 0),
+      coinsToDoAmong: async () => [],
+      enqueueCoins: async () => undefined,
+    }) as unknown as PipelineWorker;
+
+  const feederFor = async (worker: PipelineWorker, gateStage?: StageName) =>
+    new Feeder({
+      db: f.t.db,
+      worker,
+      selection: await resolveSelection(f.t.db, {
+        chain: 'solana',
+        minRoughPeakUsd: 30_000,
+        includeNoPrice: false,
+        order: 'hash',
+        limit: null,
+      }),
+      maxOutstanding: 100,
+      pageSize: 50,
+      pollMs: 10,
+      log: testLog,
+      ...(gateStage ? { gateStage } : {}),
+    });
+
+  it('a later stage backlog does not stop the feeder', async () => {
+    const counts = { candles: 0, metrics: 0, metadata: 50_000 };
+    const feeder = await feederFor(fake(['candles', 'metrics', 'metadata'], counts), 'candles');
+    const pass = await feeder.pass();
+    expect(pass.exhausted).toBe(true);
+    expect(pass.scanned).toBeGreaterThan(50);
+  });
+
+  it("with metadata alone, the gate is metadata's own queue", async () => {
+    const counts = { metadata: 50_000 };
+    const worker = fake(['metadata'], counts);
+    const feeder = await feederFor(worker);
+    let finished = false;
+    const pass = feeder.pass().then((p) => {
+      finished = true;
+      return p;
+    });
+    await new Promise((r) => setTimeout(r, 300));
+    expect(finished).toBe(false);
+    expect(feeder.scannedTotal).toBe(0);
+    counts.metadata = 0;
+    expect((await pass).exhausted).toBe(true);
+  });
 });

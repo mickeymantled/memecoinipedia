@@ -335,8 +335,8 @@ export class PipelineWorker {
   }
 
   /** Jobs of this worker's queues that are waiting, being retried or running. */
-  async outstandingJobs(): Promise<number> {
-    const names = this.stages.map(queueName);
+  async outstandingJobs(stage?: StageName): Promise<number> {
+    const names = (stage ? [stage] : this.stages).map(queueName);
     if (names.length === 0) return 0;
     const res = await sql<{ n: string }>`
       select count(*)::text as n
@@ -344,6 +344,35 @@ export class PipelineWorker {
       where name in (${sql.join(names)}) and state in ('created', 'retry', 'active')
     `.execute(this.opts.db);
     return Number(res.rows[0]?.n ?? 0);
+  }
+
+  /**
+   * True when any active stage's queue holds a job that is waiting, retrying or running. An
+   * existence check: it stops at the first row, so a queue of 100,000 jobs costs no more than one.
+   */
+  async hasOutstandingJobs(): Promise<boolean> {
+    const names = this.stages.map(queueName);
+    if (names.length === 0) return false;
+    const res = await sql<{ found: boolean }>`
+      select exists (
+        select 1 from ${sql.id(this.schema, 'job')}
+        where name in (${sql.join(names)}) and state in ('created', 'retry', 'active')
+      ) as found
+    `.execute(this.opts.db);
+    return res.rows[0]?.found === true;
+  }
+
+  /** Jobs waiting or in retry (not running), per active stage. */
+  async queuedByStage(): Promise<Partial<Record<StageName, number>>> {
+    const out: Partial<Record<StageName, number>> = {};
+    for (const stage of this.stages) {
+      const res = await sql<{ n: string }>`
+        select count(*)::text as n from ${sql.id(this.schema, 'job')}
+        where name = ${queueName(stage)} and state in ('created', 'retry')
+      `.execute(this.opts.db);
+      out[stage] = Number(res.rows[0]?.n ?? 0);
+    }
+    return out;
   }
 
   /** Handlers running in this process. */

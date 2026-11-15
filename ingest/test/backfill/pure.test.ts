@@ -63,3 +63,29 @@ it('a rate-limit penalty slows the limiter, and the rate recovers after a quiet 
   await l.acquire();
   expect(l.currentRate).toBeCloseTo(100, 0);
 });
+
+it('a Retry-After is capped at 60 seconds, and a long ask is logged', async () => {
+  let t = 0;
+  const warnings: string[] = [];
+  const l = new RateLimiter({
+    maxPerSecond: 100,
+    now: () => t,
+    sleep: async (ms) => {
+      t += ms;
+    },
+    onWarning: (m) => warnings.push(m),
+  });
+  l.penalize({ retryAfterMs: 3_600_000 });
+  expect(warnings).toHaveLength(1);
+  expect(warnings[0]).toMatch(/3600 s.*60 s at most/);
+  await l.acquire();
+  expect(t).toBeGreaterThanOrEqual(60_000);
+  expect(t).toBeLessThan(61_000);
+
+  l.penalize({ retryAfterMs: 15_000 });
+  expect(warnings).toHaveLength(2);
+  expect(warnings[1]).not.toMatch(/at most/);
+  l.penalize({ retryAfterMs: 5_000 });
+  l.penalize();
+  expect(warnings).toHaveLength(2);
+});

@@ -49,6 +49,8 @@ export interface BackfillClientOptions {
   gatewayRps: number;
   needCodex: boolean;
   needHelius: boolean;
+  /** Told when the provider asks for a long pause. */
+  onWarning?: (message: string) => void;
 }
 
 export interface BackfillClients extends SourceClients {
@@ -70,6 +72,7 @@ export function createBackfillClients(env: IngestEnv, o: BackfillClientOptions):
     codexLimiter = new RateLimiter({
       maxPerSecond: o.codexRps,
       burst: Math.max(1, Math.ceil(o.codexRps / 20)),
+      ...(o.onWarning ? { onWarning: o.onWarning } : {}),
     });
     codex = new CodexClient({
       apiKey: env.CODEX_API_KEY,

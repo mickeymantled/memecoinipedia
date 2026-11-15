@@ -24,8 +24,14 @@ export interface FeederOptions {
   db: Kysely<Database>;
   worker: PipelineWorker;
   selection: ResolvedSelection;
-  /** Jobs waiting, retrying or running above which no new page is read. */
+  /**
+   * Jobs waiting, retrying or running above which no new page is read. Counted on `gateStage`'s
+   * queue only: a later stage is fed by the one before it finishing, and its backlog must never
+   * hold the first stage back.
+   */
   maxOutstanding: number;
+  /** The first active stage in pipeline order. Default: the first of the worker's active stages. */
+  gateStage?: StageName;
   /** Coins read at a time. */
   pageSize: number;
   log: Logger;
@@ -60,13 +66,14 @@ export class Feeder {
   /** One walk over the selection from the start. */
   async pass(): Promise<FeedPass> {
     const { worker, db, selection } = this.o;
+    const gate = this.o.gateStage ?? worker.activeStages[0];
     const out: FeedPass = { scanned: 0, queued: {}, exhausted: false };
     let cursor: SelectionKey | null = null;
     for (;;) {
       // Wait for room. A page is read only when at least a page's worth fits.
       for (;;) {
         if (this.stopped) return out;
-        const room = this.o.maxOutstanding - (await worker.outstandingJobs());
+        const room = this.o.maxOutstanding - (await worker.outstandingJobs(gate));
         if (room >= Math.min(this.o.pageSize, this.o.maxOutstanding)) break;
         await this.sleep(this.o.pollMs ?? 100);
       }

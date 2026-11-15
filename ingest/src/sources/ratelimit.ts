@@ -16,7 +16,14 @@ export interface RateLimiterOptions {
   now?: () => number;
   /** Default: a real timer. */
   sleep?: (ms: number) => Promise<void>;
+  /** Told when the provider asks for a long pause (see `WARN_PAUSE_MS`). Default: nobody. */
+  onWarning?: (message: string) => void;
 }
+
+/** A `Retry-After` is taken at its word up to this long; the pause is capped here. */
+export const MAX_PENALTY_PAUSE_MS = 60_000;
+/** A provider asking for more than this long a pause is worth a warning. */
+export const WARN_PAUSE_MS = 10_000;
 
 const realSleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -47,6 +54,7 @@ export class RateLimiter {
   private readonly maxConcurrency: number;
   private readonly now: () => number;
   private readonly sleep: (ms: number) => Promise<void>;
+  private readonly onWarning: ((message: string) => void) | undefined;
   private tokens: number;
   private last: number;
   private running = 0;
@@ -64,6 +72,7 @@ export class RateLimiter {
     this.maxConcurrency = opts.maxConcurrency ?? Number.POSITIVE_INFINITY;
     this.now = opts.now ?? (() => performance.now());
     this.sleep = opts.sleep ?? realSleep;
+    this.onWarning = opts.onWarning;
     this.tokens = burst;
     this.last = this.now();
   }
@@ -84,7 +93,16 @@ export class RateLimiter {
   penalize(opts: PenaltyOptions = {}): void {
     const t = this.now();
     this.penalties++;
-    const pause = Math.max(250, opts.retryAfterMs ?? 1_000);
+    const asked = opts.retryAfterMs ?? 1_000;
+    if (asked > WARN_PAUSE_MS) {
+      this.onWarning?.(
+        `the provider asked for a pause of ${Math.round(asked / 1000)} s` +
+          (asked > MAX_PENALTY_PAUSE_MS
+            ? `; pausing ${MAX_PENALTY_PAUSE_MS / 1000} s at most`
+            : ''),
+      );
+    }
+    const pause = Math.min(MAX_PENALTY_PAUSE_MS, Math.max(250, asked));
     const alreadyHeld = t < this.heldUntil;
     this.heldUntil = Math.max(this.heldUntil, t + pause);
     this.tokens = 0;
