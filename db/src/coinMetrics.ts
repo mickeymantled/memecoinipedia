@@ -278,14 +278,18 @@ export type StoreMetricsOutcome =
 /**
  * Reads the stored bars, runs `compute` (the metric library's
  * `computeCoinMetrics`) and writes the result and status to the coin. Returns a
- * failure, writing nothing, when the coin is unknown, has no launch time or has
- * no stored bars.
+ * failure, writing nothing, when the coin is unknown or has no launch time. A coin
+ * with no stored bars is a `no_candles` failure too, unless the caller gives
+ * `noBars`: then that result is written (status `unknown`, as `decideStatus` says for
+ * no bars) and the outcome is a success with a `barCount` of 0.
  */
 export async function computeAndStoreCoinMetrics(
   db: Kysely<Database>,
   coinId: number,
   opts: {
     compute: (input: MetricInputShape) => MetricResultShape;
+    /** The result to store for a coin with no bars at all. Without it, such a coin is a `no_candles` failure. */
+    noBars?: MetricResultShape;
     asOf: number;
     computedAt: Date;
     metricsVersion: number;
@@ -293,8 +297,8 @@ export async function computeAndStoreCoinMetrics(
 ): Promise<StoreMetricsOutcome> {
   const loaded = await loadMetricInput(db, coinId, opts.asOf);
   if (!loaded.ok) return loaded;
-  if (loaded.barCount === 0) return { ok: false, reason: 'no_candles' };
-  const result = opts.compute(loaded.input);
+  if (loaded.barCount === 0 && !opts.noBars) return { ok: false, reason: 'no_candles' };
+  const result = loaded.barCount === 0 ? opts.noBars! : opts.compute(loaded.input);
   const status = decideStatus(loaded.input, result);
   await writeCoinMetrics(db, coinId, result, {
     poolIds: loaded.poolIds,

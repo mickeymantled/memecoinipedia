@@ -15,9 +15,12 @@ export const METRICS_VERSION = 4;
 /** The flag the fetcher sets on a coin it screened out. It is not one of the metric library's flags. */
 export const SCREENED_OUT_FLAG = 'screened_out';
 
-/** The library's result, with the fetcher's own flag allowed. */
+/** The flag set on a coin that has no stored bar at all (its metrics stage still ends `done`). */
+export const NO_CANDLES_FLAG = 'no_candles';
+
+/** The library's result, with the fetcher's and the stage's own flags allowed. */
 export type StoredMetricResult = Omit<MetricResult, 'flags'> & {
-  flags: (MetricFlag | typeof SCREENED_OUT_FLAG)[];
+  flags: (MetricFlag | typeof SCREENED_OUT_FLAG | typeof NO_CANDLES_FLAG)[];
 };
 
 export type ComputeMetricsResult =
@@ -32,12 +35,14 @@ export type ComputeMetricsResult =
       barCount: number;
       /** The coin has no 1-minute bars and no daily high reaching the screen line: stored as screened out. */
       screenedOut: boolean;
+      /** The coin has no stored bar at all: stored with a null ATH and the `no_candles` flag. */
+      noCandles: boolean;
     }
   | {
       ok: false;
-      /** `coin_not_found`, `missing_launch_time` or `no_candles`. */
+      /** `coin_not_found` or `missing_launch_time`. */
       reason: string;
-      /** False: none of these is fixed by trying again; run the candle stage first. */
+      /** False: neither is fixed by trying again. */
       retry: boolean;
       message: string;
     };
@@ -81,6 +86,29 @@ export function screenedOutResult(
   };
 }
 
+/**
+ * The result for a coin with no stored bar at all (screened out before any bar was stored, say):
+ * every metric null, no rug, and the flag `no_candles`. The coin's metrics are final: there is
+ * nothing to compute and fetching candles again is the candle stage's business, not a retry here.
+ */
+export function noCandlesResult(): MetricResultShape {
+  return {
+    athMarketCapUsd: null,
+    athAt: null,
+    athPoolAddress: null,
+    secondsToAth: null,
+    athWickMarketCapUsd: null,
+    athWickAt: null,
+    athWickPoolAddress: null,
+    athLiquidityUsd: null,
+    athHourVolumeUsd: null,
+    secondsAbove: [],
+    maxDrawdownPct: null,
+    rugPattern: false,
+    flags: [NO_CANDLES_FLAG],
+  };
+}
+
 /** See the header of ./index.ts. */
 export async function computeMetricsForCoin(
   deps: Pick<CandleDeps, 'db' | 'clock'>,
@@ -97,16 +125,17 @@ export async function computeMetricsForCoin(
       screenedOut = screened !== null;
       return screened ?? computeCoinMetrics(input);
     },
+    noBars: noCandlesResult(),
     asOf,
     computedAt: now,
     metricsVersion: METRICS_VERSION,
   });
   if (!out.ok) {
     const message =
-      out.reason === 'no_candles'
-        ? 'No bars are stored for this coin; fetch its candles first'
-        : out.reason === 'missing_launch_time'
-          ? 'The coin has no launch time'
+      out.reason === 'missing_launch_time'
+        ? 'The coin has no launch time'
+        : out.reason === 'no_candles'
+          ? 'No bars are stored for this coin' // not reachable: `noBars` is always given
           : `No coin with id ${coin.id}`;
     return { ok: false, reason: out.reason, retry: false, message };
   }
@@ -119,5 +148,6 @@ export async function computeMetricsForCoin(
     metricsVersion: METRICS_VERSION,
     barCount: out.barCount,
     screenedOut,
+    noCandles: out.barCount === 0,
   };
 }

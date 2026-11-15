@@ -99,14 +99,13 @@ describeDb('queue worker', () => {
         .register(stage('candles'))
         .register(stage('metrics')),
     );
+    // metadata and candles both need only `discovered`; metrics waits for candles. Counted before
+    // the workers start: once they run, a candles job can finish before the metrics count is taken.
+    const todo: Record<string, number> = {};
+    for (const name of w.activeStages) todo[name] = (await w.coinsToDo(name)).length;
+    expect(todo).toEqual({ discovered: 0, metadata: 12, candles: 12, metrics: 0 });
     await w.start();
-    // metadata and candles both need only `discovered`; metrics waits for candles.
-    expect(await w.enqueueNotDone()).toEqual({
-      discovered: 0,
-      metadata: 12,
-      candles: 12,
-      metrics: 0,
-    });
+    await w.enqueueNotDone();
     await w.waitUntilIdle();
 
     const rows = await stages();

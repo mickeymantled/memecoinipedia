@@ -7,9 +7,14 @@ export { upsertCoin } from './coins.js';
 export type { CoinIdentity } from './coins.js';
 export { addCoverage, getCoverage, countCoverageRequests } from './candleCoverage.js';
 export type { CoverageInterval } from './candleCoverage.js';
-export { upsertPool, getCoinPools, refreshPoolBarStats } from './pools.js';
+export {
+  upsertPool,
+  getCoinPools,
+  refreshPoolBarStats,
+  PoolOwnedByOtherCoinError,
+} from './pools.js';
 export type { PoolInput, StoredPool } from './pools.js';
-export { replaceCoinIssues, recordDataIssue } from './dataIssues.js';
+export { replaceCoinIssues } from './dataIssues.js';
 export type { NewIssue } from './dataIssues.js';
 export {
   loadMetricInput,

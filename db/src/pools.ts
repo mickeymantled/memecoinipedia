@@ -27,6 +27,17 @@ export interface StoredPool {
   sourcePairId: string | null;
 }
 
+/** A pool address belongs to one coin; `upsertPool` throws this for another coin's pool. */
+export class PoolOwnedByOtherCoinError extends Error {
+  constructor(
+    readonly address: string,
+    readonly ownerCoinId: number,
+  ) {
+    super(`Pool ${address} already belongs to coin ${ownerCoinId}`);
+    this.name = 'PoolOwnedByOtherCoinError';
+  }
+}
+
 const toDate = (s: number | null | undefined): Date | null =>
   s === null || s === undefined ? null : new Date(s * 1000);
 
@@ -34,7 +45,7 @@ const toDate = (s: number | null | undefined): Date | null =>
  * Inserts a pool, or, when `(chain, address)` exists, updates the fields that
  * differ. Returns the pool id. Calling it again with the same values writes
  * nothing (updated_at stays). A pool address belongs to one coin: passing a
- * different `coinId` for an existing address is an error.
+ * different `coinId` for an existing address throws `PoolOwnedByOtherCoinError`.
  */
 export async function upsertPool(db: Kysely<Database>, pool: PoolInput): Promise<number> {
   const values = {
@@ -59,7 +70,7 @@ export async function upsertPool(db: Kysely<Database>, pool: PoolInput): Promise
       .forUpdate()
       .executeTakeFirstOrThrow();
     if (row.coin_id !== pool.coinId) {
-      throw new Error(`Pool ${pool.address} already belongs to coin ${row.coin_id}`);
+      throw new PoolOwnedByOtherCoinError(pool.address, row.coin_id);
     }
     const same =
       row.dex === values.dex &&

@@ -52,6 +52,8 @@ const curvePool = (tag: string): SimPool => ({
 
 /** Mints of coins the Dune peak agrees are small (a peak far above the screen would escalate them). */
 const smallMints = new Set<string>();
+/** Mints of coins whose Dune peak is far above their daily highs: they take the full path. */
+const bigMints = new Set<string>();
 
 /** Never near $100k: screened out after one launch lookup and one bars request. */
 function small(tag: string): SimCoin {
@@ -82,6 +84,13 @@ function mid(tag: string, namesPool = true): SimCoin {
     migratedPoolAddress: namesPool ? grad.address : null,
     pools: [curvePool(tag), grad],
   };
+}
+
+/** Like `mid`, but the Dune peak is far above the daily highs, so the coin escalates to the full path. */
+function big(tag: string): SimCoin {
+  const coin = mid(tag);
+  bigMints.add(coin.mint);
+  return coin;
 }
 
 /** Launch info names no pool and the list holds no graduation pool: records `graduation_pool_not_found`. */
@@ -151,7 +160,7 @@ describeDb('candles and metrics stages in the run', () => {
     files.push(file);
     const rows = coins.map(
       (c, i) =>
-        `${c.mint},2026-H1,${cells[i] ?? '100k-1M'},false,2,${new Date(LAUNCH * 1000).toISOString()},,${new Date(GRAD * 1000).toISOString()},670,934000,${smallMints.has(c.mint) ? 55_000 : 200_000 + i},2026-01-02T15:00:00Z`,
+        `${c.mint},2026-H1,${cells[i] ?? '100k-1M'},false,2,${new Date(LAUNCH * 1000).toISOString()},,${new Date(GRAD * 1000).toISOString()},670,934000,${smallMints.has(c.mint) ? 55_000 : bigMints.has(c.mint) ? 5_000_000 : 200_000 + i},2026-01-02T15:00:00Z`,
     );
     await writeFile(file, [HEADER, ...rows].join('\n'));
     return file;
@@ -365,7 +374,7 @@ describeDb('candles and metrics stages in the run', () => {
   }, 90_000);
 
   it('stores a small detail on done and none on a failed stage', async () => {
-    const coins = [small('1'), mid('2'), mid('3', false), mid('4')];
+    const coins = [small('1'), mid('2'), mid('3', false), mid('4'), big('big5')];
     const h = harness(coins);
     h.provider.failing.add(coins[3]!.mint);
     await run(h, await csv(coins));
@@ -396,6 +405,18 @@ describeDb('candles and metrics stages in the run', () => {
     const listed = by(coins[2]!.mint).detail as Record<string, unknown>;
     expect(listed['launchInfoNamedPool']).toBe(false);
     expect(listed['lookupRequests']).toBe(2);
+    expect(listed['otherQuotePools']).toBe(0);
+    // No pool list was looked up for these two.
+    expect(screened['otherQuotePools']).toBeNull();
+    expect(light['otherQuotePools']).toBeNull();
+
+    // The full path lists the pools later on, once launch info has named the graduation pool; the
+    // figure still says launch info named it (the earlier proxy counted the later list and said no).
+    const full = by(coins[4]!.mint).detail as Record<string, unknown>;
+    expect(full['path']).toBe('full');
+    expect(full['lookupRequests']).toBe(2);
+    expect(full['launchInfoNamedPool']).toBe(true);
+    expect(full['otherQuotePools']).toBe(0);
 
     expect(by(coins[3]!.mint).status).toBe('failed');
     expect(by(coins[3]!.mint).detail).toBeNull();
@@ -410,6 +431,7 @@ describeDb('candles and metrics stages in the run', () => {
         'hourlyCapHit',
         'launchInfoNamedPool',
         'lookupRequests',
+        'otherQuotePools',
         'path',
         'refinementRequests',
         'units',
@@ -417,6 +439,69 @@ describeDb('candles and metrics stages in the run', () => {
       ]);
     }
   }, 90_000);
+
+  it('two coins that share a side pool both finish candles on the first attempt', async () => {
+    const shared: SimPool = {
+      address: addr('E', 'shared'),
+      exchange: 'Meteora',
+      protocol: 'Meteora',
+      createdAt: GRAD + 600,
+      liquidity: 50_000,
+      minutes: dense(GRAD + 600, 30, () => mcap(150_000)),
+    };
+    const coins = [big('big1'), big('big2')];
+    for (const c of coins) c.pools.push(shared);
+    const h = harness(coins);
+    // `maxAttempts` is 1 in `run`: a failure on the unique key would leave a coin failed.
+    await run(h, await csv(coins));
+    const rows = await stageRows('candles');
+    expect(rows.map((r) => r.status)).toEqual(['done', 'done']);
+    expect(rows.map((r) => r.attempts)).toEqual([1, 1]);
+    const owners = await db
+      .selectFrom('pools')
+      .select('coin_id')
+      .where('address', '=', shared.address)
+      .execute();
+    expect(owners).toHaveLength(1);
+    // The coin that did not get the pool counts it, once, without naming it.
+    const left = rows.map((r) => (r.detail as { otherQuotePools: number | null }).otherQuotePools);
+    expect(left.slice().sort()).toEqual([0, 1]);
+    expect(JSON.stringify(rows.map((r) => r.detail))).not.toContain(shared.address);
+    // Each coin has its own curve and graduation pool, whatever happened to the side pool.
+    const pools = await db.selectFrom('pools').select(['coin_id', 'is_primary']).execute();
+    expect(pools.filter((p) => p.is_primary)).toHaveLength(4);
+  }, 60_000);
+
+  it('keeps the bonding curve and the graduation pool whatever their quote token, and counts a side pool left out', async () => {
+    const xyz = { address: addr('X', 'quote'), symbol: 'XYZ' };
+    const coin = mid('1', false);
+    for (const p of coin.pools) p.quote = xyz;
+    coin.pools.push({
+      address: addr('F', 'side'),
+      exchange: 'Meteora',
+      protocol: 'Meteora',
+      createdAt: GRAD + 600,
+      liquidity: 50_000,
+      minutes: dense(GRAD + 600, 30, () => mcap(150_000)),
+      quote: xyz,
+    });
+    const h = harness([coin]);
+    await run(h, await csv([coin]));
+    const [row] = await stageRows('candles');
+    expect(row!.status).toBe('done');
+    expect(row!.detail).toMatchObject({ launchInfoNamedPool: false, otherQuotePools: 1 });
+    const pools = await db
+      .selectFrom('pools')
+      .select(['address', 'is_primary', 'is_graduation_pool', 'quote_token'])
+      .orderBy('address')
+      .execute();
+    expect(pools.map((p) => [p.is_primary, p.is_graduation_pool, p.quote_token])).toEqual(
+      [
+        [true, true, 'XYZ'],
+        [true, false, 'XYZ'],
+      ].sort(),
+    );
+  }, 60_000);
 
   it("issues belong to the stage that wrote them: neither stage removes the other's", async () => {
     const coins = [lost('1'), small('2')];

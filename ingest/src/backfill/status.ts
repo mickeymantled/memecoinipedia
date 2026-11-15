@@ -28,6 +28,7 @@ import { DEFAULT_STAGE_TIMEOUT_SECONDS } from '../worker/execute.js';
 import { LISTED_ATH_USD } from '../worker/stage.js';
 import { CANDLES_STAGE_VERSION, CANDLES_TIMEOUT_SECONDS } from '../worker/stages/candles.js';
 import { METADATA_STAGE_VERSION } from '../worker/stages/metadata.js';
+import { queueName } from '../worker/worker.js';
 import { DEFAULT_MIN_ROUGH_PEAK_USD } from './defaults.js';
 
 export const BACKFILL_RUN_KIND = 'backfill';
@@ -183,11 +184,13 @@ export async function queuedJobsByStage(
   const exists = await sql<{ t: string | null }>`
     select to_regclass(${`${schema}.job`})::text as t`.execute(db);
   if (!exists.rows[0]?.t) return out;
+  // `queueName('x')` is `<prefix>x`; take the prefix from it so the two cannot drift apart.
+  const prefix = queueName('discovered').slice(0, -'discovered'.length);
   const res = await sql<{ name: string; n: string }>`
     select name, count(*)::text as n from ${sql.id(schema, 'job')}
-    where name like 'ingest.%' and state in ('created', 'retry')
+    where starts_with(name, ${prefix}) and state in ('created', 'retry')
     group by name`.execute(db);
-  for (const r of res.rows) out[r.name.slice('ingest.'.length)] = Number(r.n);
+  for (const r of res.rows) out[r.name.slice(prefix.length)] = Number(r.n);
   return out;
 }
 

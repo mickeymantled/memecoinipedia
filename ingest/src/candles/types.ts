@@ -70,6 +70,17 @@ export interface CandleFetchSummary {
   pools: PoolSummary[];
   /** Listed pools left out (too little liquidity, or over the cap). */
   skippedOtherPools: number;
+  /**
+   * Other pools left out of this run's pool list because their quote token is not SOL, USDC or
+   * USDT, or because another coin already owns their address. Null when no pool list was looked
+   * up in this run.
+   */
+  otherQuotePools: number | null;
+  /**
+   * Launch info named the graduation pool, so no pool-list lookup was needed at stage 0. False
+   * when stage 0 had to list the pools. Null when stage 0 did not happen in this run.
+   */
+  launchInfoNamedPool: boolean | null;
   /** The graduation pool was chosen by creation time from a cut-off list. */
   graduationPoolUnverified: boolean;
   /** Bars the provider returned in this run, per resolution. */
@@ -95,8 +106,18 @@ export interface CandleFetchSummary {
   hourlyCapHit: boolean;
   /** Metric flags of the stored bars after the last round. */
   flags: string[];
-  /** Data-issue kinds recorded or already open for this coin from this stage. */
+  /** Kinds of the data issues found in this run. */
   issues: string[];
+  /**
+   * The issues found in this run, one per kind, with their detail. The fetcher writes nothing: the
+   * caller records them with `replaceCoinIssues`, so a run that no longer finds one clears it.
+   */
+  issueRecords: { kind: string; detail: Record<string, unknown> }[];
+  /**
+   * The issue kinds this run looked for to the end. The caller replaces only these: an open issue
+   * of another kind (the pool lookup did not happen this run, say) was not re-examined and stays.
+   */
+  issueKindsChecked: string[];
 }
 
 export type FetchCandlesResult =

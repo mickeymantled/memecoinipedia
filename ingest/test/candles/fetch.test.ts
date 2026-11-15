@@ -197,20 +197,23 @@ describeDb('fetchCandlesForCoin on recorded fixtures', () => {
     expect(Math.round(m.result.athMarketCapUsd!)).toBe(2_655_370);
   });
 
-  it('VANGOAT: a long, sparse life hits the hourly cap, which is recorded once', async () => {
+  it('VANGOAT: a long, sparse life hits the hourly cap, which is reported once', async () => {
     const f = loadCandleFixture('VANGOAT');
     const id = await addCoin(f);
     const deps = depsFor(f, replayFetch([f]));
     const r = await fetchCandlesForCoin(deps, { id, address: f.mint }, EX);
     expect(r.summary.hourlyCapHit).toBe(true);
     expect(r.summary.issues).toContain('candle_hourly_cap_hit');
-    await fetchCandlesForCoin(deps, { id, address: f.mint }, EX);
-    const issues = await t.db
-      .selectFrom('data_issues')
-      .selectAll()
-      .where('coin_id', '=', id)
-      .execute();
-    expect(issues.filter((i) => i.kind === 'candle_hourly_cap_hit')).toHaveLength(1);
+    expect(r.summary.issueRecords).toEqual([
+      {
+        kind: 'candle_hourly_cap_hit',
+        detail: expect.objectContaining({ maxHourlyRequests: expect.any(Number) }),
+      },
+    ]);
+    // The fetcher reports the issue; it writes none (the candles stage does).
+    const again = await fetchCandlesForCoin(deps, { id, address: f.mint }, EX);
+    expect(again.summary.issueRecords).toEqual(r.summary.issueRecords);
+    expect(await t.db.selectFrom('data_issues').selectAll().execute()).toEqual([]);
     // Six pools are listed; only the two with real liquidity are fetched.
     expect(r.summary.pools).toHaveLength(2);
     expect(r.summary.skippedOtherPools).toBe(4);
@@ -403,7 +406,7 @@ const curvePair = {
 describeDb('fetchCandlesForCoin with synthetic answers', () => {
   const clock = (): Date => new Date(NOW * 1000);
 
-  it('records graduation_pool_not_found once for a graduated coin with no graduation pool, and carries on', async () => {
+  it('reports graduation_pool_not_found once for a graduated coin with no graduation pool, and carries on', async () => {
     const id = await upsertCoin(t.db, { chain: 'solana', address: MINT });
     const s = synthetic({ migrated: true, migratedAt: NOW - 4 * 86_400, pairs: [curvePair] });
     const deps: CandleDeps = { db: t.db, codex: makeClient(s.fetch), clock };
@@ -414,15 +417,14 @@ describeDb('fetchCandlesForCoin with synthetic answers', () => {
     expect(r.summary.pools.map((p) => p.role)).toEqual(['curve']);
     expect(r.summary.requests).toBeGreaterThan(0); // the curve's minute and daily bars
 
-    await fetchCandlesForCoin(deps, { id, address: MINT });
-    const issues = await t.db
-      .selectFrom('data_issues')
-      .selectAll()
-      .where('coin_id', '=', id)
-      .execute();
-    expect(issues).toHaveLength(1);
-    expect(issues[0]!.kind).toBe('graduation_pool_not_found');
-    expect(issues[0]!.resolved_at).toBeNull();
+    expect(r.summary.issueRecords.map((i) => i.kind)).toEqual(['graduation_pool_not_found']);
+    expect(r.summary.issueKindsChecked).toContain('graduation_pool_not_found');
+    // Reported, not written: the candles stage records issues.
+    expect(await t.db.selectFrom('data_issues').selectAll().execute()).toEqual([]);
+    // A second run finds the pools stored and does not look them up again.
+    const again = await fetchCandlesForCoin(deps, { id, address: MINT });
+    expect(again.summary.issueRecords).toEqual([]);
+    expect(again.summary.issueKindsChecked).not.toContain('graduation_pool_not_found');
     const pools = await t.db.selectFrom('pools').selectAll().execute();
     expect(pools).toHaveLength(1);
     expect(pools[0]).toMatchObject({
@@ -509,7 +511,7 @@ describeDb('fetchCandlesForCoin with synthetic answers', () => {
 });
 
 describeDb('computeMetricsForCoin without data', () => {
-  it('fails cleanly for an unknown coin, a coin without launch time and a coin without bars', async () => {
+  it('fails cleanly for an unknown coin and a coin without launch time; a coin without bars gets the no_candles flag', async () => {
     const deps = { db: t.db, clock: () => new Date(NOW * 1000) };
     expect(await computeMetricsForCoin(deps, { id: 123_456 })).toMatchObject({
       ok: false,
@@ -525,18 +527,21 @@ describeDb('computeMetricsForCoin without data', () => {
       .set({ launched_at: new Date((NOW - 86_400) * 1000) })
       .where('id', '=', id)
       .execute();
-    expect(await computeMetricsForCoin(deps, { id })).toMatchObject({
-      ok: false,
-      reason: 'no_candles',
-      retry: false,
-    });
-    // Nothing was written.
+    // No bar at all is not a failure: the coin gets a null ATH and the `no_candles` flag.
+    const none = await computeMetricsForCoin(deps, { id });
+    expect(none).toMatchObject({ ok: true, noCandles: true, barCount: 0, status: 'unknown' });
     const row = await t.db
       .selectFrom('coins')
-      .select(['metrics_version', 'status'])
+      .select(['metrics_version', 'status', 'ath_market_cap_usd', 'ath_at', 'metric_flags'])
       .where('id', '=', id)
       .executeTakeFirstOrThrow();
-    expect(row).toEqual({ metrics_version: null, status: 'unknown' });
+    expect(row).toEqual({
+      metrics_version: METRICS_VERSION,
+      status: 'unknown',
+      ath_market_cap_usd: null,
+      ath_at: null,
+      metric_flags: ['no_candles'],
+    });
     expect(await getBars(t.db, 1, 60)).toEqual([]);
   });
 });

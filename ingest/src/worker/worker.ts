@@ -362,19 +362,6 @@ export class PipelineWorker {
     return res.rows[0]?.found === true;
   }
 
-  /** Jobs waiting or in retry (not running), per active stage. */
-  async queuedByStage(): Promise<Partial<Record<StageName, number>>> {
-    const out: Partial<Record<StageName, number>> = {};
-    for (const stage of this.stages) {
-      const res = await sql<{ n: string }>`
-        select count(*)::text as n from ${sql.id(this.schema, 'job')}
-        where name = ${queueName(stage)} and state in ('created', 'retry')
-      `.execute(this.opts.db);
-      out[stage] = Number(res.rows[0]?.n ?? 0);
-    }
-    return out;
-  }
-
   /** Handlers running in this process. */
   get runningHere(): number {
     return this.running;

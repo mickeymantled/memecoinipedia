@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   isBondingCurvePool,
+  OTHER_POOL_QUOTE,
   pairIdFor,
   pickGraduationPool,
   type PoolInfo,
@@ -14,6 +15,7 @@ const pool = (address: string, over: Partial<PoolInfo> = {}): PoolInfo => ({
   createdAt: 1000,
   liquidityUsd: 100,
   quoteToken: 'SOL',
+  quoteTokenAddress: OTHER_POOL_QUOTE.SOL,
   ...over,
 });
 
