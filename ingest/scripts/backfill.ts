@@ -8,7 +8,6 @@
  *     tsx scripts/backfill.ts run [--min-rough-peak 30000] [--limit N] [--order peak|hash]
  *       [--include-no-price] [--stages candles,metrics,metadata[,metadata_file]]
  *       [--codex-rps 100] [--concurrency 200] [--metrics-concurrency N] [--metadata-concurrency N]
- *       [--file-concurrency 3]
  *       [--file-concurrency 3] [--db-pool 30] [--queue-pool 8] [--gateway-rps 1] [--max-attempts 3] [--retry-failed]
  *       [--max-codex-units N] [--max-helius-credits N] [--confirm]
  *

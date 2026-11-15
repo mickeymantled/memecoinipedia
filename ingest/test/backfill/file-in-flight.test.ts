@@ -162,7 +162,7 @@ describeWorkerDb('metadata_file: an overloaded-gateway failure costs one attempt
     t = await createTestDatabase(workerAdminUrl!);
     db = t.db;
     runId = await createRun(db, { kind: 'test' });
-    const seeded = await seedCoins(db, [mintN(1), mintN(2)]);
+    const seeded = await seedCoins(db, [mintN(1), mintN(2), mintN(3)]);
     ids = [...seeded.values()];
     for (const id of ids) {
       await db
@@ -176,6 +176,15 @@ describeWorkerDb('metadata_file: an overloaded-gateway failure costs one attempt
   });
   afterAll(async () => {
     await t.drop();
+  });
+
+  /** Every gateway failed, one of them with a 429: the gateways were asked too much at once. */
+  const mixed = (): MetadataResult => ({
+    ...badResult('unreachable'),
+    attempts: [
+      { gateway: 'ipfs.filebase.io', result: 'timeout', status: null, requests: 1 },
+      { gateway: 'gateway.pinata.cloud', result: 'rate_limited', status: 429, requests: 1 },
+    ],
   });
 
   // One stage for the whole run: the rule remembers what this run charged.
@@ -207,39 +216,39 @@ describeWorkerDb('metadata_file: an overloaded-gateway failure costs one attempt
         'metadata_file',
         id,
       );
-    const [a, b] = ids as [number, number];
+    const [a, b, c] = ids as [number, number, number];
 
-    answer = badResult('unreachable'); // every gateway timed out
+    // A 429 among timeouts is a gateway saying "too many at once": charged once, repeats given back.
+    answer = mixed();
     for (let i = 0; i < 5; i++) expect(await run(a)).toMatchObject({ kind: 'retry' });
     expect(await attempts(a)).toBe(1);
 
-    // Rate limited counts the same way; a gateway that answered with a server error does not.
-    answer = {
-      ...badResult('unreachable'),
-      attempts: [
-        { gateway: 'ipfs.filebase.io', result: 'rate_limited', status: 429, requests: 1 },
-        { gateway: 'gateway.pinata.cloud', result: 'timeout', status: null, requests: 1 },
-      ],
-    };
-    for (let i = 0; i < 3; i++) await run(b);
+    // Timeouts alone can be a hanging host of the coin's own: charged every time, fails at the limit.
+    answer = badResult('unreachable');
+    expect(await run(b)).toMatchObject({ kind: 'retry' });
     expect(await attempts(b)).toBe(1);
-
-    const other = badResult('unreachable');
-    other.attempts = [
-      { gateway: 'ipfs.filebase.io', result: 'server_error', status: 502, requests: 1 },
-      { gateway: 'gateway.pinata.cloud', result: 'timeout', status: null, requests: 1 },
-    ];
-    answer = other;
     expect(await run(b)).toMatchObject({ kind: 'retry' });
     expect(await attempts(b)).toBe(2);
     expect(await run(b)).toMatchObject({ kind: 'failed' });
     expect(await attempts(b)).toBe(3);
+
+    // A server error among the answers is not overload either.
+    const other = badResult('unreachable');
+    other.attempts = [
+      { gateway: 'ipfs.filebase.io', result: 'server_error', status: 502, requests: 1 },
+      { gateway: 'gateway.pinata.cloud', result: 'rate_limited', status: 429, requests: 1 },
+    ];
+    answer = other;
+    expect(await run(c)).toMatchObject({ kind: 'retry' });
+    expect(await attempts(c)).toBe(1);
+    expect(await run(c)).toMatchObject({ kind: 'retry' });
+    expect(await attempts(c)).toBe(2);
   });
 
   it('a new run charges the coin again', async () => {
     const id = ids[0]!;
     const before = await attempts(id);
-    answer = badResult('unreachable');
+    answer = mixed();
     const fresh = registry(); // a new process, a new run
     await executeStage(
       {
