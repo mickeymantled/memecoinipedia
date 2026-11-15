@@ -17,6 +17,7 @@
     "vitest": "catalog:"
   },
   "dependencies": {
+    "undici": "^8.12.4",
     "zod": "^4.6.7"
   }
 }
