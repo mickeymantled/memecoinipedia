@@ -40,7 +40,8 @@ Level at hour 9 minute 30: window (m28, m29, m30) closes 1, 1, .000001: lower me
 Time above: each p_k (k 0 to 8) holds 3,600 s; p9 holds from minute 1 to minute 31 of hour 9: 1,800 s; the last level (cap 1,000) holds 1,740 s to asOf and is under every threshold. At or above 100k and 1M: 9 x 3,600 + 1,800 = 34,200. At or above 10M (p3 on): 6 x 3,600 + 1,800 = 23,400. At or above 100M (p6 on): 3 x 3,600 + 1,800 = 12,600.
 Drawdown: peak 1, lowest level .000001: (1 - .000001) x 100 = 99.9999.
 Rug: the level point at minute 31 is athAt + 1,800, within the 1,800 s window, at .000001, below 20% of the ATH; no strict point after it reaches half the ATH: true.
-athNearVolumeUsd: closes at or above .5 x 1 = .5: hour 8 (close .5, exactly half, 35 bars, 35,000) and hour 9 minutes 0 to 29 (30,000) = 65,000. The sale bars close at .000001 and add nothing. The limit is .05 x 1,000,000,000 = 50,000,000; 65,000 is below it: ath_thinly_traded.
+athNearVolumeUsd: closes at or above .5 x 1 = .5: hour 8 (close .5, exactly half, 35 bars, 35,000) and hour 9 minutes 0 to 29 (30,000) = 65,000. The sale bars close at .000001 and add nothing. The line is .2 x 1,000,000,000 = 200,000,000; 65,000 is below it: ath_thinly_traded.
+athBackedMarketCapUsd (share .2, fraction .5): groups by market cap, highest first, V_i and candidate = smaller of cap_i / .5 and V_i / .2. 1B: V 30,000, 150,000. 500M: V 65,000, 325,000. 200M: V 100,000, 500,000. 100M: 135,000, 675,000. 50M: 170,000, 850,000. 20M: 205,000, 1,025,000. 10M: 240,000, 1,200,000. 5M: 275,000, 1,375,000. 2M: 310,000, 1,550,000. 1M: 345,000, 1,725,000 (cap / .5 = 2M is larger). 1,000: V 2,346,000, candidate 2,000 (cap / .5). The largest is 1,725,000: at that market cap the bars at or above 862,500 are the 1M group and higher, 345,000 = .2 x 1,725,000.
 `,
   input: input([pool('pool-a', walkBars)], hourAt(10)),
   expected: {
@@ -54,6 +55,7 @@ athNearVolumeUsd: closes at or above .5 x 1 = .5: hour 8 (close .5, exactly half
     athLiquidityUsd: null,
     athHourVolumeUsd: 35_000,
     athNearVolumeUsd: 65_000,
+    athBackedMarketCapUsd: 1_725_000,
     secondsAbove: [34_200, 34_200, 23_400, 12_600],
     maxDrawdownPct: 99.9999,
     rugPattern: true,
@@ -73,7 +75,7 @@ ATH: .1 x 1e9 = 100,000,000 at m1 (earliest): athAt = T0 + 60, secondsToAth 60.
 Wick: the candidates are all bars; the highest value .1 first at m0: 100,000,000 at T0. athHourVolumeUsd: bars in (m1 - 3,600, m1] are m0 and m1: 10,000,000.
 Level points m1 to m9, all at .1, each held 60 s; m9 is held until asOf = m10, also 60 s: 9 x 60 = 540 s at or above every threshold (100,000,000 is at or above 100M).
 Drawdown 0. Rug false.
-athNearVolumeUsd: every bar closes at .1, at or above .5 x .1: 10 x 5,000,000 = 50,000,000. The line is .05 x 100,000,000 = 5,000,000. 50,000,000 is not below it: no flag.
+athNearVolumeUsd: every bar closes at .1, at or above .5 x .1: 10 x 5,000,000 = 50,000,000. The line is .2 x 100,000,000 = 20,000,000. 50,000,000 is not below it: no flag, and the backed high is the ATH itself, 100,000,000.
 `,
   input: input(
     [
@@ -95,6 +97,7 @@ athNearVolumeUsd: every bar closes at .1, at or above .5 x .1: 10 x 5,000,000 = 
     athLiquidityUsd: null,
     athHourVolumeUsd: 10_000_000,
     athNearVolumeUsd: 50_000_000,
+    athBackedMarketCapUsd: 100_000_000,
     secondsAbove: [540, 540, 540, 540],
     maxDrawdownPct: 0,
     rugPattern: false,
@@ -115,7 +118,8 @@ Wick: candidates are the bars with 1,000 USD: m0, m1, m2, all .2; earliest m0: 2
 athHourVolumeUsd: m0 and m1: 2,000.
 Level points m1 .2, m2 .2, m3 .2, m4 .1, each held 60 s (m4 until asOf = m5). All are at or above $100M (.1 x 1e9 = 100M): 240 s in every column.
 Drawdown: (.2 - .1) / .2 = 50. Rug false (.1 is not at or below 20% of the ATH).
-athNearVolumeUsd: the limit is .5 x .2 = .1. m0, m1, m2 close at .2: 3,000. m3 closes at exactly .1: counted, 111. m4 closes at .0999999: not counted. Total 3,111. The line is .05 x 200,000,000 = 10,000,000: 3,111 is below it, ath_thinly_traded.
+athNearVolumeUsd: the limit is .5 x .2 = .1. m0, m1, m2 close at .2: 3,000. m3 closes at exactly .1: counted, 111. m4 closes at .0999999: not counted. Total 3,111. The line is .2 x 200,000,000 = 40,000,000: 3,111 is below it, ath_thinly_traded.
+athBackedMarketCapUsd: groups by market cap: 200,000,000 (m0, m1, m2): V 3,000, candidate = smaller of 400,000,000 and 15,000 = 15,000. 100,000,000: V 3,111, 15,555. 99,999,900: V 3,333, smaller of 199,999,800 and 16,665 = 16,665. The largest is 16,665.
 `,
   input: input(
     [
@@ -140,6 +144,7 @@ athNearVolumeUsd: the limit is .5 x .2 = .1. m0, m1, m2 close at .2: 3,000. m3 c
     athLiquidityUsd: null,
     athHourVolumeUsd: 2_000,
     athNearVolumeUsd: 3_111,
+    athBackedMarketCapUsd: 16_665,
     secondsAbove: [240, 240, 240, 240],
     maxDrawdownPct: 50,
     rugPattern: false,
@@ -159,7 +164,8 @@ Windows: m0 not strict. m1 (m0, m1) 2,000 USD strict .2. The used hourly and dai
 ATH: .2 x 1e9 = 200,000,000 at m1; athAt = T0 + 60, secondsToAth 60. Hourly and daily bars never set it. No used coarse bar has a high above .2 and none is strict: no coverage flag.
 Wick: m0 and m1 are candidates at .2, earliest m0: 200,000,000 at T0. athHourVolumeUsd: m0 and m1, 2,000.
 Level points: m1 (T0 + 60), hour 5 (T0 + 18,000), day 1 (T0 + 86,400), all .2. Holds: 17,940 + 68,400 + (asOf - day 1 = 3,600) = 89,940 s at or above every threshold. Drawdown 0. Rug false.
-athNearVolumeUsd: 1-minute bars 2,000 + hour 5 (300) + day 1 (40) = 2,340. Not counted: hour 0 (7,000) and day 0 (9,000), which would make 18,340 if counted twice. The line is .05 x 200,000,000 = 10,000,000: ath_thinly_traded.
+athNearVolumeUsd: 1-minute bars 2,000 + hour 5 (300) + day 1 (40) = 2,340. Not counted: hour 0 (7,000) and day 0 (9,000), which would make 18,340 if counted twice. The line is .2 x 200,000,000 = 40,000,000: ath_thinly_traded.
+athBackedMarketCapUsd: the counted bars are the four at market cap 200,000,000 (m0, m1, hour 5, day 1), one group with V 2,340: candidate = smaller of 400,000,000 and 2,340 / .2 = 11,700. The backed high is 11,700.
 `,
   input: input(
     [
@@ -191,6 +197,7 @@ athNearVolumeUsd: 1-minute bars 2,000 + hour 5 (300) + day 1 (40) = 2,340. Not c
     athLiquidityUsd: null,
     athHourVolumeUsd: 2_000,
     athNearVolumeUsd: 2_340,
+    athBackedMarketCapUsd: 11_700,
     secondsAbove: [89_940, 89_940, 89_940, 89_940],
     maxDrawdownPct: 0,
     rugPattern: false,
@@ -210,7 +217,8 @@ Windows: m0 pool-a one bar, not strict. m1: pool-a (m0, m1) 2,000 strict .2 beat
 ATH: .2 x 1e9 = 200,000,000 at m1 (pool-a), athAt = T0 + 60, secondsToAth 60. athHourVolumeUsd: clean 1-minute bars of every pool in (m1 - 3,600, m1]: pool-a m0, m1 2,000 + pool-c m1 400 = 2,400.
 Wick: candidates with 1,000 USD: pool-a m0, m1, m2 (.2). Earliest m0, pool-a: 200,000,000 at T0.
 Level points: m1 .2, m2 .2, m3 .12 (strict, so it sets the level), each held 60 s (m3 until asOf = m4). All at or above $100M: 180 s in every column. Drawdown (.2 - .12) / .2 = 40. Rug false.
-athNearVolumeUsd, limit .1: pool-a m0, m1, m2 = 3,000; pool-c m1 (.2) 400 and m2 (.12) 250; pool-c m3 (.04) not counted. pool-b's 5,000,000 and pool-a's bad bar add nothing. Total 3,650. The line is 10,000,000: ath_thinly_traded. Flags sorted: ath_thinly_traded, bad_bar.
+athNearVolumeUsd, limit .1: pool-a m0, m1, m2 = 3,000; pool-c m1 (.2) 400 and m2 (.12) 250; pool-c m3 (.04) not counted. pool-b's 5,000,000 and pool-a's bad bar add nothing. Total 3,650. The line is .2 x 200,000,000 = 40,000,000: ath_thinly_traded.
+athBackedMarketCapUsd: counted bars in groups by market cap: 200,000,000 (pool-a m0, m1, m2 and pool-c m1): V 3,400, candidate 17,000. 120,000,000 (pool-c m2): V 3,650, candidate 18,250. 40,000,000 (pool-c m3): V 4,250, smaller of 80,000,000 and 21,250 = 21,250. The largest is 21,250; pool-b and the bad bar add nothing. Flags sorted: ath_thinly_traded, bad_bar.
 `,
   input: input(
     [
@@ -246,6 +254,7 @@ athNearVolumeUsd, limit .1: pool-a m0, m1, m2 = 3,000; pool-c m1 (.2) 400 and m2
     athLiquidityUsd: null,
     athHourVolumeUsd: 2_400,
     athNearVolumeUsd: 3_650,
+    athBackedMarketCapUsd: 21_250,
     secondsAbove: [180, 180, 180, 180],
     maxDrawdownPct: 40,
     rugPattern: false,
@@ -261,7 +270,7 @@ One primary pool, bars m0 and m1 at close .0002, 100 USD, 6 traders. launchedAt 
 
 Windows: m0 one bar; m1 (m0, m1) 200 USD, under the 1,000 USD a window needs: not strict. No strict window: no level (a point that is not strict does nothing while the level is undefined).
 ATH: null in all four fields, flag no_qualifying_window. Wick: no bar has 1,000 USD of its own: no candidate, and no ATH to fall back on: null. athLiquidityUsd, athHourVolumeUsd null. secondsAbove 0 in every column, drawdown null (no level points), rug false.
-athNearVolumeUsd: null, because the ATH is null. The flag ath_thinly_traded needs an ATH: not raised. Flags: no_qualifying_window only.
+athNearVolumeUsd and athBackedMarketCapUsd: null, because the ATH is null. The flag ath_thinly_traded needs an ATH: not raised. Flags: no_qualifying_window only.
 `,
   input: input(
     [
@@ -283,6 +292,7 @@ athNearVolumeUsd: null, because the ATH is null. The flag ath_thinly_traded need
     athLiquidityUsd: null,
     athHourVolumeUsd: null,
     athNearVolumeUsd: null,
+    athBackedMarketCapUsd: null,
     secondsAbove: [0, 0, 0, 0],
     maxDrawdownPct: null,
     rugPattern: false,
@@ -296,14 +306,14 @@ function limitCase(name: string, first: number, flagged: boolean): MetricFixture
   return {
     name,
     description: flagged
-      ? 'Near volume just under 5% of the ATH market cap: the flag is raised.'
-      : 'Near volume exactly 5% of the ATH market cap is not below the line: the flag is not raised.',
+      ? 'Near volume just under 20% of the ATH market cap: the flag is raised and the backed high is the volume divided by the share.'
+      : 'Near volume exactly 20% of the ATH market cap is not below the line: the flag is not raised and the backed high is the ATH.',
     reasoning: `
 One primary pool, bars m0 and m1 at close .2, 6 traders: m0 ${first.toLocaleString('en-US')} USD, m1 5,000,000 USD. launchedAt = T0, asOf = m2.
 
 Windows: m0 one bar, not strict. m1 (m0, m1) ${near.toLocaleString('en-US')} USD, strict, .2. ATH .2 x 1e9 = 200,000,000 at m1: athAt = T0 + 60, secondsToAth 60. Wick: both bars are candidates (1,000 USD or more, 6 traders); the first at .2 is m0: 200,000,000 at T0. athHourVolumeUsd: m0 and m1: ${near.toLocaleString('en-US')}.
 Level: the single level point m1 (.2) is held until asOf: 60 s at or above every threshold. Drawdown 0. Rug false.
-athNearVolumeUsd: both bars close at .2, at or above .1: ${near.toLocaleString('en-US')}. The line is .05 x 200,000,000 = 10,000,000. ${flagged ? `${near.toLocaleString('en-US')} is below it: ath_thinly_traded.` : 'The volume equals it: not below, no flag.'}
+athNearVolumeUsd: both bars close at .2, at or above .1: ${near.toLocaleString('en-US')}. The line is .2 x 200,000,000 = 40,000,000. ${flagged ? `${near.toLocaleString('en-US')} is below it: ath_thinly_traded. One group (both bars close at .2, market cap 200,000,000) with V = ${near.toLocaleString('en-US')}: the candidate is the smaller of 200,000,000 / .5 = 400,000,000 and ${near.toLocaleString('en-US')} / .2 = ${(near * 5).toLocaleString('en-US')}, so the backed high is ${(near * 5).toLocaleString('en-US')}.` : 'The volume equals it: not below, no flag, and the backed high is the ATH, 200,000,000.'}
 `,
     input: input(
       [
@@ -325,6 +335,7 @@ athNearVolumeUsd: both bars close at .2, at or above .1: ${near.toLocaleString('
       athLiquidityUsd: null,
       athHourVolumeUsd: near,
       athNearVolumeUsd: near,
+      athBackedMarketCapUsd: flagged ? near * 5 : 200_000_000,
       secondsAbove: [60, 60, 60, 60],
       maxDrawdownPct: 0,
       rugPattern: false,
@@ -333,6 +344,123 @@ athNearVolumeUsd: both bars close at .2, at or above .1: ${near.toLocaleString('
   };
 }
 
+const spikeOnThinVolume: MetricFixture = {
+  name: 'near-ath-backed-high-is-the-level-not-the-spike',
+  description:
+    '$80 million traded between $40 million and $60 million, then the price walked to $400 million on $1 million of volume: the backed high is the hand-worked level of $120 million, not the spike.',
+  reasoning: `
+One primary pool, 6 traders a bar, launchedAt = T0, asOf = m13. m0 to m3: close .04 (market cap 40,000,000), 10,000,000 USD each. m4 to m7: close .06 (60,000,000), 10,000,000 USD each: 80,000,000 in all. Then the walk, 200,000 USD a bar: m8 .1, m9 .2, m10 .3, m11 .4, m12 .4 (1,000,000 in all).
+
+Windows (lower median of the closes present; every window from m1 on is strict): m0 not strict, level undefined. m1 .04, m2 .04, m3 .04, m4 (.04, .04, .06) .04, m5 (.04, .06, .06) .06, m6 .06, m7 .06, m8 (.06, .06, .1) .06, m9 (.06, .1, .2) .1, m10 (.1, .2, .3) .2, m11 (.2, .3, .4) .3, m12 (.3, .4, .4) .4.
+ATH: .4 x 1e9 = 400,000,000, first strict at m12: athAt = T0 + 720, secondsToAth 720.
+Wick: every bar is a candidate (200,000 USD or more, 6 traders); the highest max(open, close) is .4, first at m11: 400,000,000 at T0 + 660 (the ATH price is not higher).
+athHourVolumeUsd: every bar is in (m12 - 3,600, m12]: 80,000,000 + 1,000,000 = 81,000,000.
+Level points m1 to m12, each held 60 s (m12 until asOf): levels .04 (m1 to m4), .06 (m5 to m8), .1, .2, .3, .4. All 12 are at or above $10M: 720 s for the first three thresholds; at or above $100M: .1, .2, .3, .4: 240 s. The level never falls: drawdown 0, rug false.
+athNearVolumeUsd: closes at or above .2: m9 to m12, 4 x 200,000 = 800,000. The line is .2 x 400,000,000 = 80,000,000: ath_thinly_traded.
+athBackedMarketCapUsd (fraction .5, share .2), groups by market cap, highest first: 400,000,000 (m11, m12): V 400,000, candidate = smaller of 800,000,000 and 2,000,000 = 2,000,000. 300,000,000: V 600,000, 3,000,000. 200,000,000: V 800,000, 4,000,000. 100,000,000: V 1,000,000, 5,000,000. 60,000,000 (4 bars): V 41,000,000, smaller of 120,000,000 and 205,000,000 = 120,000,000. 40,000,000: V 81,000,000, smaller of 80,000,000 and 405,000,000 = 80,000,000. The largest is 120,000,000: the bars at or above 60,000,000 hold 41,000,000, at least .2 x 120,000,000 = 24,000,000; above it the 60,000,000 group drops out and only 1,000,000 is left.
+`,
+  input: input(
+    [
+      pool('pool-a', [
+        ...[0, 1, 2, 3].map((i) => bar(minute(i), 0.04, { volumeUsd: 10_000_000 })),
+        ...[4, 5, 6, 7].map((i) => bar(minute(i), 0.06, { volumeUsd: 10_000_000 })),
+        bar(minute(8), 0.1, { volumeUsd: 200_000 }),
+        bar(minute(9), 0.2, { volumeUsd: 200_000 }),
+        bar(minute(10), 0.3, { volumeUsd: 200_000 }),
+        bar(minute(11), 0.4, { volumeUsd: 200_000 }),
+        bar(minute(12), 0.4, { volumeUsd: 200_000 }),
+      ]),
+    ],
+    minute(13),
+  ),
+  expected: {
+    athMarketCapUsd: 400_000_000,
+    athAt: 1_699_920_720,
+    athPoolAddress: 'pool-a',
+    secondsToAth: 720,
+    athWickMarketCapUsd: 400_000_000,
+    athWickAt: 1_699_920_660,
+    athWickPoolAddress: 'pool-a',
+    athLiquidityUsd: null,
+    athHourVolumeUsd: 81_000_000,
+    athNearVolumeUsd: 800_000,
+    athBackedMarketCapUsd: 120_000_000,
+    secondsAbove: [720, 720, 720, 240],
+    maxDrawdownPct: 0,
+    rugPattern: false,
+    flags: ['ath_thinly_traded'],
+  },
+};
+
+const equalCloses: MetricFixture = {
+  name: 'near-ath-backed-high-takes-equal-closes-together',
+  description:
+    'Four bars with the same close, from two pools, are one group: the backed high is their whole volume over the share. Counting only one of them, or dropping the rest, gives another answer.',
+  reasoning: `
+launchedAt = T0, asOf = m6, 6 traders a bar. pool-a (primary): m0 .1 / 3,000 USD; m1 .1 / 3,000; m5 close .00001 / 500. pool-c (not primary, liquidity 10,000 on every bar): m1 .1 / 2,000; m2 .1 / 1,000.
+
+Windows: pool-a m0 one bar, not strict. pool-a m1 (m0, m1) 6,000 USD strict .1; pool-c m1 one bar (2,000), not strict: pool-a is busier and wins the timestamp. pool-c m2 (m1, m2) 3,000 USD, 6 traders, funded: strict .1 (the only window at m2). pool-a m5 one bar (the minutes before are empty), not strict, price .00001.
+Level: m0 nothing (undefined); m1 .1; m2 .1; m5 .00001 (a point that is not strict can lower the level).
+ATH: .1 x 1e9 = 100,000,000 at m1 (pool-a): athAt = T0 + 60, secondsToAth 60.
+Wick: candidates with 1,000 USD and 6 traders: pool-a m0, m1, pool-c m1, m2, all .1; earliest m0, pool-a: 100,000,000 at T0.
+athHourVolumeUsd: 1-minute bars of every pool in (m1 - 3,600, m1]: pool-a m0, m1 6,000 + pool-c m1 2,000 = 8,000.
+Level holds: m1 to m2 60 s, m2 to m5 180 s at .1, m5 to asOf 60 s at .00001 (market cap 10,000, under every threshold): 240 s in every column. Drawdown (.1 - .00001) / .1 = 99.99. Rug: the level point at m5 is athAt + 240, at .00001, below 20% of the ATH, and nothing strict follows: true.
+athNearVolumeUsd: closes at or above .05: the four bars at .1: 3,000 + 3,000 + 2,000 + 1,000 = 9,000. The line is .2 x 100,000,000 = 20,000,000: ath_thinly_traded.
+athBackedMarketCapUsd, groups by market cap: 100,000,000 (all four bars together): V 9,000, candidate = smaller of 200,000,000 and 9,000 / .2 = 45,000. 10,000 (pool-a m5): V 9,500, smaller of 10,000 / .5 = 20,000 and 47,500 = 20,000. The largest is 45,000. Taking one of the four equal bars alone would give 3,000 / .2 = 15,000 or less, and the lower group's 20,000 would win: the answer would be wrong.
+`,
+  input: input(
+    [
+      pool('pool-a', [
+        bar(minute(0), 0.1, { volumeUsd: 3_000 }),
+        bar(minute(1), 0.1, { volumeUsd: 3_000 }),
+        bar(minute(5), 0.00001, { volumeUsd: 500 }),
+      ]),
+      pool(
+        'pool-c',
+        [
+          bar(minute(1), 0.1, { volumeUsd: 2_000, liquidityUsd: 10_000 }),
+          bar(minute(2), 0.1, { volumeUsd: 1_000, liquidityUsd: 10_000 }),
+        ],
+        { isPrimary: false },
+      ),
+    ],
+    minute(6),
+  ),
+  expected: {
+    athMarketCapUsd: 100_000_000,
+    athAt: 1_699_920_060,
+    athPoolAddress: 'pool-a',
+    secondsToAth: 60,
+    athWickMarketCapUsd: 100_000_000,
+    athWickAt: 1_699_920_000,
+    athWickPoolAddress: 'pool-a',
+    athLiquidityUsd: null,
+    athHourVolumeUsd: 8_000,
+    athNearVolumeUsd: 9_000,
+    athBackedMarketCapUsd: 45_000,
+    secondsAbove: [240, 240, 240, 240],
+    maxDrawdownPct: 99.99,
+    rugPattern: true,
+    flags: ['ath_thinly_traded'],
+  },
+};
+
+const shareZero: MetricFixture = {
+  ...halfBoundary,
+  name: 'near-ath-share-zero-backed-high-is-the-ath',
+  description:
+    'With a share of 0 nothing is thinly traded: the flag is not raised and the backed high is the ATH, with no division by zero.',
+  reasoning: `
+The input of near-ath-close-exactly-half-counts-just-under-does-not (one pool, closes .2, .2, .2, .1, .0999999; volumes 1,000, 1,000, 1,000, 111, 222; launchedAt = T0, asOf = m5) with minAthNearVolumeShare set to 0.
+
+Every output except the flag and the backed high is as in that fixture: ATH 200,000,000 at m1, wick at m0, athHourVolumeUsd 2,000, athNearVolumeUsd 3,111 (fraction .5 unchanged), secondsAbove 240 in every column, drawdown 50, rug false.
+Flag: the near volume 3,111 is at least 0 x 200,000,000 = 0 (the usual tolerance included): ath_thinly_traded is not raised. Flags are empty.
+athBackedMarketCapUsd: not flagged, so it is the ATH itself, 200,000,000. With a share of 0 every market cap is backed, and no candidate V_i / 0 is ever formed.
+`,
+  params: { minAthNearVolumeShare: 0 },
+  expected: { ...halfBoundary.expected, athBackedMarketCapUsd: 200_000_000, flags: [] },
+};
+
 export const metricFixturesV6: MetricFixture[] = [
   thinWalkThenSale,
   heavyTrading,
@@ -340,6 +468,9 @@ export const metricFixturesV6: MetricFixture[] = [
   countedOnce,
   poolsSummedAndDroppedAdd,
   noAth,
-  limitCase('near-ath-volume-exactly-at-the-line-no-flag', 5_000_000, false),
-  limitCase('near-ath-volume-just-under-the-line-flag', 4_999_999, true),
+  limitCase('near-ath-volume-exactly-at-the-line-no-flag', 35_000_000, false),
+  limitCase('near-ath-volume-just-under-the-line-flag', 34_999_999, true),
+  spikeOnThinVolume,
+  equalCloses,
+  shareZero,
 ];

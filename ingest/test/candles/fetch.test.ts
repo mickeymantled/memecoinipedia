@@ -167,6 +167,8 @@ describeDb('fetchCandlesForCoin on recorded fixtures', () => {
       expect(row1.ath_hour_volume_usd).not.toBeNull();
       expect(row1.ath_near_volume_usd).toBe(direct.athNearVolumeUsd);
       expect(direct.athNearVolumeUsd).not.toBeNull();
+      expect(row1.ath_backed_market_cap_usd).toBe(direct.athBackedMarketCapUsd);
+      expect(direct.athBackedMarketCapUsd).not.toBeNull();
       expect(row1.seconds_above_100k).toBe(direct.secondsAbove[0]);
       expect(row1.max_drawdown_pct).toBe(direct.maxDrawdownPct);
       expect(row1.metric_flags).toEqual(direct.flags);
