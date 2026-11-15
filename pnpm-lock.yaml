@@ -84,6 +84,12 @@ importers:
 
   ingest:
     dependencies:
+      '@memecoinipedia/db':
+        specifier: workspace:*
+        version: link:../db
+      kysely:
+        specifier: ^0.29.9
+        version: 0.29.9
       undici:
         specifier: ^8.12.4
         version: 8.12.4
