@@ -20,7 +20,7 @@ import {
   createRun,
   finishRun,
   recordUsageSample,
-  requeueFailed,
+  requeueFailedInSelection,
   reopenStagesForCoins,
   resolveSelection,
   stageBreakdown,
@@ -132,6 +132,11 @@ export interface BackfillPlan {
   ready: Partial<Record<StageName, number>>;
   freshRunning: number;
   nothingToDo: boolean;
+  /**
+   * Failed stages of the asked-for stages inside the selection that `--retry-failed` puts back to
+   * pending, with a full set of attempts. Present only with `--retry-failed`; they count as work.
+   */
+  retryFailed?: { stages: number };
   /** A pool-list refresh: how many selected coins have candles done (they will be reopened). */
   refresh?: { coins: number; candlesDone: number };
 }
@@ -196,6 +201,7 @@ export async function planBackfill(
   maxAttempts: number,
   now: Date,
   refresh = false,
+  retryFailed = false,
 ): Promise<BackfillPlan> {
   const selection = await resolveSelection(db, selectionSpec);
   if (refresh) {
@@ -213,6 +219,7 @@ export async function planBackfill(
       freshRunning: 0,
       nothingToDo: selection.size === 0,
       refresh: { coins: selection.size, candlesDone },
+      ...(retryFailed ? { retryFailed: { stages: failedCount(all, stages) } } : {}),
     };
   }
   const all = await stageBreakdown(db, selection, breakdownStages(now));
@@ -224,6 +231,7 @@ export async function planBackfill(
   const ready = await readyCounts(db, selection, stages, maxAttempts, now);
   const freshRunning = breakdown.reduce((s, b) => s + b.running, 0);
   const readyTotal = Object.values(ready).reduce((s, x) => s + (x ?? 0), 0);
+  const retry = retryFailed ? failedCount(all, stages) : 0;
   return {
     selection,
     stages: breakdown,
@@ -232,8 +240,19 @@ export async function planBackfill(
       : { rows: [], coinsToDo: 0, units: 0 },
     ready,
     freshRunning,
-    nothingToDo: readyTotal === 0 && freshRunning === 0,
+    nothingToDo: readyTotal === 0 && freshRunning === 0 && retry === 0,
+    ...(retryFailed ? { retryFailed: { stages: retry } } : {}),
   };
+}
+
+/** Failed stage rows of the asked-for stages in the selection (what `--retry-failed` requeues). */
+function failedCount(
+  all: readonly { stage: string; failed: number }[],
+  stages: readonly BackfillStageName[],
+): number {
+  return all
+    .filter((b) => stages.includes(b.stage as BackfillStageName))
+    .reduce((sum, b) => sum + b.failed, 0);
 }
 
 const n = (x: number) => Math.round(x).toLocaleString('en-US');
@@ -301,6 +320,12 @@ export function formatBackfillPlan(
         `At 4 units a request that is about ${formatDuration(minutes)} of requests, if the provider keeps up.`,
     );
   }
+  if (plan.retryFailed) {
+    lines.push(
+      `Failed stages to retry (--retry-failed): ${n(plan.retryFailed.stages)}; ` +
+        'they are put back to pending with a full set of attempts.',
+    );
+  }
   if (plan.nothingToDo) lines.push('Nothing to do: every selected coin is done at every stage.');
   if (!o.confirm) {
     lines.push('Dry run: no provider call, no write. Add --confirm to run.');
@@ -363,6 +388,7 @@ export async function runBackfill(opts: BackfillOptions): Promise<BackfillReport
       maxAttempts,
       now(),
       refresh !== undefined,
+      opts.retryFailed ?? false,
     );
     const planText = formatBackfillPlan(plan, {
       stages,
@@ -467,7 +493,7 @@ export async function runBackfill(opts: BackfillOptions): Promise<BackfillReport
     let scanned = 0;
     try {
       if (opts.retryFailed) {
-        const k = await requeueFailed(db, stages, { now: now() });
+        const k = await requeueFailedInSelection(db, plan.selection, stages, now());
         opts.log.info(`requeued ${k} failed stages for a full set of retries`);
       }
       if (refresh) {
