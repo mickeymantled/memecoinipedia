@@ -32,7 +32,6 @@ import {
 } from '@memecoinipedia/db';
 import { sql, type Kysely } from 'kysely';
 import { METRICS_VERSION } from '../candles/index.js';
-import { CODEX_PROVIDER } from '../sources/codex/index.js';
 import {
   DEFAULT_MAX_ATTEMPTS,
   PipelineWorker,
@@ -46,6 +45,7 @@ import { CANDLES_STAGE_VERSION, CANDLES_TIMEOUT_SECONDS } from '../worker/stages
 import { METADATA_STAGE_VERSION } from '../worker/stages/metadata.js';
 import { METADATA_FILE_STAGE_VERSION } from '../worker/stages/metadataFile.js';
 import { estimateMetadata } from '../worker/plan.js';
+import { startUsageReporting, syncUsageFrom } from '../shared/usageReport.js';
 import { UsageMeter } from '../worker/usage.js';
 import { CELL_EDGES, estimateBackfillUnits, type BackfillEstimate } from './cells.js';
 import {
@@ -365,14 +365,7 @@ export async function runBackfill(opts: BackfillOptions): Promise<BackfillReport
       });
     if (wantsCandles && !clients.codex)
       throw new Error('The candles stage needs a Codex.io client');
-    const syncUsage = () => {
-      const usage = { ...clients.readUsage?.() };
-      if (clients.codex && !usage[CODEX_PROVIDER]) {
-        const c = clients.codex.spend();
-        usage[CODEX_PROVIDER] = { requests: c.requests, units: c.units };
-      }
-      for (const [p, t] of Object.entries(usage)) meter.set(p, t.requests, t.units);
-    };
+    const syncUsage = () => syncUsageFrom(clients, meter);
 
     const runId = await createRun(db, {
       kind: BACKFILL_RUN_KIND,
@@ -406,27 +399,7 @@ export async function runBackfill(opts: BackfillOptions): Promise<BackfillReport
       syncUsage();
       await meter.flush(db, runId, now());
     };
-    let lastSample = 0;
-    const stopFlush = meter.startFlushing(
-      db,
-      runId,
-      now,
-      5000,
-      (err) => opts.log.warn(`usage flush failed: ${(err as Error).message}`),
-      () => {
-        syncUsage();
-        // History for the status view's "last hour": one sample every 30 seconds.
-        if (Date.now() - lastSample >= 30_000) {
-          lastSample = Date.now();
-          const at = now();
-          for (const [p, t] of Object.entries(meter.snapshot())) {
-            recordUsageSample(db, runId, { provider: p, ...t }, at).catch((e: Error) =>
-              opts.log.warn(`usage sample failed: ${e.message}`),
-            );
-          }
-        }
-      },
-    );
+    const stopFlush = startUsageReporting({ db, runId, meter, clients, now, log: opts.log });
     let scanned = 0;
     try {
       if (opts.retryFailed) {

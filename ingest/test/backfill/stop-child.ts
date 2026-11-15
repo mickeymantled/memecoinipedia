@@ -5,7 +5,7 @@
  */
 import { createDb } from '@memecoinipedia/db';
 import { runBackfill } from '../../src/backfill/run.js';
-import { installStopSignals } from '../../src/backfill/signals.js';
+import { installStopSignals } from '../../src/shared/signals.js';
 import { silentLogger } from '../../src/worker/log.js';
 import { testClients } from './helpers.js';
 import { synthProvider } from './synthetic.js';

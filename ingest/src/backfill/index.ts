@@ -5,4 +5,4 @@ export * from './run.js';
 export * from './seed.js';
 export * from './setup.js';
 export * from './status.js';
-export * from './signals.js';
+export * from '../shared/signals.js';
