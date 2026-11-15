@@ -18,7 +18,7 @@ export const RECORD_CLOSE = '</coin_record>';
 const MAX_DESCRIPTION_CHARS = 1500;
 const MAX_SHORT_CHARS = 300;
 const MAX_SOCIALS = 12;
-const MAX_CANDIDATES = 10;
+export const MAX_CANDIDATES = 10;
 
 /** An earlier, larger coin that may be the parent. Filled by task B5. */
 export interface ParentCandidate {
