@@ -12,8 +12,9 @@ import {
   DuneClient,
   DuneDownloadTooLargeError,
   DuneRedirectError,
-  DuneSizeUnknownError,
-  exportCredits,
+  DuneCreditLimitError,
+  DuneResponseError,
+  duneErrorMessage,
   type DuneClientOptions,
 } from '../../../src/sources/dune/index.js';
 import { HttpError, type FetchLike } from '../../../src/sources/http.js';
@@ -205,17 +206,17 @@ describe('waitForExecution', () => {
     const r = await client.waitForExecution(ID);
     expect(r).toMatchObject({
       outcome: 'completed',
-      reportedCredits: 10,
-      chargedCredits: 10,
+      reportedCredits: 0.35,
+      chargedCredits: 0.35,
       estimated: false,
-      rowCount: 4,
+      rowCount: 3,
       resultBytes: 1_500_000,
     });
     // 2 s, then 1.5 times that, and so on.
     expect(clock.sleeps).toEqual([2000, 3000, 4500]);
-    // What the budget holds is the reported 10, not the reserved 40 and not an estimate.
+    // What the budget holds is the reported 0.35, not the reserved 40 and not an estimate.
     expect(dune(budget)).toMatchObject({
-      units: 10,
+      units: 0.35,
       estimatedUnits: 0,
       reservedUnits: 0,
       requests: 1,
@@ -260,7 +261,7 @@ describe('waitForExecution', () => {
       errorType: 'FAILED_TYPE_EXECUTION_FAILED',
       chargedCredits: 0,
     });
-    expect(r.outcome === 'failed' && r.error).toContain("Column 'x' cannot be resolved");
+    expect(r.outcome === 'failed' && r.error).toContain('value must be finite; was Infinity');
     expect(dune(budget).units).toBe(0);
     expect(dune(budget).reservedUnits).toBe(0);
   });
@@ -304,15 +305,55 @@ describe('waitForExecution', () => {
       outcome: 'timed_out',
       cancelRequested: true,
       cancelSucceeded: true,
-      reportedCredits: 4.5,
-      chargedCredits: 4.5,
+      reportedCredits: 5.8,
+      chargedCredits: 5.8,
     });
     const cancels = post.requests.filter((q) => pathOf(q.url).endsWith('/cancel'));
     expect(cancels).toHaveLength(1);
     expect(pathOf(cancels[0]!.url)).toBe(`/api/v1/execution/${ID}/cancel`);
     expect(clock.now()).toBeGreaterThanOrEqual(60_000);
     expect(clock.now()).toBeLessThan(60_000 + 15_000); // it did not keep polling past the limit
-    expect(dune(budget)).toMatchObject({ units: 4.5, reservedUnits: 0 });
+    expect(dune(budget)).toMatchObject({ units: 5.8, reservedUnits: 0 });
+  });
+
+  it('after a cancel, waits for the execution to stop so the reported cost is used', async () => {
+    const budget = new UnitBudget({ ceilingUnits: 1000 });
+    let cancelled = false;
+    let after = 0;
+    const { client, clock } = setup({
+      budget,
+      post: (req) => {
+        if (pathOf(req.url).endsWith('/cancel')) cancelled = true;
+        return { body: pathOf(req.url).endsWith('/cancel') ? fx('cancel') : fx('execute') };
+      },
+      get: () => {
+        if (!cancelled) return { body: fx('status-executing') };
+        after++;
+        return { body: fx(after < 3 ? 'status-executing' : 'status-cancelled') };
+      },
+    });
+    await client.executeSql('select 1', { maxCredits: 40 });
+    const r = await client.waitForExecution(ID, { timeLimitMs: 10_000 });
+    expect(r).toMatchObject({ outcome: 'timed_out', chargedCredits: 5.8, estimated: false });
+    expect(after).toBe(3);
+    expect(clock.sleeps.filter((x) => x === 2000).length).toBeGreaterThanOrEqual(2);
+    expect(dune(budget)).toMatchObject({ units: 5.8, estimatedUnits: 0, reservedUnits: 0 });
+  });
+
+  it('gives up waiting after the cancel and settles at maxCredits', async () => {
+    const budget = new UnitBudget({ ceilingUnits: 1000 });
+    const { client } = setup({ budget, get: () => ({ body: fx('status-executing') }) });
+    await client.executeSql('select 1', { maxCredits: 40 });
+    const r = await client.waitForExecution(ID, { timeLimitMs: 4_000, afterCancelWaitMs: 6_000 });
+    expect(r).toMatchObject({ outcome: 'timed_out', chargedCredits: 40, estimated: true });
+  });
+
+  it('for an execution it did not start, reports the cost but records nothing', async () => {
+    const budget = new UnitBudget({ ceilingUnits: 1000 });
+    const { client } = setup({ budget, get: () => ({ body: fx('status-completed') }) });
+    const r = await client.waitForExecution('reused-id');
+    expect(r).toMatchObject({ outcome: 'completed', reportedCredits: 0.35, rowCount: 3 });
+    expect(dune(budget)).toMatchObject({ units: 0, requests: 0 });
   });
 
   it('settles a timed-out execution at maxCredits when the cancel fails and no cost is known', async () => {
@@ -388,7 +429,7 @@ describe('redirects', () => {
   it('refuses a redirect on GET (csv) and releases the export reservation', async () => {
     const budget = new UnitBudget({ ceilingUnits: 1000 });
     const { client } = setup({ budget, get: () => ({ status: 307 }) });
-    await expect(client.downloadCsv(ID, tmpFile(), { resultBytes: 100 })).rejects.toBeInstanceOf(
+    await expect(client.downloadCsv(ID, tmpFile(), { limit: 10 })).rejects.toBeInstanceOf(
       DuneRedirectError,
     );
     expect(dune(budget).reservedUnits).toBe(0);
@@ -396,77 +437,145 @@ describe('redirects', () => {
 });
 
 describe('downloadCsv', () => {
-  it('computes the cost per started MB and the rate is an option', () => {
-    expect(exportCredits(1, 10)).toBe(10);
-    expect(exportCredits(1024 * 1024, 10)).toBe(10);
-    expect(exportCredits(1024 * 1024 + 1, 10)).toBe(20);
-    expect(exportCredits(1_500_000, 2)).toBe(4);
-  });
+  const HEADER = 'mint,created_at\n';
+  const dataRows = (n: number, from = 0) =>
+    Array.from({ length: n }, (_, i) => `m${from + i},${1_700_000_000 + from + i}\n`).join('');
 
-  it('streams to the file, counts bytes, and records the computed export cost', async () => {
+  it('writes the first page with its header, counts rows, and reads the next offset', async () => {
     const budget = new UnitBudget({ ceilingUnits: 1000 });
-    const body = fs.readFileSync(
-      new URL('../fixtures/dune/graduates.csv', import.meta.url),
-      'utf8',
-    );
-    const { client, get } = setup({ budget, get: () => ({ body }) });
+    const body = HEADER + dataRows(1000);
+    const { client, get } = setup({
+      budget,
+      get: () => ({ body, headers: { 'x-dune-next-offset': '1000' } }),
+    });
     const out = tmpFile();
-    const r = await client.downloadCsv(ID, out, { resultBytes: 1_500_000, maxBytes: 2_000_000 });
+    const r = await client.downloadCsv(ID, out, { limit: 1000 });
     expect(r).toMatchObject({
       status: 'downloaded',
+      rows: 1000,
       bytes: Buffer.byteLength(body),
-      credits: 10,
-      reservedCredits: 20,
+      nextOffset: 1000,
+      estimated: true,
+      credits: 1.6,
+      reservedCredits: 1.6,
     });
     expect(fs.readFileSync(out, 'utf8')).toBe(body);
-    expect(get.requests[0]!.url).toBe(`https://api.dune.com/api/v1/execution/${ID}/results/csv`);
+    expect(get.requests[0]!.url).toBe(
+      `https://api.dune.com/api/v1/execution/${ID}/results/csv?limit=1000&offset=0`,
+    );
     expect(get.requests[0]!.headers['x-dune-api-key']).toBe(KEY);
-    expect(dune(budget)).toMatchObject({ units: 10, estimatedUnits: 10, reservedUnits: 0 });
+    expect(dune(budget)).toMatchObject({ units: 1.6, estimatedUnits: 1.6, reservedUnits: 0 });
+  });
+
+  it('appends a later page and drops its header row; no next offset means the last page', async () => {
+    const { client } = setup({
+      get: (url) =>
+        url.includes('offset=0')
+          ? { body: HEADER + dataRows(3), headers: { 'x-dune-next-offset': '3' } }
+          : { body: HEADER + dataRows(2, 3) },
+    });
+    const out = tmpFile();
+    const a = await client.downloadCsv(ID, out, { limit: 3 });
+    const b = await client.downloadCsv(ID, out, {
+      limit: 3,
+      offset: a.status === 'downloaded' ? a.nextOffset! : 0,
+    });
+    expect(b).toMatchObject({ rows: 2, nextOffset: null });
+    expect(fs.readFileSync(out, 'utf8')).toBe(HEADER + dataRows(5));
+  });
+
+  it('drops the header row of a later page even when it arrives in tiny chunks', async () => {
+    const bytes = new TextEncoder().encode(HEADER + dataRows(2));
+    const chunks = Array.from(bytes, (b) => Uint8Array.of(b));
+    const { client } = setup({ get: () => ({ body: chunks }) });
+    const out = tmpFile();
+    fs.writeFileSync(out, HEADER + 'first,1\n');
+    await client.downloadCsv(ID, out, { limit: 2, offset: 1 });
+    expect(fs.readFileSync(out, 'utf8')).toBe(HEADER + 'first,1\n' + dataRows(2));
+  });
+
+  it('records the measured cost when the caller supplies one, else the estimate', async () => {
+    const budget = new UnitBudget({ ceilingUnits: 1000 });
+    const body = HEADER + dataRows(1000);
+    const { client } = setup({ budget, get: () => ({ body }) });
+    const r1 = await client.downloadCsv(ID, tmpFile(), {
+      limit: 1000,
+      measureCredits: async () => 1.9,
+    });
+    expect(r1).toMatchObject({ credits: 1.9, estimated: false });
+    const r2 = await client.downloadCsv(ID, tmpFile(), {
+      limit: 1000,
+      measureCredits: async () => null,
+    });
+    expect(r2).toMatchObject({ credits: 1.6, estimated: true });
+    const r3 = await client.downloadCsv(ID, tmpFile(), {
+      limit: 1000,
+      measureCredits: async () => {
+        throw new Error('usage failed');
+      },
+    });
+    expect(r3).toMatchObject({ credits: 1.6, estimated: true });
+    expect(dune(budget)).toMatchObject({
+      units: 1.9 + 1.6 + 1.6,
+      estimatedUnits: 3.2,
+      reservedUnits: 0,
+    });
   });
 
   it('uses the configured rate', async () => {
-    const budget = new UnitBudget({ ceilingUnits: 1000 });
     const { client } = setup({
-      budget,
-      exportCreditsPerMb: 2,
-      get: () => ({ body: 'a,b\n1,2\n' }),
+      downloadCreditsPer1000Rows: 3,
+      get: () => ({ body: HEADER + dataRows(500) }),
     });
-    const r = await client.downloadCsv(ID, tmpFile(), { resultBytes: 3 * 1024 * 1024 });
-    expect(r).toMatchObject({ reservedCredits: 6, credits: 2 });
+    const r = await client.downloadCsv(ID, tmpFile(), { limit: 1000 });
+    expect(r).toMatchObject({ reservedCredits: 3, credits: 1.5 });
   });
 
-  it('is refused, with no request, when the computed cost does not fit the budget', async () => {
-    const { client, get } = setup({ budget: new UnitBudget({ ceilingUnits: 15 }) });
-    // 1.5 MB rounds up to 2 MB, 20 credits at the default rate of 10.
-    await expect(
-      client.downloadCsv(ID, tmpFile(), { resultBytes: 1_500_000 }),
-    ).rejects.toBeInstanceOf(BudgetExceededError);
+  it('is refused, with no request, when the page estimate does not fit the budget', async () => {
+    const { client, get } = setup({ budget: new UnitBudget({ ceilingUnits: 50 }) });
+    // A full page of 32,000 rows is estimated at 51.2 credits.
+    await expect(client.downloadCsv(ID, tmpFile())).rejects.toBeInstanceOf(BudgetExceededError);
     expect(get.requests).toHaveLength(0);
   });
 
-  it('is refused when the size is not known and no maxBytes is given', async () => {
-    const { client, get } = setup();
-    await expect(client.downloadCsv(ID, tmpFile(), {})).rejects.toBeInstanceOf(
-      DuneSizeUnknownError,
+  it('sends a 402 as its own error with Dune message, does not retry, and records nothing', async () => {
+    const budget = new UnitBudget({ ceilingUnits: 1000 });
+    const { client, get } = setup({
+      budget,
+      get: () => ({ status: 402, body: fx('results-csv-402') }),
+    });
+    const err = await client.downloadCsv(ID, tmpFile(), { limit: 10 }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(DuneCreditLimitError);
+    expect((err as DuneCreditLimitError).duneMessage).toMatch(
+      /exceed your configured credits limit/,
     );
-    await expect(client.downloadCsv(ID, tmpFile(), { resultBytes: null })).rejects.toBeInstanceOf(
-      DuneSizeUnknownError,
-    );
-    expect(get.requests).toHaveLength(0);
+    expect(get.requests).toHaveLength(1);
+    expect(dune(budget)).toMatchObject({ units: 0, reservedUnits: 0 });
   });
 
-  it('cuts the stream off at maxBytes, removes the file and records what was received', async () => {
+  it('cuts the stream off at maxBytes, removes a first-page file, and charges the page estimate', async () => {
     const budget = new UnitBudget({ ceilingUnits: 1000 });
     const chunks = Array.from({ length: 50 }, () => new TextEncoder().encode('x'.repeat(100)));
     const { client, get } = setup({ budget, get: () => ({ body: chunks }) });
     const out = tmpFile();
-    await expect(client.downloadCsv(ID, out, { maxBytes: 1000 })).rejects.toBeInstanceOf(
-      DuneDownloadTooLargeError,
-    );
+    await expect(
+      client.downloadCsv(ID, out, { limit: 1000, maxBytes: 1000 }),
+    ).rejects.toBeInstanceOf(DuneDownloadTooLargeError);
     expect(fs.existsSync(out)).toBe(false);
     expect(get.pulled[0]).toBeLessThan(50); // it stopped reading instead of draining the body
-    expect(dune(budget).reservedUnits).toBe(0);
-    expect(dune(budget).units).toBeLessThanOrEqual(10);
+    // Dune bills a page when the request is made.
+    expect(dune(budget)).toMatchObject({ units: 1.6, estimatedUnits: 1.6, reservedUnits: 0 });
+  });
+
+  it('cuts a failed later page back to its size before the page', async () => {
+    const chunks = Array.from({ length: 50 }, () => new TextEncoder().encode('x'.repeat(100)));
+    const { client } = setup({ get: () => ({ body: chunks }) });
+    const out = tmpFile();
+    fs.writeFileSync(out, HEADER + dataRows(3));
+    await expect(
+      client.downloadCsv(ID, out, { limit: 10, offset: 3, maxBytes: 1000 }),
+    ).rejects.toBeInstanceOf(DuneDownloadTooLargeError);
+    expect(fs.readFileSync(out, 'utf8')).toBe(HEADER + dataRows(3));
   });
 
   it('refuses a body whose declared length is over the cap before reading it', async () => {
@@ -478,6 +587,67 @@ describe('downloadCsv', () => {
     );
     expect(get.pulled[0]).toBe(0);
   });
+
+  it('refuses an x-dune-next-offset that does not move forward', async () => {
+    const { client } = setup({
+      get: () => ({ body: HEADER + dataRows(2), headers: { 'x-dune-next-offset': '0' } }),
+    });
+    await expect(client.downloadCsv(ID, tmpFile(), { limit: 2 })).rejects.toBeInstanceOf(
+      DuneResponseError,
+    );
+  });
+
+  it('sends columns and filters in the query string, encoded', async () => {
+    const { client, get } = setup({ get: () => ({ body: HEADER }) });
+    await client.downloadCsv(ID, tmpFile(), {
+      limit: 5,
+      columns: ['mint', 'peak_p999_usd'],
+      filters: "peak_p999_usd >= 100000 and mint != 'x'",
+    });
+    const u = new URL(get.requests[0]!.url);
+    expect(u.searchParams.get('columns')).toBe('mint,peak_p999_usd');
+    expect(u.searchParams.get('filters')).toBe("peak_p999_usd >= 100000 and mint != 'x'");
+    expect(u.searchParams.get('limit')).toBe('5');
+  });
+
+  it.each([
+    [{ limit: 0 }],
+    [{ limit: 32_001 }],
+    [{ limit: 1.5 }],
+    [{ offset: -1 }],
+    [{ columns: ['mint; drop'] }],
+    [{ filters: 'a = 1; select 1' }],
+    [{ filters: '' }],
+    [{ maxBytes: 0 }],
+  ])('rejects the option %j without a request', async (options) => {
+    const { client, get } = setup();
+    await expect(client.downloadCsv(ID, tmpFile(), options)).rejects.toThrow(RangeError);
+    expect(get.requests).toHaveLength(0);
+  });
+
+  it('works for an execution this client did not start', async () => {
+    const { client } = setup({ get: () => ({ body: HEADER + dataRows(1) }) });
+    expect(client.openExecutions()).toEqual([]);
+    const r = await client.downloadCsv('some-other-id', tmpFile(), { limit: 1 });
+    expect(r).toMatchObject({ status: 'downloaded', rows: 1 });
+  });
+});
+
+describe('duneErrorMessage', () => {
+  it('shows what Dune said for a rejected performance tier', async () => {
+    const { client } = setup({ post: () => ({ status: 400, body: fx('execute-tier-400') }) });
+    const err = await client
+      .executeSql('select 1', { maxCredits: 5, performance: 'small' })
+      .catch((e: unknown) => e);
+    expect(duneErrorMessage(err)).toBe(
+      'HTTP 400: This performance tier is not available with your subscription. Please upgrade your subscription plan here: https://dune.com/pricing',
+    );
+  });
+
+  it('falls back to the error message', () => {
+    expect(duneErrorMessage(new Error('plain'))).toBe('plain');
+    expect(duneErrorMessage('x')).toBe('unknown error');
+  });
 });
 
 describe('dry run', () => {
@@ -486,7 +656,7 @@ describe('dry run', () => {
     expect(await client.usage()).toBeNull();
     expect(await client.executeSql('select 1', { maxCredits: 40 })).toEqual({ status: 'dry_run' });
     expect(await client.waitForExecution('x')).toEqual({ outcome: 'dry_run' });
-    expect(await client.downloadCsv('x', tmpFile(), { maxBytes: 1_500_000 })).toEqual({
+    expect(await client.downloadCsv('x', tmpFile(), { limit: 1000 })).toEqual({
       status: 'dry_run',
     });
     expect(post.requests).toHaveLength(0);
@@ -495,8 +665,8 @@ describe('dry run', () => {
     const plan = client.plan();
     expect(plan.calls.map((c) => c.kind)).toEqual(['usage', 'execute', 'export']);
     expect(plan.calls[1]).toMatchObject({ credits: 40 });
-    expect(plan.calls[2]).toMatchObject({ credits: 20 });
-    expect(plan.totalCredits).toBe(60);
+    expect(plan.calls[2]).toMatchObject({ credits: 1.6 });
+    expect(plan.totalCredits).toBe(41.6);
   });
 
   it('writes no file', async () => {

@@ -6,7 +6,6 @@
   "execution_cost_credits": 0,
   "error": {
     "type": "FAILED_TYPE_EXECUTION_FAILED",
-    "message": "line 1:8: Column 'x' cannot be resolved",
-    "metadata": { "line": 1, "column": 8 }
+    "message": "value must be finite; was Infinity [Execution ID: 01HKZJ2683PHF9Q9PHHQ8FW4Q1]"
   }
 }

@@ -1,6 +1,7 @@
 /**
- * Dune API client, written from Dune's documentation (read 2026-11-15). Nothing here has been
- * run against the live API.
+ * Dune API client. Written from Dune's documentation (read 2026-11-15) and corrected with what
+ * the first live runs showed that day. This code has not been run against the live API by the
+ * agent that wrote it; its tests use fakes.
  *
  * Base URL `https://api.dune.com/api`. The key goes in the `X-Dune-Api-Key` header. Dune also
  * accepts `?api_key=`; this client never uses it, and every error that leaves it has the key and
@@ -11,8 +12,14 @@
  * takes `maxCredits`, reserves it in the `UnitBudget` before the call, and keeps the reservation
  * until `waitForExecution` sees the execution end; it then records the cost Dune reports in
  * `execution_cost_credits`. If Dune reports none, it records `maxCredits`, marked estimated.
- * Exports are billed by size (credits per MB, a client option: 10 on Analyst, 2 on Plus). The
- * export cost is computed from the size and reserved before the download starts.
+ *
+ * Downloads are billed per request, when the request is made, whether or not the body is read
+ * (seen live: 10 credits for 7,000 rows, 49 for 32,000). A CSV download without `limit` on a
+ * large result is refused by Dune with HTTP 402; with `limit` and `offset` it works, a page is
+ * capped at 32,000 rows, and `x-dune-next-offset` names the next page (absent on the last).
+ * `downloadCsv` therefore fetches one page per call, appends it to the file, and reserves an
+ * estimate (rows per 1,000 times a rate option) before the request. After the page is saved it
+ * records the cost the caller measures (for example the difference in `usage()`), or the estimate.
  *
  * Redirects are never followed on any request (the key would travel with them): a 3xx is a
  * `DuneRedirectError`.
@@ -44,9 +51,12 @@ import {
 
 export const DUNE_PROVIDER = 'dune';
 export const DUNE_BASE_URL = 'https://api.dune.com/api';
-export const DUNE_MB = 1024 * 1024;
-/** Credits per MB exported on the Analyst plan (Plus is 2). The more expensive one is the default. */
-export const DEFAULT_EXPORT_CREDITS_PER_MB = 10;
+/** Dune caps a CSV page at this many rows, whatever `limit` says. */
+export const DUNE_MAX_PAGE_ROWS = 32_000;
+/** Credits per 1,000 rows downloaded, as seen live for this result's shape. A guess to refine. */
+export const DEFAULT_DOWNLOAD_CREDITS_PER_1000_ROWS = 1.6;
+/** Default cap on one page's bytes. */
+export const DEFAULT_MAX_PAGE_BYTES = 64 * 1024 * 1024;
 export type DunePerformance = 'small' | 'medium' | 'large';
 
 const MAX_JSON_BYTES = 1024 * 1024;
@@ -69,13 +79,15 @@ export class DuneResponseError extends Error {
   }
 }
 
-/** A download was refused because its size is not known and no `maxBytes` was given. */
-export class DuneSizeUnknownError extends Error {
-  constructor() {
-    super(
-      'Result size is not known; pass resultBytes, or an explicit maxBytes to cap the download',
-    );
-    this.name = 'DuneSizeUnknownError';
+/** Dune answered a download with HTTP 402: the request would pass the account's credit limit. */
+export class DuneCreditLimitError extends Error {
+  readonly status = 402;
+  /** Dune's own message, scrubbed. */
+  readonly duneMessage: string;
+  constructor(duneMessage: string) {
+    super(`Dune refused the download (HTTP 402): ${duneMessage}`);
+    this.name = 'DuneCreditLimitError';
+    this.duneMessage = duneMessage;
   }
 }
 
@@ -83,7 +95,7 @@ export class DuneSizeUnknownError extends Error {
 export class DuneDownloadTooLargeError extends Error {
   readonly maxBytes: number;
   constructor(maxBytes: number) {
-    super(`CSV is larger than ${maxBytes} bytes; the download was cut off`);
+    super(`CSV page is larger than ${maxBytes} bytes; the download was cut off`);
     this.name = 'DuneDownloadTooLargeError';
     this.maxBytes = maxBytes;
   }
@@ -129,6 +141,8 @@ export interface WaitOptions {
   backoffFactor?: number;
   /** Default 30 minutes. On reaching it the execution is cancelled. */
   timeLimitMs?: number;
+  /** After a cancel, how long to wait for the execution to stop so its cost is known. Default 2 minutes. */
+  afterCancelWaitMs?: number;
 }
 
 export interface ExecutionSummary {
@@ -161,25 +175,40 @@ export type WaitResult =
   | { outcome: 'dry_run' };
 
 export interface DownloadOptions {
-  /** `total_result_set_bytes` from `waitForExecution`. */
-  resultBytes?: number | null;
-  /**
-   * Cap on the CSV in bytes: the stream is cut off at this size. Required when `resultBytes`
-   * is not known. When both are given the cap is `maxBytes`. When only `resultBytes` is given
-   * the cap is `resultBytes`, which can be too small if Dune's CSV text is bigger than its raw
-   * size figure; then pass `maxBytes`.
-   */
+  /** Rows in this page, 1 to 32,000 (Dune's cap). Default 32,000. */
+  limit?: number;
+  /** First row of this page, zero-based. Default 0. A page at offset 0 starts the file. */
+  offset?: number;
+  /** Column names to return (Dune's `columns=`). */
+  columns?: readonly string[];
+  /** A WHERE-style expression (Dune's `filters=`). */
+  filters?: string;
+  /** Cap on this page in bytes; the stream is cut off at it. Default 64 MiB. */
   maxBytes?: number;
+  /**
+   * Called after the page is saved. Returns the credits the page cost (for example the
+   * difference in `usage()` before and after), or null when unknown. The result is recorded as a
+   * reported cost; with null, or when this is not given, the estimate from the row count is
+   * recorded, marked estimated.
+   */
+  measureCredits?: () => Promise<number | null>;
 }
 
 export type DownloadResult =
   | {
       status: 'downloaded';
       path: string;
+      /** Data rows in this page, the header row not counted. */
+      rows: number;
+      /** Bytes received for this page, header included. */
       bytes: number;
-      /** Cost of the bytes received: whole MB, rounded up, times the rate. */
+      /** The offset of the next page from `x-dune-next-offset`, or null on the last page. */
+      nextOffset: number | null;
+      /** What was recorded in the budget for this page. */
       credits: number;
-      /** What was reserved before the download (the cost at the byte cap). */
+      /** True when `credits` is the estimate, not a measured figure. */
+      estimated: boolean;
+      /** What was reserved before the request. */
       reservedCredits: number;
     }
   | { status: 'dry_run' };
@@ -209,8 +238,8 @@ export interface DuneClientOptions {
   limiter?: RateLimiter;
   budget?: UnitBudget;
   dryRun?: boolean;
-  /** Credits per MB exported. Default 10 (Analyst); Plus is 2. */
-  exportCreditsPerMb?: number;
+  /** Credits per 1,000 rows downloaded, for the estimate. Default 1.6. */
+  downloadCreditsPer1000Rows?: number;
   /** Milliseconds, monotonic. Default `performance.now()`. */
   now?: () => number;
   /** Default: a real timer. Used for the poll waits. */
@@ -224,9 +253,23 @@ const realSleep = (ms: number): Promise<void> => new Promise((resolve) => setTim
 const issueList = (error: z.ZodError): string[] =>
   error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`);
 
-/** Cost in credits of exporting `bytes`: whole MB, rounded up, times the rate. */
-export function exportCredits(bytes: number, creditsPerMb: number): number {
-  return Math.ceil(bytes / DUNE_MB) * creditsPerMb;
+/**
+ * What Dune said, for a failed request: its `error` text when the body has one (scrubbed),
+ * else the error's own message. Never contains the key.
+ */
+export function duneErrorMessage(err: unknown): string {
+  if (err instanceof DuneCreditLimitError) return err.duneMessage;
+  if (err instanceof HttpError) {
+    try {
+      const body = JSON.parse(err.bodySnippet) as { error?: unknown };
+      if (typeof body.error === 'string' && body.error !== '') {
+        return `HTTP ${err.status}: ${body.error}`;
+      }
+    } catch {
+      // Not JSON: fall through to the message.
+    }
+  }
+  return err instanceof Error ? err.message : 'unknown error';
 }
 
 /** Reads the key from `env.DUNE_API_KEY`. Never echoes it. */
@@ -248,7 +291,7 @@ export class DuneClient {
   private readonly limiter: RateLimiter;
   readonly budget: UnitBudget;
   private readonly dryRun: boolean;
-  private readonly exportRate: number;
+  private readonly creditsPer1000Rows: number;
   private readonly now: () => number;
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly httpOptions: Omit<PostJsonOptions, 'fetch' | 'headers'>;
@@ -266,8 +309,11 @@ export class DuneClient {
     this.limiter = opts.limiter ?? new RateLimiter({ maxPerSecond: 1, burst: 1 });
     this.budget = opts.budget ?? new UnitBudget();
     this.dryRun = opts.dryRun ?? false;
-    this.exportRate = opts.exportCreditsPerMb ?? DEFAULT_EXPORT_CREDITS_PER_MB;
-    if (!(this.exportRate > 0)) throw new RangeError('exportCreditsPerMb must be positive');
+    this.creditsPer1000Rows =
+      opts.downloadCreditsPer1000Rows ?? DEFAULT_DOWNLOAD_CREDITS_PER_1000_ROWS;
+    if (!(this.creditsPer1000Rows > 0)) {
+      throw new RangeError('downloadCreditsPer1000Rows must be positive');
+    }
     this.now = opts.now ?? (() => performance.now());
     this.sleep = opts.sleep ?? opts.http?.sleep ?? realSleep;
     this.httpOptions = opts.http ?? {};
@@ -385,7 +431,8 @@ export class DuneClient {
       if (outcome !== null) return this.finish(executionId, status, outcome);
 
       const elapsed = this.now() - start;
-      if (elapsed >= limit) return this.timeOut(executionId, status);
+      if (elapsed >= limit)
+        return this.timeOut(executionId, status, options.afterCancelWaitMs ?? 120_000);
       await this.sleep(Math.max(1, Math.min(interval, limit - elapsed)));
       interval = Math.min(maxInterval, Math.round(interval * factor));
     }
@@ -411,71 +458,153 @@ export class DuneClient {
   }
 
   /**
-   * Streams the finished result as CSV to `path`, counting bytes. The export cost is computed
-   * at the byte cap (whole MB, rounded up, times the rate) and reserved first; when it does not
-   * fit the budget, `BudgetExceededError` is thrown and nothing is requested. A result of
-   * unknown size is refused unless `maxBytes` is given. When the download ends, the cost of the
-   * bytes actually received is recorded, marked estimated (Dune reports no per-export cost).
-   * A file left by a failed download is removed.
+   * Downloads one page of the finished result as CSV into `path`. Works for any execution id,
+   * including one this client did not start.
+   *
+   * A page at offset 0 creates (truncates) the file and keeps its header row; a page at a later
+   * offset is appended with its header row dropped. If the page fails after the request was
+   * accepted, the file is cut back to its size before the page, so a later retry of the same
+   * offset leaves no duplicate rows. Dune bills a page when the request is made, so a page whose
+   * body then fails is still recorded, at the reserved estimate.
+   *
+   * An estimate (rows times the rate) is reserved before the request; when it does not fit the
+   * budget, `BudgetExceededError` is thrown and nothing is requested. HTTP 402 is a
+   * `DuneCreditLimitError`, not retried. The next offset comes from `x-dune-next-offset`.
    */
   async downloadCsv(
     executionId: string,
     path: string,
     options: DownloadOptions = {},
   ): Promise<DownloadResult> {
-    const known = options.resultBytes ?? null;
-    const cap = options.maxBytes ?? known;
-    if (cap === null) throw new DuneSizeUnknownError();
+    const limit = options.limit ?? DUNE_MAX_PAGE_ROWS;
+    const offset = options.offset ?? 0;
+    const cap = options.maxBytes ?? DEFAULT_MAX_PAGE_BYTES;
+    if (!Number.isInteger(limit) || limit < 1 || limit > DUNE_MAX_PAGE_ROWS) {
+      throw new RangeError(`limit must be a whole number from 1 to ${DUNE_MAX_PAGE_ROWS}`);
+    }
+    if (!Number.isInteger(offset) || offset < 0) throw new RangeError('offset must be >= 0');
     if (!(cap > 0) || !Number.isFinite(cap)) throw new RangeError('byte cap must be positive');
-    const reserved = exportCredits(cap, this.exportRate);
+    for (const c of options.columns ?? []) {
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(c)) throw new RangeError(`Bad column name ${c}`);
+    }
+    if (
+      options.filters !== undefined &&
+      !/^[A-Za-z0-9_ .,<>=!'()+*/%-]{1,500}$/.test(options.filters)
+    ) {
+      throw new RangeError('filters contains characters that are not accepted');
+    }
+    const estimate = (rows: number) =>
+      Math.round((rows / 1000) * this.creditsPer1000Rows * 100) / 100;
+    const reserved = estimate(limit);
 
     if (this.dryRun) {
       this.planned.push({
         kind: 'export',
         credits: reserved,
-        detail: `export CSV of ${executionId} to ${path}, at most ${cap} bytes`,
+        detail: `download CSV page of ${executionId} to ${path}, offset ${offset}, up to ${limit} rows`,
       });
       return { status: 'dry_run' };
     }
 
     const reservation = this.budget.reserve(DUNE_PROVIDER, reserved);
+    const first = offset === 0;
+    const startSize = first || !fs.existsSync(path) ? 0 : fs.statSync(path).size;
+    let accepted = false;
     let received = 0;
-    const spend = (): SpendEntry[] => {
-      const units = exportCredits(received, this.exportRate);
-      return units > 0 ? [{ units, estimated: true }] : [];
-    };
+    let newlines = 0;
+    let lastByte = 0x0a;
     try {
-      const url = `${this.baseUrl}/v1/execution/${encodeURIComponent(executionId)}/results/csv`;
-      const res = await this.get(url);
+      const params = [`limit=${limit}`, `offset=${offset}`];
+      if (options.columns && options.columns.length > 0) {
+        params.push(`columns=${encodeURIComponent(options.columns.join(','))}`);
+      }
+      if (options.filters !== undefined)
+        params.push(`filters=${encodeURIComponent(options.filters)}`);
+      const url = `${this.baseUrl}/v1/execution/${encodeURIComponent(executionId)}/results/csv?${params.join('&')}`;
+      let res;
+      try {
+        res = await this.get(url);
+      } catch (err) {
+        if (err instanceof HttpError && err.status === 402) {
+          throw new DuneCreditLimitError(duneErrorMessage(err).replace(/^HTTP 402: /, ''));
+        }
+        throw err;
+      }
+      accepted = true;
       if (res.body === null) throw new DuneResponseError('csv', ['response has no body']);
       const declared = Number(res.headers.get('content-length'));
       if (Number.isFinite(declared) && declared > cap) {
         await res.body.cancel().catch(() => undefined);
         throw new DuneDownloadTooLargeError(cap);
       }
+      let dropping = !first; // drop bytes up to and including the first newline (the header)
       const counter = new Transform({
         transform(chunk: Buffer, _enc, cb) {
           received += chunk.length;
-          if (received > cap) cb(new DuneDownloadTooLargeError(cap));
-          else cb(null, chunk);
+          if (received > cap) {
+            cb(new DuneDownloadTooLargeError(cap));
+            return;
+          }
+          for (const b of chunk) if (b === 0x0a) newlines++;
+          if (chunk.length > 0) lastByte = chunk[chunk.length - 1] as number;
+          if (dropping) {
+            const at = chunk.indexOf(0x0a);
+            if (at < 0) {
+              cb(null, Buffer.alloc(0));
+              return;
+            }
+            dropping = false;
+            cb(null, chunk.subarray(at + 1));
+            return;
+          }
+          cb(null, chunk);
         },
       });
       await pipeline(
         Readable.fromWeb(res.body as WebReadableStream<Uint8Array>),
         counter,
-        fs.createWriteStream(path),
+        fs.createWriteStream(path, { flags: first ? 'w' : 'a' }),
       );
-      this.budget.settle(reservation, spend());
+      const lines = newlines + (received > 0 && lastByte !== 0x0a ? 1 : 0);
+      const rows = Math.max(0, lines - 1);
+      const nextHeader = res.headers.get('x-dune-next-offset');
+      let nextOffset: number | null = null;
+      if (nextHeader !== null && nextHeader.trim() !== '') {
+        const n = Number(nextHeader);
+        if (!Number.isInteger(n) || n <= offset) {
+          throw new DuneResponseError('csv', [
+            `x-dune-next-offset is not a later offset: ${nextHeader}`,
+          ]);
+        }
+        nextOffset = n;
+      }
+
+      let measured: number | null = null;
+      try {
+        measured = (await options.measureCredits?.()) ?? null;
+      } catch {
+        measured = null;
+      }
+      const useMeasured = measured !== null && Number.isFinite(measured) && measured >= 0;
+      const credits = useMeasured ? (measured as number) : estimate(rows);
+      this.budget.settle(reservation, [{ units: credits, estimated: !useMeasured }]);
       return {
         status: 'downloaded',
         path,
+        rows,
         bytes: received,
-        credits: exportCredits(received, this.exportRate),
+        nextOffset,
+        credits,
+        estimated: !useMeasured,
         reservedCredits: reserved,
       };
     } catch (err) {
-      this.budget.settle(reservation, spend());
-      await fs.promises.rm(path, { force: true });
+      // Billed when requested: once Dune accepted the request, the page is charged at the estimate.
+      this.budget.settle(reservation, accepted ? [{ units: reserved, estimated: true }] : []);
+      if (accepted) {
+        if (startSize === 0 && first) await fs.promises.rm(path, { force: true });
+        else if (fs.existsSync(path)) await fs.promises.truncate(path, startSize);
+      }
       throw err;
     }
   }
@@ -624,8 +753,8 @@ export class DuneClient {
     const r = this.open.get(executionId);
     this.open.delete(executionId);
     if (!r) {
-      // Not started by this client: no reservation to release; record a reported cost only.
-      if (reported !== null) this.budget.record(DUNE_PROVIDER, reported, false);
+      // Not started by this client (for example a reused execution): its cost was not spent by
+      // this run, so nothing is recorded; the reported figure is only passed on.
       return { charged: reported, estimated: false };
     }
     const entry: SpendEntry =
@@ -655,19 +784,30 @@ export class DuneClient {
     return { outcome, ...summary };
   }
 
-  private async timeOut(executionId: string, last: DuneStatusResponse): Promise<WaitResult> {
+  private async timeOut(
+    executionId: string,
+    last: DuneStatusResponse,
+    afterCancelWaitMs: number,
+  ): Promise<WaitResult> {
     let cancelSucceeded = false;
     try {
       cancelSucceeded = await this.cancel(executionId);
     } catch {
       // The execution may still be running. The reservation below is settled at the worst case.
     }
-    // One more look, for the cost Dune reports for a cancelled execution (it may be charged).
+    // A cancelled run does report its cost, but only once it has stopped: wait for that.
     let final = last;
-    try {
-      final = await this.getStatus(executionId);
-    } catch {
-      // Keep the last status; the cost falls back to the reserved maximum.
+    const waitStart = this.now();
+    const waitLimit = afterCancelWaitMs;
+    for (;;) {
+      try {
+        final = await this.getStatus(executionId);
+      } catch {
+        break; // keep the last status; the cost falls back to the reserved maximum
+      }
+      if (this.classify(final) !== null) break;
+      if (this.now() - waitStart >= waitLimit) break;
+      await this.sleep(2_000);
     }
     const { charged, estimated } = this.settleExecution(executionId, final);
     return {

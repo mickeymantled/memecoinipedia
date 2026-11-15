@@ -411,9 +411,9 @@ export async function getStream(
       return answer('', null);
     }
     if (res.status >= 400) {
-      const { bytes } = await readCapped(res.body, 300);
+      const { bytes } = await readCapped(res.body, 4096);
       await res.body?.cancel().catch(() => undefined);
-      return answer(new TextDecoder().decode(bytes), null);
+      return answer(new TextDecoder().decode(bytes).slice(0, 600), null);
     }
     return answer('', res.body);
   });
