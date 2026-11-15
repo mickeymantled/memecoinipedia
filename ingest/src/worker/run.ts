@@ -377,7 +377,7 @@ export async function runIngest(opts: IngestOptions): Promise<IngestReport> {
     if (ceilingStop) opts.out(formatCeilingStop(ceilingStop));
     if (jupiterStop) {
       opts.out(
-        `STOPPED: ${jupiterStop} The coins of the batch are pending again and no attempt was spent. Run again later to continue.`,
+        `STOPPED: ${jupiterStop} The coins of the batch are left to be retried by the next run: shown as failed with the reason jupiter_rate_limited, no attempt spent. Run again later to continue.`,
       );
     }
     return {
