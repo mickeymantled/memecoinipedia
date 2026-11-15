@@ -25,6 +25,9 @@
 --   {{grad_check_days}} number default 30   how many days after the end of a range a
 --                                           CompleteEvent still counts as "graduated"
 --
+-- Each table is read once: curve_trades is the only read of dex_solana.trades and
+-- completes the only read of solana.instruction_calls; each block is referenced once.
+--
 -- Expected result: unknown; guess 10 to 500 rows, under 0.1 MB.
 -- Expected scan: three short slices of dex_solana.trades, filtered to project
 -- 'pumpdotfun', plus the pump.fun program's CompleteEvent rows for the same three
