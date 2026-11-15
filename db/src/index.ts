@@ -6,5 +6,8 @@ export type { CandleBar, Resolution, BarRange } from './candles.js';
 export { upsertCoin } from './coins.js';
 export type { CoinIdentity } from './coins.js';
 export { seed } from './seed.js';
+export * from './stages.js';
+export * from './runs.js';
+export * from './discovery.js';
 export { databaseShape } from './types.js';
 export type * from './types.js';
