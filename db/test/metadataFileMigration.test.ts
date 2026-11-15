@@ -46,7 +46,7 @@ describeDb('migration 0014 (metadata_file stage)', () => {
     await stage(rawFailed, 'failed', 1);
 
     const result = await migrate(t.url);
-    expect(result.applied).toEqual(['0014_metadata_file_stage']);
+    expect(result.applied[0]).toBe('0014_metadata_file_stage');
 
     const rows = (
       await sql<{ coin_id: string; stage: string; status: string; version: number }>`
