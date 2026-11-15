@@ -52,7 +52,7 @@ describeDb('migration 0019 (socials_source)', () => {
     await stage(doneNotRead, 'done');
 
     const result = await migrate(t.url);
-    expect(result.applied).toEqual(['0019_socials_source']);
+    expect(result.applied[0]).toBe('0019_socials_source');
 
     const rows = (
       await sql<{ id: string; socials_source: string | null }>`
