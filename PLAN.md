@@ -1,6 +1,6 @@
 # Memecoinipedia plan
 
-Status: **approved 2026-11-14, Phase A in progress.** Last updated 2026-11-14.
+Status: **approved 2026-11-14, Phase A in progress.** Last updated 2026-11-15.
 
 A search engine and encyclopedia of past memecoins. Users find comparable coins and see how high they went. Scope for this plan: every pump.fun coin from 2024 onward that reached a $100k+ all-time-high market cap. Other chains come after, and the schema is keyed by chain so they fit.
 
@@ -23,7 +23,7 @@ Task status values: `todo`, `in progress`, `in review`, `blocked`, `on hold`, `d
 - **Status commits.** The lead commits status updates to this file straight to `main`. Everything else goes through a pull request.
 - **"Codex" means two things.** Codex.io is the data API we buy candles from. OpenAI Codex is the coding agent that owns `/web`. This file says "Codex.io" for the API and "OpenAI Codex" for the agent.
 - **Runtime classification** runs on the Anthropic API (Haiku with the Batch API and prompt caching, Sonnet for low-confidence re-runs), never through a Claude Code session.
-- **Cost gates.** No full backfill and no paid API job starts without a cost estimate shown to you first. Any job that spends money prints its estimate and needs an explicit confirm flag.
+- **Cost gates (relaxed by you on 2026-11-15).** You asked for the project to be finished as fast as possible, with an alert "if it gets too crazy pricing wise", and set $500 aside. So the lead no longer stops for approval before a paid step. Every paid job still has its estimate written in this file first, and still needs an explicit confirm flag and a spending ceiling. The lead alerts you before any spend beyond the plans already paid (Dune's 4,000 credits a month, Codex.io's 3 million compute units a month, Helius) or beyond about $500 in total.
 
 ## Decisions made
 
@@ -51,7 +51,7 @@ Approved with the plan on 2026-11-14:
 | Q6 | **Hosting.** Where do Postgres, the web app and the worker run in production? | Your call. | Phase D |
 | Q10 | **Who labels the 200-coin eval set.** Your brief said you and I would hand-label it. `AGENTS.md` gives `/research/evals/labels.csv` to Muse. | Muse labels all 200 without seeing any classifier output, using Grok's research as evidence. You review every label where Muse's confidence is under 0.8 plus 40 picked at random, and the 120/80 split is frozen after you sign off. | B3 |
 | Q11 | **Lead-owned paths.** `AGENTS.md` lists no owner for the root config files, `PLAN.md`, `/docs`, `/probes` or `.claude`. It also spells the product "Memecoinedpedia". | Add one row to the lanes table for the lead and correct the name. Sent as pull request #10 for you to accept or reject. | When convenient |
-| Q12 | **Local database.** This machine has no running Docker and its Postgres has no pgvector. Phase A does not need pgvector; Phase B's embeddings do. | Install Docker Desktop, or let me run `brew install pgvector`. | B8 |
+| Q12 | **Local database.** This machine has no running Docker and its Postgres has no pgvector. Phase A does not need pgvector; Phase B's embeddings do. For the Phase A run the lead created one database, `memecoinipedia_dev`, on this machine's Postgres on 2026-11-15. No other database is touched. | Install Docker Desktop, or let me run `brew install pgvector`. | B8 |
 
 ## Architecture
 
@@ -85,9 +85,40 @@ This is the number the product rests on. The full rules are in `docs/metrics.md`
 
 The thresholds are starting values. Task A6 tunes them against the 500-coin sample.
 
+## Target set (measured on Dune, 2026-11-15)
+
+One Dune query lists every pump.fun coin that graduated since January 2024, with a rough peak market cap taken from Dune's hourly price table (the 99.9th percentile of the coin's hourly prices, times one billion coins). The queries, their costs and the checks behind them are in `ingest/sql/dune/README.md` (#22).
+
+| Launched | Graduates | Hourly peak $30k+ | $50k+ | $100k+ | $1M+ | $10M+ | $100M+ |
+|---|---|---|---|---|---|---|---|
+| 2024 H1 | 18,449 | 14,793 | 11,366 | 6,985 | 1,495 | 573 | 100 |
+| 2024 H2 | 56,964 | 49,198 | 37,989 | 23,735 | 4,181 | 974 | 448 |
+| 2025 H1 | 65,829 | 50,965 | 35,486 | 20,559 | 3,292 | 739 | 225 |
+| 2025 H2 | 22,853 | 19,450 | 14,333 | 8,065 | 1,099 | 181 | 35 |
+| 2026 H1 | 48,653 | 21,489 | 14,641 | 8,654 | 1,329 | 218 | 47 |
+| 2026 H2 (to 15 Nov) | 134,818 | 60,616 | 45,355 | 31,488 | 14,060 | 7,131 | 1,984 |
+| **All** | **347,566** | **216,511** | **159,170** | **99,486** | **25,456** | **9,816** | **2,839** |
+
+How to read it:
+
+- **The hourly peak is not an ATH.** On the 20 probe coins it is 0.34 to 1.13 times the highest 1-minute candle high (median 0.62), because an hourly price flattens a short spike. A coin with an hourly peak of $34k can have touched $100k.
+- **Candidates: 216,511.** Every graduate with an hourly peak of $30k or more is fetched and measured on candles. That floor is the safe cut for a $100k ATH.
+- **Expected final size: roughly 100,000 to 160,000 coins at $100k or more.** This is the lead's estimate from the probe ratios. The 500-coin sample (A5, A6) measures it.
+- **The top columns are inflated by bad prices.** 2,839 coins at $100M or more is far more than exist. Most of them are in the second half of 2026, when 21,000 to 34,000 coins graduate a month. Of the coins launched then with an hourly peak of $100k or more, half have a price in fewer than 30 hours (10 to 29 by month), against about 180 to 230 hours for earlier launches. Candles decide; the hourly figure only picks candidates.
+- **Not in the list:** coins that passed $100k on the bonding curve without graduating (possible in weeks when SOL was above about $243), and 1,846 graduates with no hourly price. Both get an issue before the full backfill.
+- **Other things the sample will meet:** from the second quarter of 2026 almost every new coin is a Token-2022 mint, and from September 2026 coins are paired with hundreds of quote coins other than SOL.
+
+**Phase A sample.** 500 coins: the 20 probe coins plus 480 drawn in Dune, 80 per launch half-year, spread over five peak cells ($30k to $50k: 5, $50k to $100k: 10, $100k to $1M: 30, $1M to $10M: 20, $10M and above: 15), in a fixed order by hash of the mint so the draw can be repeated. File: `ingest/sql/dune/results/sample-2026-11-15.csv`.
+
+**What it cost.** Discovery 3.2 credits, sizing 7.2, sample 7.4. Total used on Dune so far: 113 of 4,000 credits. That total includes two mistakes by the lead: 24.6 credits on two price-table probes that had to be cancelled (a cancelled run is still billed), and 49.1 credits on a test download whose body was not kept (a download is billed when requested). Downloads are the expensive part, at about 1.5 credits per 1,000 rows. So sizing and the sample were computed inside Dune, and the candidate list is downloaded once, at backfill time, for about 325 credits.
+
+**What the backfill will cost on Codex.io.** 216,511 candidates at 20 to 30 compute units each is 4.3 to 6.5 million units. The plan includes 3 million a month. That means either $184 to $483 of overage in one month (at $138 per extra million), or two plan months. With a $50k floor (159,170 coins) it is 3.2 to 4.8 million units. A5 measures the real units per coin, and A6 says whether a $50k floor or a one-request screen is safe. The overage price and whether the account has an overage cap still need checking before E2.
+
 ## Pull requests waiting for you
 
 Merge in this order. #14, #16, #17 and #18 are built on #8, so #8 goes first.
+
+So that Phase A does not wait for the merges, the lead built the branch `claude/phase-a-base`: #8, #14, #20 (which contains #16), #17 and #18 merged together, with no conflicts. Typecheck and lint pass on it, as do 834 ingest tests and 24 database tests. A5 is built on it. It is not a pull request and is never merged itself.
 
 | Order | Pull request | Task | State |
 |---|---|---|---|
@@ -100,14 +131,16 @@ Merge in this order. #14, #16, #17 and #18 are built on #8, so #8 goes first.
 | any | #10 | `AGENTS.md`: lead-owned paths and the product name (Q11) | Your decision |
 | not yet | #12 | B1 taxonomy guide | Draft. Waiting for Muse's review (#13), then your approval. |
 | any | #15 | B0 Grok's pilot batch | Reviewed, ready. Independent of the others. |
-| not yet | #22 | P2 Dune queries | Restructured as asked. Stays unmerged until it has run once on Dune. |
+| any | #22 | P2 Dune queries, with the sizing result and the Phase A sample | Reviewed, ready. Independent of the others. |
+| after #20 | #24 | A2c Dune client and candidate-list download | Four small changes requested. Built on #20. |
+| not yet | (#25, #26) | A5a pipeline core, A5b candle plan | Being built on `claude/phase-a-base`. |
 
 ## Phase 0: probes and setup
 
 | ID | Task | Owner | Acceptance criteria | Status |
 |---|---|---|---|---|
 | P1 | Codex.io candle-history probe on 20 coins | data-ingestion | Per-coin table; pass or fail against "1-minute bars from the first minutes after graduation for 19 of 20"; terms quoted; under 400 requests. **Passed 20 of 20 with 201 requests.** Results in `docs/data-sources.md` section 7. | done |
-| P2 | Dune sizing query: graduates per month, how many peaked at $100k+, trades per coin | data-ingestion | Exact target-set count; credit cost of the query recorded. **Queries delivered as #22 (issue #21); restructure requested after review. Design changed: Dune runs one heavy query (`graduates.sql`, every graduated coin with its rough peak, one launch month at a time), and the sizing table and the 500-coin draw are computed in tested code from that list (A2c), because Dune re-runs shared query blocks and bills by compute. The first live step is a near-free schema probe to find pump.fun's decoded tables. Dune bills by compute used, not per run, so the cost can only be measured: the plan is a one-week slice first, under a per-query credit cap set in Dune's team settings, then the full estimate for your approval. The Dune key arrived on 2026-11-15 and the free usage call confirms it: Analyst plan, 4,000 credits for 2026-11-15 to 2026-12-15, 0.151 used, exports at 10 credits per MB, so exports must stay small. Nothing has run. Waiting for your go-ahead on the first live steps (schema probe, then a one-week test), up to 100 credits.** | in review (#22), first run not approved yet |
+| P2 | Dune sizing query: graduates per month, how many peaked at $100k+ | data-ingestion | Exact target-set count; credit cost of the query recorded. **Done on 2026-11-15 (#22, issue #21). The planned scan of every trade was dropped: three days of trades did not finish in four minutes on this Dune plan. Discovery now reads pump.fun's decoded tables and Dune's hourly price table in one query: 347,564 graduates for 3.2 credits. The sizing table and the 500-coin sample are computed inside Dune, because downloads are the expensive part. An exact count of coins at $100k or more needs candles; Dune gives the candidate list and a range. Results under "Target set".** | done; #22 approved, waiting for merge |
 | P3 | DexPaprika candle-history probe, same 20 coins | data-ingestion | Same bar as P1. Run only if Codex.io's terms come back unfavourable (P7), or to test a cheaper long-term source. Needs a $99 Pro key. | on hold |
 | P4 | Birdeye candle-history probe, same 20 coins | data-ingestion | Same bar as P1; storage terms read. Same condition as P3. | on hold |
 | P5 | Choose the candle source and record why in `docs/data-sources.md` | lead | Decision backed by probe results. **Codex.io chosen**, conditional on P7. | done |
@@ -122,11 +155,13 @@ Merge in this order. #14, #16, #17 and #18 are built on #8, so #8 goes first.
 | A1 | Schema and migrations in `/db`: coins, pools, candles, narratives, per-coin stage tracking, eval labels, narrative research, ingest runs, data-issue queue. Issue #2. | backend-api | P6 | Migrations apply from empty and are safe to re-apply; unique on chain plus address; candle storage measured on real bars and projected for 100,000 coins; seed script loads fixtures. **Candles are stored as one row per pool per day: about 8 to 21 GB for 100,000 coins, against 18 to 48 GB as one row per candle. The projection extends the 60 sampled bars synthetically; A5 re-measures it on full series.** | in review (#14) |
 | A2a | Codex.io client in `/ingest/src/sources`: token discovery, pools for a token, pool-level bars with pagination, shared rate limiter, compute-unit metering and budget. Issue #3. | data-ingestion | P5, P6 | Tests run from recorded fixtures with no live calls; rate limiter proven to hold its limit; dry-run returns planned calls and cost; spend is metered from the cost each response reports, and a per-run budget stops the job when it is reached. **Checked against the live API with 14 requests (about 49 compute units). Open: a coin's pool list is capped at 250, and large coins exceed it, so the graduation pool of a pre-March-2025 coin can be missing from the list; A5 takes it from Dune instead.** | in review (#16) |
 | A2b | Metadata and current-price clients: Helius, IPFS with several gateways, Jupiter | data-ingestion | A2a, Helius key | Same test bar as A2a; verified against the live Helius API once the key arrives. Jupiter's `createdAt` is not used as a launch time: the pilot batch found it repeats across unrelated 2024 tokens, and our chain data confirms it is wrong for them. **Delivered as #20 (issue #19). Live check used 24 Helius requests (240 credits), 2 Jupiter, 74 gateway and 20 Codex.io requests (80 compute units). Findings: the create transaction costs one request and 10 credits per coin and matched Codex.io's creator on 20 of 20 probe coins (creation time within 2 seconds); all four 2026 probe coins are Token-2022; every probe coin's metadata still resolves, through `ipfs.filebase.io` and `gateway.pinata.cloud`, while `ipfs.io`, `dweb.link` and `cf-ipfs.com` no longer serve it; Jupiter needs no key at one request every two seconds. Review took three rounds: four small changes, then a fault my re-check found (metadata JSON nested thousands of levels deep crashed the fetcher; now limited to 64 levels and reported as invalid). 339 tests pass.** | approved, waiting for merge (#20) |
-| A2c | Dune client (run SQL, read its cost, export CSV, credit budget), reader for the exported graduates list, and the target-set sizing and 500-coin sample draw computed in code. Issue #23. | data-ingestion | A2b | Tests make no live calls; cost recorded is the cost Dune reports; exports refused when over budget; SQL parameters limited to dates and numbers; sizing and draw tested at the boundaries and deterministic; runner resumable, capped by `--max-credits`, inert without `--confirm`. **No live calls in this task.** | in progress (#23) |
+| A2c | Dune client (run SQL, read its cost, download CSV page by page, credit budget), reader for the candidate list, and the sizing and sample draw in code. Issue #23. | data-ingestion | A2b | Tests make no live calls; cost recorded is the cost Dune reports; downloads refused when over budget; sizing and draw tested at the boundaries and deterministic; runner resumable, capped by `--max-credits`, inert without `--confirm`. **Reworked for the single-query design with the facts from the live run: paginated download that never pays for a saved page twice, a 402 handled as its own error, the cost of a cancelled run read back. Its sizing code reproduces an independent count on a real 7,000-row page. 529 tests. Used at backfill time to download the candidate list. Four small changes requested in review (ceiling across resumed runs, a zero measured cost, line ends between pages, sizing without the confirm flag).** | changes requested (#24) |
 | A3 | Metric library in `/ingest/src/metrics`, implementing `docs/metrics.md`. Issue #4. | data-ingestion | P6 | Pure functions; passes every A4 fixture; `ath` never exceeds `ath_wick`; time above $1M never exceeds time above $100k; result independent of input order. **Passes all 50 A4 fixtures. 11 deliberate faults planted in the library were each caught by the fixtures.** | in review (#17) |
 | A4 | Edge-case fixtures with hand-worked expected answers, in `/ingest/test/fixtures/metrics`. Issue #5. | testing | P6 | Each fixture has the full expected output and the reasoning; written from `docs/metrics.md`, not from A3's code; every ambiguity found in the rules is reported. **50 fixtures. The ambiguities found are now settled in `docs/metrics.md` (in #17).** | in review (#18) |
-| A5 | Worker and per-coin pipeline; ingest 500 coins sampled across eras and ATH sizes, including the 20 probe coins | data-ingestion | A1, A2a, A2b, A3, P2 | Graduation pool taken from Dune where Codex.io's pool list is cut off. Creator and creation time come from Dune in bulk, with Helius `getCreateEvent` as the check. Keep creation time and graduation time as separate fields (CHILLGUY was created 40 days before it graduated). Store the image reference without a gateway host (`ipfs://<cid>/<path>` for IPFS content); copying images waits for Q6. Count social links lost to the full-URL rule. Cost estimate printed and confirmed before the run; at least 98% of coins complete with reasons listed for the rest; a second run changes nothing; killing the worker mid-run and resuming completes with no duplicates; actual calls within 10% of the estimate | todo |
-| A6 | Validation: compare our ATH with Dune's rough ATH and with public figures for well-known coins; review the largest disagreements and the largest wick-to-ATH gaps; tune thresholds | lead, testing | A5 | 95% of coins within 15% of the Dune figure, every larger gap explained or fixed; well-known coins within 10% of their public ATH. Also check the known weak points listed in `docs/metrics.md` section 13: how often one thin trade lowers the running level (it ends time-above, raises drawdown and can set the rug pattern), how often a busier thin window hides a qualifying one, and whether the five-trader rule drops real peaks. And explain three coins where pump.fun's own page shows an ATH 10 to 20 times ours (Andrew, dodge, DSG; found in the review of #15). | todo |
+| A5a | Pipeline core: queue worker (pg-boss), per-coin stage tracking, seeding of the 500 sample coins from the Dune sample file, and the metadata stage (Helius in batches, token metadata through IPFS gateways, Jupiter). Issue #25. | data-ingestion | A1, A2b, P2 | Creator and creation time come from Dune in bulk. Creation time and graduation time stay separate fields (CHILLGUY was created 40 days before it graduated). Image reference stored without a gateway host (`ipfs://<cid>/<path>` for IPFS content); copying images waits for Q6. Social links lost to the full-URL rule counted. Stage state survives a kill; a second run changes nothing. Live run of seeding and metadata for the 500 coins into the local database, inside 300 Helius credits, with no Codex.io calls. | in progress (#25) |
+| A5b | Candle fetch plan, pool selection, fetch under a compute-unit budget, peak refinement and metric write-back. Issue #26. | data-ingestion | A1, A2a, A3 | A pure, tested fetch plan that gives the metric library what `docs/metrics.md` section 12 asks for. Live check on the 20 probe coins inside 2,500 compute units; every coin whose ATH falls outside 0.5 to 1.1 times the probe's 1-minute high is explained. **Open: Dune's discovery query does not return the graduation pool, so a coin whose Codex.io pool list is cut off at 250 needs another source for it (the pool address derived from the mint, or Dune's pool-creation table).** | in progress (#26) |
+| A5c | Wire the candle and metric stages into the pipeline and run the 500 coins end to end | data-ingestion | A5a, A5b | Estimate written here before the run; at least 98% of coins complete with reasons listed for the rest; a second run changes nothing; killing the worker mid-run and resuming completes with no duplicates; actual calls within 10% of the estimate; compute units per coin reported by peak cell | todo |
+| A6 | Validation: compare our ATH with Dune's rough ATH and with public figures for well-known coins; review the largest disagreements and the largest wick-to-ATH gaps; tune thresholds | lead, testing | A5 | Every coin whose ATH is outside 0.5 to 3 times Dune's hourly peak is reviewed and explained or fixed; well-known coins within 10% of their public ATH. (Changed by the lead on 2026-11-15 from "95% of coins within 15% of the Dune figure": the Dune figure is now an hourly price, which runs 0.34 to 1.13 times the 1-minute high on the probe coins, so a 15% band cannot hold.) Also report how many sampled coins in each hourly-peak cell reach a $100k ATH, which sets the candidate floor for the backfill. Also check the known weak points listed in `docs/metrics.md` section 13: how often one thin trade lowers the running level (it ends time-above, raises drawdown and can set the rug pattern), how often a busier thin window hides a qualifying one, and whether the five-trader rule drops real peaks. And confirm the cause of three coins where pump.fun's own page shows an ATH 10 to 20 times ours (Andrew, dodge, DSG; found in the review of #15). **Likely cause found on 2026-11-15: the low figure came from Codex.io's ATH summary field, which is wrong for many coins. For Andrew that field says $271k, while Codex.io's own candles reach $3.7M and Dune's hourly prices $1.6M. The pipeline computes ATH from candles and never uses that field.** | todo |
 
 A3 and A4 run in parallel from the same written rules, so the tests are an independent check. A1, A2a, A3 and A4 all run at once after P6.
 
@@ -176,7 +211,7 @@ D2 to D5 can run in parallel after D1.
 | ID | Task | Owner | Depends on | Acceptance criteria | Status |
 |---|---|---|---|---|---|
 | E1 | Backfill orchestration: enqueue from the discovery list, progress view, pause and resume, rate budget | data-ingestion | A6 | A 5,000-coin run measures throughput, failure rate and cost per coin | todo |
-| E2 | **Cost estimate for the full backfill, shown to you.** Data first (per Q9), then classification and embeddings, from E1's measurements. | lead | E1 | **Stop for your approval.** | todo |
+| E2 | **Cost estimate for the full backfill, shown to you.** Data first (per Q9), then classification and embeddings, from E1's measurements. | lead | E1 | Estimate written here and sent to you. If it fits inside the plans already paid, the lead goes ahead. **Anything beyond them (Codex.io overage, a second plan month) is flagged to you before it is spent.** | todo |
 | E3 | Full backfill: the candle and metric stages inside the paid Codex.io month, classification and embeddings once Phase B passes | data-ingestion | E2 approved, P7 | Resumable and idempotent as in A5; final spend reported against the estimate | todo |
 | E4 | Live worker: graduation feed, watchlist polling, ingest and classify a coin when it crosses $100k | data-ingestion | E3 | A coin crossing $100k appears within the Q8 target; a missed feed message is recovered by the daily sweep | todo |
 | E5 | Daily refresh of current market cap and status | data-ingestion | E3 | Full sweep finishes inside a day on free-tier limits | todo |
@@ -188,7 +223,9 @@ D2 to D5 can run in parallel after D1.
 |---|---|---|
 | Probes | $0 spent. DexPaprika's $99 is not needed so far. | Done |
 | Codex.io Growth plan | $360 a month, bought 2026-11-14. Phase A uses under 1% of a month's quota. | Paid |
-| Full backfill data | Inside one Codex.io month up to about 100,000 to 150,000 coins; up to about $1,200 at 300,000 coins. Plus about $75 for Dune. | E2 |
+| Full backfill data | Measured 2026-11-15: 216,511 candidates. On Codex.io that is 4.3 to 6.5 million compute units against 3 million a month in the plan: $184 to $483 of overage, or a second plan month ($360). With a $50k floor, 3.2 to 4.8 million units. On Dune, about 325 credits to download the candidate list, inside the credits already paid. See "Target set". | E2 |
+| Dune | Analyst plan, 4,000 credits a month, in place since 2026-11-15. 113 credits used so far. | Paid |
+| Set aside by you for extra spend | $500 (2026-11-15). Nothing drawn. | When an estimate goes beyond the paid plans |
 | Classification and embeddings | Roughly $60 to $90 per 100,000 coins | B4 dry-run, then E2 |
 | Live running cost, data | $360 a month on the current plan, which is the smallest paid size. Live use needs a small fraction of it. | E4 |
 | Hosting | Not estimated | Q6 |
