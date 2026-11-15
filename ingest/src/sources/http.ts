@@ -368,6 +368,63 @@ export async function getBytes(url: string, opts: GetBytesOptions): Promise<Byte
   };
 }
 
+export interface StreamResponse {
+  status: number;
+  headers: { get(name: string): string | null };
+  /** Null for redirects (status 3xx), which carry no body of interest. Unread: the caller reads it. */
+  body: ReadableStream<Uint8Array> | null;
+  attempts: number;
+}
+
+/**
+ * One GET with the shared retry rules, for bodies too large to buffer. The retry rules apply
+ * until the response headers arrive: network errors, timeouts, 429 and 5xx are retried, other
+ * 4xx are thrown as `HttpError`. A 2xx response is returned with its body stream unread, and the
+ * caller owns it (and any cap on its size). The per-attempt timeout covers the wait for headers
+ * only. Redirects are returned with a null body, never followed.
+ */
+export async function getStream(
+  url: string,
+  opts: Omit<GetBytesOptions, 'maxBytes'>,
+): Promise<StreamResponse> {
+  const doFetch: GetFetchLike = opts.fetch ?? ((input, init) => fetch(input, init));
+  const headers = opts.headers ?? {};
+
+  const out = await withRetries(url, retryConfig(opts), async (signal) => {
+    let res: GetFetchResponse;
+    try {
+      res = await doFetch(url, { method: 'GET', headers, signal, redirect: 'manual' });
+    } catch (err) {
+      if (err instanceof Error && (err as { retryable?: boolean }).retryable === false) {
+        throw new StopRetrying(err);
+      }
+      throw err;
+    }
+    const answer = (snippet: string, body: ReadableStream<Uint8Array> | null) => ({
+      status: res.status,
+      retryAfterMs: parseRetryAfter(res.headers.get('retry-after')),
+      snippet,
+      value: { headers: res.headers, body },
+    });
+    if (res.status >= 300 && res.status < 400) {
+      await res.body?.cancel().catch(() => undefined);
+      return answer('', null);
+    }
+    if (res.status >= 400) {
+      const { bytes } = await readCapped(res.body, 300);
+      await res.body?.cancel().catch(() => undefined);
+      return answer(new TextDecoder().decode(bytes), null);
+    }
+    return answer('', res.body);
+  });
+  return {
+    status: out.status,
+    headers: out.value.headers,
+    body: out.value.body,
+    attempts: out.attempts,
+  };
+}
+
 export class TooManyRedirectsError extends Error {
   readonly maxRedirects: number;
 
