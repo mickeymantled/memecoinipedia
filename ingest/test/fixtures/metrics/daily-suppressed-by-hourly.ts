@@ -4,7 +4,7 @@ import { bar, dayAt, hourAt, input, pool } from './build.js';
 export const dailySuppressedByHourly: MetricFixture = {
   name: 'daily-suppressed-by-hourly',
   description:
-    'A daily bar is not a window when an hourly bar lies inside its day (its wick still counts); a later daily bar with nothing finer is a window and, being strict, sets the level to a lower price.',
+    'A daily bar is not a window when an hourly bar lies inside its day (daily bars no longer feed the wick); a later daily bar with nothing finer is a window and, being strict, sets the level to a lower price.',
   reasoning: `
 One primary pool, no 1-minute bars.
 Hourly bar HR at T0+18,000 (hour 5 of day 0): o = h = l = c = .0003, 2,000 USD, 8 traders.
@@ -27,6 +27,8 @@ Above $100k ($300k, $200k): 68,400 + 86,400 = 154,800. None above $1M. (Had D0 b
 Drawdown: (.0003-.0002)/.0003 = 33.3333%.
 Rug false (ATH null).
 Flags sorted: no_qualifying_window, peak_outside_minute_coverage.
+
+Rules v4 (this paragraph supersedes any wick figure above). No ATH. Wick: only a clean 1-minute bar with at least $1,000 of volume and 5 traders of its own, funded or of unknown liquidity, is a candidate, valued at max(open, close); the ATH takes over when higher. There is no candidate and no ATH, so the wick is null.
 `,
   input: input(
     [
@@ -51,9 +53,11 @@ Flags sorted: no_qualifying_window, peak_outside_minute_coverage.
     athAt: null,
     athPoolAddress: null,
     secondsToAth: null,
-    athWickMarketCapUsd: 2_000_000,
-    athWickAt: 1_699_920_000,
-    athWickPoolAddress: 'pool-a',
+    athWickMarketCapUsd: null,
+    athWickAt: null,
+    athWickPoolAddress: null,
+    athLiquidityUsd: null,
+    athHourVolumeUsd: null,
     secondsAbove: [154_800, 0, 0, 0],
     maxDrawdownPct: 33.333333333333336,
     rugPattern: false,

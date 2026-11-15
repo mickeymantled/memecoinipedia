@@ -18,7 +18,13 @@
  */
 import type { Bar } from '../../metrics/types.js';
 import { UnitBudget, type SpendEntry } from '../budget.js';
-import { HttpError, postJson, type FetchLike, type PostJsonOptions } from '../http.js';
+import {
+  HttpError,
+  parseRetryAfter,
+  postJson,
+  type FetchLike,
+  type PostJsonOptions,
+} from '../http.js';
 import type { RateLimiter } from '../ratelimit.js';
 import { barsFromColumns, planBarRequests, sortAndDedupeBars } from './bars.js';
 import { pairIdFor, type PoolInfo, type PoolsResult } from './pools.js';
@@ -57,14 +63,38 @@ export const PAIRS_BASE_UNITS = 4;
 export class CodexGraphQLError extends Error {
   readonly messages: string[];
   readonly codes: string[];
+  /** `extensions.retryAfterSeconds` when Codex says when the limit lifts. */
+  readonly retryAfterSeconds: number | null;
 
-  constructor(messages: string[], codes: string[]) {
+  constructor(messages: string[], codes: string[], retryAfterSeconds: number | null = null) {
     super(`Codex GraphQL error: ${messages.join('; ')}`);
     this.name = 'CodexGraphQLError';
     this.messages = messages;
     this.codes = codes;
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+
+  /**
+   * Codex's rate-limit answer (code `TOO_MANY_REQUESTS`, "Your account has been rate limited"),
+   * which it can send inside an HTTP 200.
+   */
+  get rateLimited(): boolean {
+    return (
+      this.codes.includes('TOO_MANY_REQUESTS') ||
+      this.messages.some((m) => /rate.?limit|too many requests/i.test(m))
+    );
   }
 }
+
+/** True for an error that means "slow down": HTTP 429 or a rate-limit GraphQL error. */
+export function isRateLimitError(err: unknown): boolean {
+  if (err instanceof HttpError) return err.status === 429;
+  if (err instanceof CodexGraphQLError) return err.rateLimited;
+  return false;
+}
+
+/** The same test on the text of an error message, for code that only has the message. */
+export const RATE_LIMIT_MESSAGE = /HTTP 429|rate.?limit|too many requests|TOO_MANY_REQUESTS/i;
 
 /** The response was not JSON, or did not match the expected shape. */
 export class CodexResponseError extends Error {
@@ -162,7 +192,20 @@ function launchInfoFrom(t: TokenRow): LaunchInfo {
   };
 }
 
+/**
+ * Collects what the calls made with it cost, so one coin's units can be counted
+ * while other coins run on the same client (the client's own `spend()` is a
+ * running total over everything). Pass the same meter to each call of a coin.
+ */
+export interface CallMeter {
+  /** Requests made, retries not counted. */
+  requests: number;
+  /** Compute units, from each response's reported cost (an estimate where it reported none). */
+  units: number;
+}
+
 interface CallSpec<S extends z.ZodType> {
+  meter?: CallMeter | undefined;
   operation: CodexOperation;
   query: string;
   schema: S;
@@ -310,8 +353,9 @@ export class CodexClient {
   // Token launch info ---------------------------------------------------
 
   /** Launchpad fields for one mint, or null when Codex does not know it (always null in dry-run mode). */
-  async getLaunchInfo(mint: string): Promise<LaunchInfo | null> {
+  async getLaunchInfo(mint: string, meter?: CallMeter): Promise<LaunchInfo | null> {
     const data = await this.call({
+      meter,
       operation: 'token',
       query: tokenQuery(mint),
       schema: tokenDataSchema,
@@ -330,8 +374,9 @@ export class CodexClient {
    * missing, so a graduation pool chosen from this list by creation time is
    * unverified (see `pickGraduationPool`'s `truncated` field).
    */
-  async getPools(mint: string): Promise<PoolsResult> {
+  async getPools(mint: string, meter?: CallMeter): Promise<PoolsResult> {
     const data = await this.call({
+      meter,
       operation: 'pairs',
       query: pairsQuery(mint),
       schema: pairsDataSchema,
@@ -351,6 +396,7 @@ export class CodexClient {
       createdAt: r.pair.createdAt ?? null,
       liquidityUsd: r.liquidity ?? null,
       quoteToken: r.backingToken?.symbol ?? r.backingToken?.address ?? r.quoteToken ?? null,
+      quoteTokenAddress: r.backingToken?.address ?? null,
     }));
     pools.sort((a, b) => (a.createdAt ?? Infinity) - (b.createdAt ?? Infinity));
     return { pools, truncated: results.length >= PAIRS_LIMIT };
@@ -369,11 +415,14 @@ export class CodexClient {
     resolution: BarResolution;
     from: number;
     to: number;
+    /** Counts this call's cost when given. */
+    meter?: CallMeter;
   }): Promise<Bar[]> {
     const windows = planBarRequests(args);
     const all: Bar[] = [];
     for (const w of windows) {
       const data = await this.call({
+        meter: args.meter,
         operation: 'bars',
         query: barsQuery(args.pairAddress, w.from, w.to, args.resolution),
         schema: barsDataSchema,
@@ -390,6 +439,12 @@ export class CodexClient {
   }
 
   // Plumbing ------------------------------------------------------------
+
+  private meterCall(meter: CallMeter | undefined, entries: readonly SpendEntry[]): void {
+    if (!meter) return;
+    meter.requests += 1;
+    for (const e of entries) meter.units += e.units;
+  }
 
   /** Runs one GraphQL request. Returns null in dry-run mode (after recording the plan). */
   private async call<S extends z.ZodType>(spec: CallSpec<S>): Promise<z.infer<S> | null> {
@@ -412,7 +467,16 @@ export class CodexClient {
     try {
       const base: FetchLike = this.fetchImpl ?? ((url, init) => fetch(url, init));
       const limiter = this.limiter;
-      const limited: FetchLike = limiter ? (url, init) => limiter.run(() => base(url, init)) : base;
+      // An HTTP 429 tells the shared limiter to slow every caller down, not just this one's retry.
+      const limited: FetchLike = limiter
+        ? async (url, init) => {
+            const res = await limiter.run(() => base(url, init));
+            if (res.status === 429) {
+              limiter.penalize({ retryAfterMs: parseRetryAfter(res.headers.get('retry-after')) });
+            }
+            return res;
+          }
+        : base;
 
       let response;
       try {
@@ -437,10 +501,21 @@ export class CodexClient {
       if (!envelope.success)
         throw new CodexResponseError(spec.operation, issueList(envelope.error));
       if (envelope.data.errors && envelope.data.errors.length > 0) {
-        throw new CodexGraphQLError(
+        const retryAfter = envelope.data.errors
+          .map((e) => e.extensions?.['retryAfterSeconds'])
+          .find((v): v is number => typeof v === 'number' && v >= 0);
+        const error = new CodexGraphQLError(
           envelope.data.errors.map((e) => e.message),
           envelope.data.errors.map((e) => String(e.extensions?.['code'] ?? '')).filter(Boolean),
+          retryAfter ?? null,
         );
+        // A rate-limit answer inside a 200 slows the run down the same way a 429 does.
+        if (error.rateLimited) {
+          limiter?.penalize({
+            retryAfterMs: retryAfter === undefined ? null : Math.round(retryAfter * 1000),
+          });
+        }
+        throw error;
       }
       const parsed = spec.schema.safeParse(envelope.data.data);
       if (!parsed.success) throw new CodexResponseError(spec.operation, issueList(parsed.error));
@@ -449,15 +524,19 @@ export class CodexClient {
       const reported = reportedUnits(data);
       // Earlier attempts (429 or 5xx) are assumed charged at the estimate; the last one at its reported cost.
       const earlier = failed().slice(0, attempts - 1);
-      this.budget.settle(reservation, [
+      const entries: SpendEntry[] = [
         ...earlier,
         reported !== null
           ? { units: reported, estimated: false }
           : { units: spec.estimateAfter(data), estimated: true },
-      ]);
+      ];
+      this.budget.settle(reservation, entries);
+      this.meterCall(spec.meter, entries);
       return data;
     } catch (err) {
-      this.budget.settle(reservation, failed());
+      const entries = failed();
+      this.budget.settle(reservation, entries);
+      this.meterCall(spec.meter, entries);
       throw err;
     }
   }

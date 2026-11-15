@@ -145,6 +145,27 @@ describe('barsFromColumns', () => {
     expect(bars.map((b) => b.liquidityUsd)).toEqual([null, 5000]);
   });
 
+  it('reads a non-finite value ("NaN" arrived from the live API) as null, not as a failed response', () => {
+    const cols = barsDataSchema.parse({
+      getBars: {
+        t: [60, 120, 180],
+        o: [1, 'NaN', 3],
+        h: [1, 2, 3],
+        l: [1, 2, 3],
+        c: [1, 2, 3],
+        volume: ['10', '20', 'Infinity'],
+        transactions: [3, 4, 5],
+        traders: [2, 2, 2],
+        liquidity: ['NaN', '5000', ''],
+      },
+    }).getBars;
+    const bars = barsFromColumns(cols);
+    // The row with a NaN price is dropped; a NaN liquidity is unknown; a NaN volume counts as 0.
+    expect(bars.map((b) => b.t)).toEqual([60, 180]);
+    expect(bars.map((b) => b.liquidityUsd)).toEqual([null, null]);
+    expect(bars.map((b) => b.volumeUsd)).toEqual([10, 0]);
+  });
+
   it('drops empty buckets and rows with missing prices', () => {
     const cols = barsDataSchema.parse({
       getBars: {

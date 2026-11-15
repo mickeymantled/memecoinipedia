@@ -25,6 +25,8 @@ Level points m3, m4, m5, m6. Holds: m3->m4 60; m4->m5 60; m5->m6 60; m6 (T0+360)
 At .0002 ($200k): 60 + 60 = 120. At .0004 ($400k): 60 + 600 = 660.
 Thresholds: at or above $150k: 120 + 660 = 780. At or above $300k: 660. secondsAbove [780, 660].
 Drawdown 0. Rug false.
+
+Rules v4 (this paragraph supersedes any wick figure above). athLiquidityUsd null (no bar of the ATH window reports liquidity); athHourVolumeUsd 3,000 (volume of the clean 1-minute bars of every pool in the hour ending at m5). Wick: only a clean 1-minute bar with at least $1,000 of volume and 5 traders of its own, funded or of unknown liquidity, is a candidate, valued at max(open, close); the ATH takes over when higher. Here the best candidate is not above the ATH (or there is none), so the wick is the ATH: 400,000 at m5.
 `,
   params: {
     windowMinutes: 5,
@@ -48,8 +50,10 @@ Drawdown 0. Rug false.
     athPoolAddress: 'pool-a',
     secondsToAth: 300,
     athWickMarketCapUsd: 400_000,
-    athWickAt: 1_699_920_180,
+    athWickAt: 1_699_920_300,
     athWickPoolAddress: 'pool-a',
+    athLiquidityUsd: null,
+    athHourVolumeUsd: 3_000,
     secondsAbove: [780, 660],
     maxDrawdownPct: 0,
     rugPattern: false,

@@ -32,6 +32,8 @@ export interface CoinsTable {
   graduated_at: Ts | null;
   discovery_source: string | null;
   rough_ath_market_cap_usd: number | null;
+  /** Generated from the address: a fixed pseudo-random order for samples (migration 0012). */
+  hash_order: ColumnType<number, never, never>;
 
   description: string | null;
   image_url: string | null;
@@ -47,6 +49,10 @@ export interface CoinsTable {
   ath_wick_market_cap_usd: number | null;
   ath_wick_at: Ts | null;
   ath_wick_pool_id: number | null;
+  ath_liquidity_usd: number | null;
+  ath_hour_volume_usd: number | null;
+  ath_near_volume_usd: number | null;
+  ath_backed_market_cap_usd: number | null;
   seconds_above_100k: number | null;
   seconds_above_1m: number | null;
   seconds_above_10m: number | null;
@@ -118,6 +124,15 @@ export interface CandleChunksTable {
   liquidity_usd: (number | null)[];
 }
 
+export interface CandleCoverageTable {
+  pool_id: number;
+  resolution_sec: 60 | 3600 | 86400;
+  from_t: number;
+  to_t: number;
+  reason: string;
+  fetched_at: TsNow;
+}
+
 export interface CoinStagesTable {
   coin_id: number;
   stage: 'discovered' | 'metadata' | 'candles' | 'metrics' | 'classified' | 'embedded';
@@ -129,6 +144,8 @@ export interface CoinStagesTable {
   started_at: Ts | null;
   finished_at: Ts | null;
   updated_at: TsNow;
+  /** Small per-coin result of a `done` stage (the candles stage stores its path and unit counts). */
+  detail: Json | null;
 }
 
 export interface IngestRunsTable {
@@ -183,6 +200,15 @@ export interface NarrativeResearchTable {
   loaded_at: TsNow;
 }
 
+/** Running totals of a run's provider usage, one row per sample, for "over the last hour". */
+export interface ProviderUsageSamplesTable {
+  run_id: number;
+  provider: string;
+  sampled_at: Ts;
+  requests: number;
+  units: number;
+}
+
 export interface DataIssuesTable {
   id: Id;
   coin_id: number;
@@ -198,9 +224,11 @@ export interface Database {
   coins: CoinsTable;
   pools: PoolsTable;
   candle_chunks: CandleChunksTable;
+  candle_coverage: CandleCoverageTable;
   coin_stages: CoinStagesTable;
   ingest_runs: IngestRunsTable;
   provider_usage: ProviderUsageTable;
+  provider_usage_samples: ProviderUsageSamplesTable;
   eval_labels: EvalLabelsTable;
   narrative_research: NarrativeResearchTable;
   data_issues: DataIssuesTable;
@@ -228,6 +256,7 @@ export const databaseShape: { [T in keyof Database]: Record<keyof Database[T], t
     graduated_at: true,
     discovery_source: true,
     rough_ath_market_cap_usd: true,
+    hash_order: true,
     description: true,
     image_url: true,
     image_storage_key: true,
@@ -241,6 +270,10 @@ export const databaseShape: { [T in keyof Database]: Record<keyof Database[T], t
     ath_wick_market_cap_usd: true,
     ath_wick_at: true,
     ath_wick_pool_id: true,
+    ath_liquidity_usd: true,
+    ath_hour_volume_usd: true,
+    ath_near_volume_usd: true,
+    ath_backed_market_cap_usd: true,
     seconds_above_100k: true,
     seconds_above_1m: true,
     seconds_above_10m: true,
@@ -306,6 +339,14 @@ export const databaseShape: { [T in keyof Database]: Record<keyof Database[T], t
     traders: true,
     liquidity_usd: true,
   },
+  candle_coverage: {
+    pool_id: true,
+    resolution_sec: true,
+    from_t: true,
+    to_t: true,
+    reason: true,
+    fetched_at: true,
+  },
   coin_stages: {
     coin_id: true,
     stage: true,
@@ -317,6 +358,7 @@ export const databaseShape: { [T in keyof Database]: Record<keyof Database[T], t
     started_at: true,
     finished_at: true,
     updated_at: true,
+    detail: true,
   },
   ingest_runs: {
     id: true,
@@ -330,6 +372,13 @@ export const databaseShape: { [T in keyof Database]: Record<keyof Database[T], t
     created_at: true,
   },
   provider_usage: { run_id: true, provider: true, requests: true, units: true, updated_at: true },
+  provider_usage_samples: {
+    run_id: true,
+    provider: true,
+    sampled_at: true,
+    requests: true,
+    units: true,
+  },
   eval_labels: {
     chain: true,
     mint: true,

@@ -4,7 +4,7 @@ import { bar, input, minute, pool } from './build.js';
 export const justBelowVolumeAndTraders: MetricFixture = {
   name: 'just-below-volume-and-traders',
   description:
-    'One window with 999 USD of volume and one with 4 traders: both just miss the thresholds, so nothing is strict. No ATH; the wick still sees both.',
+    'One window with 999 USD of volume and one with 4 traders: both just miss the thresholds, so nothing is strict. No ATH; and neither minute is a wick candidate, so the wick is null as well.',
   reasoning: `
 One primary pool. m0: close .0002, 500 USD, 6 traders. m1: close .0002, 499 USD, 6 traders. m10: close .0003, 2,000 USD, 4 traders. m11: close .0003, 2,000 USD, 4 traders. asOf = m12, launchedAt = T0.
 
@@ -18,6 +18,8 @@ No strict point anywhere: ATH fields null, flag no_qualifying_window.
 Wick: highest bar max is .0003 first at m10 (T0+600): 300,000.
 Level: the level never becomes defined (every point is not strict), so there are no level points: secondsAbove [0,0,0,0], maxDrawdownPct null. Rug false (ATH null).
 No hourly or daily bars, so no peak_outside_minute_coverage.
+
+Rules v4 (this paragraph supersedes any wick figure above). No ATH. Wick: only a clean 1-minute bar with at least $1,000 of volume and 5 traders of its own, funded or of unknown liquidity, is a candidate, valued at max(open, close); the ATH takes over when higher. There is no candidate and no ATH, so the wick is null.
 `,
   input: input(
     [
@@ -35,9 +37,11 @@ No hourly or daily bars, so no peak_outside_minute_coverage.
     athAt: null,
     athPoolAddress: null,
     secondsToAth: null,
-    athWickMarketCapUsd: 300_000,
-    athWickAt: 1_699_920_600,
-    athWickPoolAddress: 'pool-a',
+    athWickMarketCapUsd: null,
+    athWickAt: null,
+    athWickPoolAddress: null,
+    athLiquidityUsd: null,
+    athHourVolumeUsd: null,
     secondsAbove: [0, 0, 0, 0],
     maxDrawdownPct: null,
     rugPattern: false,

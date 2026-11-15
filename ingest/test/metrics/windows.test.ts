@@ -205,9 +205,11 @@ describe('section 5: one point per timestamp', () => {
   const w = (over: Partial<Window>): Window => ({
     t: M0,
     price: 1,
+    high: over.high ?? over.price ?? 1,
     volume: 100,
     traders: 5,
     strict: true,
+    liquidity: null,
     poolAddress: 'P',
     isPrimary: true,
     resolution: '1m',
@@ -245,5 +247,77 @@ describe('section 5: one point per timestamp', () => {
       w({ t: M0, poolAddress: 'Q', volume: 1 }),
     ]);
     expect(points.map((p) => p.t)).toEqual([M0, M0 + 60]);
+  });
+});
+
+describe('section 4: funded windows', () => {
+  it('a 1-minute window takes the largest liquidity of its own bars, and unknown is funded', () => {
+    const bars = [
+      bar(M0, 1, { liquidityUsd: 40_000 }),
+      bar(M0 + 60, 1, { liquidityUsd: 900 }),
+      bar(M0 + 120, 1, { liquidityUsd: 800 }),
+      bar(M0 + 180, 1, { liquidityUsd: 800 }),
+    ];
+    const w = minuteWindows(bars, P, params);
+    // At M0+120 the window holds all three: the largest is 40,000.
+    expect(w[2]).toMatchObject({ liquidity: 40_000, strict: true });
+    // At M0+180 the window is M0+60..M0+180: the funded bar is out, the window is not funded.
+    expect(w[3]).toMatchObject({ liquidity: 900, strict: false });
+    // Only the window's own bars count: the bar before it does not fund it.
+    const unknown = minuteWindows([bar(M0, 1), bar(M0 + 60, 1)], P, params);
+    expect(unknown[1]).toMatchObject({ liquidity: null, strict: true });
+  });
+
+  it('exactly 5,000 is funded; 4,999 is not; non-finite and negative values count as unknown', () => {
+    const at = (a: number | null, b: number | null) =>
+      minuteWindows(
+        [bar(M0, 1, { liquidityUsd: a }), bar(M0 + 60, 1, { liquidityUsd: b })],
+        P,
+        params,
+      )[1];
+    expect(at(5_000, 5_000)).toMatchObject({ strict: true });
+    expect(at(4_999, 4_999)).toMatchObject({ strict: false, liquidity: 4_999 });
+    expect(at(Number.NaN, -1)).toMatchObject({ strict: true, liquidity: null });
+    expect(at(null, 4_000)).toMatchObject({ strict: false, liquidity: 4_000 });
+    expect(
+      minuteWindows([bar(M0, 1, { liquidityUsd: 4_000 }), bar(M0 + 60, 1)], P, {
+        ...params,
+        minWindowLiquidityUsd: 4_000,
+      })[1],
+    ).toMatchObject({ strict: true });
+  });
+
+  it('an hourly or daily window takes the larger of its bar and the previous bar of the pool', () => {
+    const prev = bar(M0, 1, { liquidityUsd: 20_000 });
+    const drained = bar(M0 + 3_600, 1, { liquidityUsd: 100 });
+    expect(coarseWindow(drained, P, '1h', params, prev)).toMatchObject({
+      liquidity: 20_000,
+      strict: true,
+    });
+    expect(coarseWindow(drained, P, '1h', params)).toMatchObject({ liquidity: 100, strict: false });
+    const next = bar(M0 + 7_200, 1, { liquidityUsd: 100 });
+    expect(coarseWindow(next, P, '1h', params, drained)).toMatchObject({
+      liquidity: 100,
+      strict: false,
+    });
+    expect(coarseWindow(bar(DAY, 1), P, '1d', params, bar(DAY - 86_400, 1))).toMatchObject({
+      liquidity: null,
+      strict: true,
+    });
+  });
+
+  it('the previous bar is the previous clean bar even when finer data hides it as a window', () => {
+    const pools = [
+      cleanPool({
+        bars1m: [bar(M0, 1), bar(M0 + 60, 1)],
+        bars1h: [
+          bar(M0, 1, { liquidityUsd: 20_000 }), // hidden by the minute bars
+          bar(M0 + 3_600, 1, { liquidityUsd: 100 }),
+        ],
+      }),
+    ];
+    const hourly = buildWindows(pools, params).filter((w) => w.resolution === '1h');
+    expect(hourly).toHaveLength(1);
+    expect(hourly[0]).toMatchObject({ t: M0 + 3_600, liquidity: 20_000, strict: true });
   });
 });

@@ -100,15 +100,35 @@ export const pairsDataSchema = z.object({
   usageData: usageSchema,
 });
 
-const numColumn = z.array(numLike).optional();
+/**
+ * Bar columns are lenient: the strings "NaN", "Infinity" and "" (the live API sent
+ * "NaN" in a liquidity column, found while fetching candles for FARTCOIN and
+ * GOAT) become null instead of failing the whole response; any other text that
+ * is not a number still fails it. A null
+ * price drops that bar (`barsFromColumns`), a null liquidity means unknown.
+ */
+const barNum = z.union([z.number(), z.string(), z.null()]).transform((v, ctx): number | null => {
+  if (v === null) return null;
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  const text = v.trim();
+  // The strings the API is known to send for "no value". Anything else must be a number.
+  if (/^(|nan|[+-]?infinity)$/i.test(text)) return null;
+  const n = Number(text);
+  if (!Number.isFinite(n)) {
+    ctx.addIssue({ code: 'custom', message: `not a number: ${text.slice(0, 40)}` });
+    return z.NEVER;
+  }
+  return n;
+});
+const numColumn = z.array(barNum).optional();
 
 /** getBars returns parallel columns, one entry per bucket. */
 export const barsColumnsSchema = z.object({
   t: z.array(z.number().nullable()),
-  o: z.array(numLike),
-  h: z.array(numLike),
-  l: z.array(numLike),
-  c: z.array(numLike),
+  o: z.array(barNum),
+  h: z.array(barNum),
+  l: z.array(barNum),
+  c: z.array(barNum),
   volume: numColumn,
   buyers: numColumn,
   sellers: numColumn,

@@ -1,0 +1,11 @@
+{
+  "execution_id": "01HKZJ2683PHF9Q9PHHQ8FW4Q1",
+  "query_id": 0,
+  "state": "QUERY_STATE_FAILED",
+  "is_execution_finished": true,
+  "execution_cost_credits": 0,
+  "error": {
+    "type": "FAILED_TYPE_EXECUTION_FAILED",
+    "message": "value must be finite; was Infinity [Execution ID: 01HKZJ2683PHF9Q9PHHQ8FW4Q1]"
+  }
+}

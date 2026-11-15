@@ -24,6 +24,8 @@ Rug:
 2. m6 (T0+360, level .0002) is at or below .0004 and within 1,800 s of athAt: the crash point.
 3. m11 is a strict coin point after the crash with price .0012, at or above .5 * .002 = .001. That cancels the rug.
 rugPattern = false.
+
+Rules v4 (this paragraph supersedes any wick figure above). athLiquidityUsd null (no bar of the ATH window reports liquidity); athHourVolumeUsd 1,000 (volume of the clean 1-minute bars of every pool in the hour ending at m1). Wick: only a clean 1-minute bar with at least $1,000 of volume and 5 traders of its own, funded or of unknown liquidity, is a candidate, valued at max(open, close); the ATH takes over when higher. Here the best candidate is not above the ATH (or there is none), so the wick is the ATH: 2,000,000 at m1.
 `,
   input: input(
     [
@@ -41,8 +43,10 @@ rugPattern = false.
     athPoolAddress: 'pool-a',
     secondsToAth: 60,
     athWickMarketCapUsd: 2_000_000,
-    athWickAt: 1_699_920_000,
+    athWickAt: 1_699_920_060,
     athWickPoolAddress: 'pool-a',
+    athLiquidityUsd: null,
+    athHourVolumeUsd: 1_000,
     secondsAbove: [780, 480, 0, 0],
     maxDrawdownPct: 90,
     rugPattern: false,

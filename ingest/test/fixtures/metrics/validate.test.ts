@@ -8,10 +8,11 @@ import {
   type MetricFlag,
   type MetricResult,
 } from '../../../src/metrics/types.js';
-import { metricFixtures } from './index.js';
+import { allMetricFixtures as metricFixtures } from './index.js';
 
 const KNOWN_FLAGS: readonly MetricFlag[] = [
   'ath_before_launch',
+  'ath_thinly_traded',
   'bad_bar',
   'duplicate_bar',
   'implausible_market_cap',
@@ -27,6 +28,10 @@ const RESULT_FIELDS: readonly (keyof MetricResult)[] = [
   'athWickMarketCapUsd',
   'athWickAt',
   'athWickPoolAddress',
+  'athLiquidityUsd',
+  'athHourVolumeUsd',
+  'athNearVolumeUsd',
+  'athBackedMarketCapUsd',
   'secondsAbove',
   'maxDrawdownPct',
   'rugPattern',
@@ -61,7 +66,12 @@ describe('metric fixtures are well formed', () => {
     });
 
     it('has every field of MetricResult and nothing else', () => {
-      expect(Object.keys(fixture.expected).sort()).toEqual([...RESULT_FIELDS].sort());
+      // Fixtures from before rules versions 6 and 7 may leave out the two outputs those added; the
+      // newer ones list both.
+      const optional = ['athNearVolumeUsd', 'athBackedMarketCapUsd'];
+      const without = (keys: readonly string[]): string[] =>
+        keys.filter((k) => !optional.includes(k)).sort();
+      expect(without(Object.keys(fixture.expected))).toEqual(without(RESULT_FIELDS));
     });
 
     it('has one non-increasing secondsAbove entry per threshold', () => {

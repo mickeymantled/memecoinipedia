@@ -1,6 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_METRIC_PARAMS, computeCoinMetrics } from '../../src/metrics/index.js';
-import { DAY, M0, bar, input, minuteBars, pool } from './helpers.js';
+import {
+  DEFAULT_METRIC_PARAMS,
+  computeCoinMetrics as computeWithVersion6,
+  type MetricInput,
+  type MetricParams,
+} from '../../src/metrics/index.js';
+import { DAY, M0, bar, input, minuteBars, pool, withoutVersion6Additions } from './helpers.js';
+
+/**
+ * These worked examples are about the version 5 outputs, so the version 6 addition and its
+ * flag are left out here; they are tested in nearAth.test.ts and in the version 6 fixtures.
+ */
+const computeCoinMetrics = (i: MetricInput, p?: Partial<MetricParams>) =>
+  withoutVersion6Additions(computeWithVersion6(i, p));
 
 const SUPPLY = 1_000_000_000;
 
@@ -13,7 +25,7 @@ describe('computeCoinMetrics, worked examples', () => {
     // Window at M0: one bar, not strict, level undefined. At +60: closes .0001/.0002 -> .0001,
     // volume 800 < 1000, not strict. At +120: median .00015, volume 1200, traders 5: strict.
     // ATH = .00015 * 1e9 = 150,000 at M0+120; launchedAt = M0-600 -> 720 s.
-    // Wick = highest high = .0002 -> 200,000 at M0+60.
+    // Wick: no bar has 1,000 USD of volume of its own, so none is a candidate and the wick is the ATH.
     // Level: only the point at M0+120 (150k) holds until asOf = M0+3600: 3480 s above $100k.
     const bars = [
       bar(M0, 0.0001, { volumeUsd: 400 }),
@@ -26,14 +38,14 @@ describe('computeCoinMetrics, worked examples', () => {
       athAt: M0 + 120,
       athPoolAddress: 'P',
       secondsToAth: 720,
-      athWickAt: M0 + 60,
+      athWickAt: M0 + 120,
       athWickPoolAddress: 'P',
       secondsAbove: [3_480, 0, 0, 0],
       maxDrawdownPct: 0,
       rugPattern: false,
       flags: [],
     });
-    expect(result.athWickMarketCapUsd).toBeCloseTo(200_000, 6);
+    expect(result.athWickMarketCapUsd).toBeCloseTo(150_000, 6);
   });
 
   it('a coin with no clean bars at all', () => {
@@ -46,6 +58,8 @@ describe('computeCoinMetrics, worked examples', () => {
       athWickMarketCapUsd: null,
       athWickAt: null,
       athWickPoolAddress: null,
+      athLiquidityUsd: null,
+      athHourVolumeUsd: null,
       secondsAbove: [0, 0, 0, 0],
       maxDrawdownPct: null,
       rugPattern: false,
@@ -142,14 +156,15 @@ describe('computeCoinMetrics, worked examples', () => {
     ).toBe('A');
   });
 
-  it('hourly bar with finer data in its hour is not a window, but still sets the wick', () => {
+  it('hourly bar with finer data in its hour is not a window and does not feed the wick', () => {
     const hour = bar(M0, 0.0001, { ...busy, h: 0.01 });
     const result = computeCoinMetrics(
       input([pool({ bars1m: minuteBars(M0 + 600, [0.0001, 0.0001], busy), bars1h: [hour] })]),
     );
     expect(result.athMarketCapUsd).toBeCloseTo(100_000, 6);
-    expect(result.athWickMarketCapUsd).toBeCloseTo(10_000_000, 4);
-    expect(result.athWickAt).toBe(M0);
+    // The hourly high of .01 is ignored: the wick is the first busy minute, close .0001.
+    expect(result.athWickMarketCapUsd).toBeCloseTo(100_000, 4);
+    expect(result.athWickAt).toBe(M0 + 600);
     expect(result.flags).toEqual([]); // the hourly bar is not a coin point, so no coverage flag
   });
 
@@ -159,7 +174,8 @@ describe('computeCoinMetrics, worked examples', () => {
       input([pool({ bars1m: minuteBars(M0, [0.0001, 0.0001], busy), bars1d: [dayBar] })]),
     );
     expect(result.flags).toEqual([]);
-    expect(result.athWickMarketCapUsd).toBeCloseTo(500_000, 6);
+    // The daily bar (.0005) does not feed the wick.
+    expect(result.athWickMarketCapUsd).toBeCloseTo(100_000, 6);
   });
 
   it('peak_outside_minute_coverage: strict hourly point above the minute ATH', () => {
@@ -194,7 +210,7 @@ describe('computeCoinMetrics, worked examples', () => {
     );
     expect(result.athMarketCapUsd).toBeNull();
     expect(result.flags).toEqual(['no_qualifying_window', 'peak_outside_minute_coverage']);
-    expect(result.athWickMarketCapUsd).toBeCloseTo(500_000, 6);
+    expect(result.athWickMarketCapUsd).toBeNull(); // hourly bars never feed the wick
     expect(result.secondsAbove).toEqual([7_200, 0, 0, 0]);
     expect(result.maxDrawdownPct).toBe(0);
     expect(result.rugPattern).toBe(false);
@@ -223,7 +239,8 @@ describe('computeCoinMetrics, worked examples', () => {
     const result = computeCoinMetrics(input([pool({ bars1m: bars })]));
     expect(result.secondsAbove).toEqual([540, 0, 0, 0]);
     expect(result.athMarketCapUsd).toBeCloseTo(200_000, 6);
-    expect(result.athWickMarketCapUsd).toBeCloseTo(900_000, 6);
+    // The thin $900k print is not a candidate; the busy .0002 minute at M0 is.
+    expect(result.athWickMarketCapUsd).toBeCloseTo(200_000, 6);
     // Drawdown: levels .0002 (M0+60), .00005 (M0+600), .00005 (M0+1200) -> 75%.
     expect(result.maxDrawdownPct).toBeCloseTo(75, 9);
   });
@@ -305,6 +322,7 @@ describe('computeCoinMetrics, worked examples', () => {
     expect(computeCoinMetrics(input([thin])).athMarketCapUsd).toBeNull();
     const result = computeCoinMetrics(input([thin]), {
       minSecondaryPoolLiquidityUsd: 100,
+      minWindowLiquidityUsd: 100,
       minWindowVolumeUsd: 100,
       minWindowTraders: 2,
     });

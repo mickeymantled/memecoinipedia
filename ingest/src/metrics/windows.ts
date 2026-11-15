@@ -1,7 +1,18 @@
-import { atLeast, SECONDS, type CleanPool, type Window } from './internal.js';
+import {
+  atLeast,
+  barPeak,
+  isFunded,
+  maxLiquidity,
+  SECONDS,
+  type CleanPool,
+  type Window,
+} from './internal.js';
 import type { Bar, MetricParams } from './types.js';
 
-type WindowParams = Pick<MetricParams, 'windowMinutes' | 'minWindowVolumeUsd' | 'minWindowTraders'>;
+type WindowParams = Pick<
+  MetricParams,
+  'windowMinutes' | 'minWindowVolumeUsd' | 'minWindowTraders' | 'minWindowLiquidityUsd'
+>;
 
 /** Section 4: the lower median. 3 values: the middle. 2 values: the lower. 1: itself. */
 export function lowerMedian(values: readonly number[]): number {
@@ -28,15 +39,20 @@ export function minuteWindows(
     }
     const volume = inWindow.reduce((sum, b) => sum + b.volumeUsd, 0);
     const traders = Math.max(...inWindow.map((b) => b.traders));
+    const price = lowerMedian(inWindow.map((b) => b.c));
+    const liquidity = maxLiquidity(inWindow);
     return {
       t: bar.t,
-      price: lowerMedian(inWindow.map((b) => b.c)),
+      price,
+      high: price,
       volume,
       traders,
       strict:
         inWindow.length >= 2 &&
         atLeast(volume, params.minWindowVolumeUsd) &&
-        atLeast(traders, params.minWindowTraders),
+        atLeast(traders, params.minWindowTraders) &&
+        isFunded(liquidity, params.minWindowLiquidityUsd),
+      liquidity,
       poolAddress: pool.address,
       isPrimary: pool.isPrimary,
       resolution: '1m',
@@ -50,15 +66,20 @@ export function coarseWindow(
   pool: Pick<CleanPool, 'address' | 'isPrimary'>,
   resolution: '1h' | '1d',
   params: WindowParams,
+  previous?: Bar,
 ): Window {
+  const liquidity = maxLiquidity([bar, previous]);
   return {
     t: bar.t,
     price: bar.c,
+    high: barPeak(bar),
     volume: bar.volumeUsd,
     traders: bar.traders,
     strict:
       atLeast(bar.volumeUsd, params.minWindowVolumeUsd) &&
-      atLeast(bar.traders, params.minWindowTraders),
+      atLeast(bar.traders, params.minWindowTraders) &&
+      isFunded(liquidity, params.minWindowLiquidityUsd),
+    liquidity,
     poolAddress: pool.address,
     isPrimary: pool.isPrimary,
     resolution,
@@ -94,7 +115,7 @@ export function dailyBarIsUsed(pools: readonly CleanPool[], bar: Bar): boolean {
   );
 }
 
-type BarPredicate = (bar: Bar) => boolean;
+export type BarPredicate = (bar: Bar) => boolean;
 
 /** Section 4: every window, given which hourly and daily bars are used. Unordered. */
 function windowsFor(
@@ -106,12 +127,12 @@ function windowsFor(
   const windows: Window[] = [];
   for (const pool of pools) {
     windows.push(...minuteWindows(pool.bars1m, pool, params));
-    for (const bar of pool.bars1h) {
-      if (hourlyUsed(bar)) windows.push(coarseWindow(bar, pool, '1h', params));
-    }
-    for (const bar of pool.bars1d) {
-      if (dailyUsed(bar)) windows.push(coarseWindow(bar, pool, '1d', params));
-    }
+    pool.bars1h.forEach((bar, i) => {
+      if (hourlyUsed(bar)) windows.push(coarseWindow(bar, pool, '1h', params, pool.bars1h[i - 1]));
+    });
+    pool.bars1d.forEach((bar, i) => {
+      if (dailyUsed(bar)) windows.push(coarseWindow(bar, pool, '1d', params, pool.bars1d[i - 1]));
+    });
   }
   return windows;
 }
@@ -132,21 +153,32 @@ const sortedTimes = (pools: readonly CleanPool[], key: 'bars1m' | 'bars1h'): num
   pools.flatMap((pool) => pool[key].map((bar) => bar.t)).sort((a, b) => a - b);
 
 /**
- * Section 4: every window of every pool, at every resolution. Unordered. The "finer
- * data wins" lookups are built once per call (sorted times, binary search), so the cost
- * is n log n in the bar count. Same result as `buildWindowsByScanning`.
+ * Section 4, "finer data wins": which hourly and daily bars are used as windows. The
+ * lookups are built once (sorted times, binary search), so each check is log n. Every
+ * reader of that rule goes through here, so there is one version of it.
  */
-export function buildWindows(pools: readonly CleanPool[], params: WindowParams): Window[] {
+export function usedBarChecks(pools: readonly CleanPool[]): {
+  hourlyUsed: BarPredicate;
+  dailyUsed: BarPredicate;
+} {
   const minutes = sortedTimes(pools, 'bars1m');
   const hours = sortedTimes(pools, 'bars1h');
-  return windowsFor(
-    pools,
-    params,
-    (bar) => !anyInRange(minutes, bar.t, bar.t + SECONDS['1h']),
-    (bar) =>
+  return {
+    hourlyUsed: (bar) => !anyInRange(minutes, bar.t, bar.t + SECONDS['1h']),
+    dailyUsed: (bar) =>
       !anyInRange(minutes, bar.t, bar.t + SECONDS['1d']) &&
       !anyInRange(hours, bar.t, bar.t + SECONDS['1d']),
-  );
+  };
+}
+
+/**
+ * Section 4: every window of every pool, at every resolution. Unordered. The "finer
+ * data wins" lookups are built once per call (`usedBarChecks`), so the cost is n log n
+ * in the bar count. Same result as `buildWindowsByScanning`.
+ */
+export function buildWindows(pools: readonly CleanPool[], params: WindowParams): Window[] {
+  const { hourlyUsed, dailyUsed } = usedBarChecks(pools);
+  return windowsFor(pools, params, hourlyUsed, dailyUsed);
 }
 
 /** The direct, slow reading of the rules, kept to prove `buildWindows` is equivalent. */

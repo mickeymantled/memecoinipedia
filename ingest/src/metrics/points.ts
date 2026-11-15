@@ -23,7 +23,9 @@ export function buildCoinPoints(windows: readonly Window[]): CoinPoint[] {
     .map((w) => ({
       t: w.t,
       price: w.price,
+      high: w.high,
       strict: w.strict,
+      liquidity: w.liquidity,
       poolAddress: w.poolAddress,
       resolution: w.resolution,
     }));

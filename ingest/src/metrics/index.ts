@@ -1,10 +1,11 @@
-import { computeAth, computeWick, peakOutsideMinuteCoverage } from './ath.js';
+import { athHourVolume, computeAth, computeWick, peakOutsideMinuteCoverage } from './ath.js';
 import { cleanPools } from './clean.js';
 import { maxDrawdownPct } from './drawdown.js';
 import { buildLevelSeries } from './level.js';
 import { buildCoinPoints } from './points.js';
 import { rugPattern } from './rug.js';
 import { secondsAbove } from './timeAbove.js';
+import { countedBars, nearAth } from './athNear.js';
 import { buildWindows } from './windows.js';
 import {
   DEFAULT_METRIC_PARAMS,
@@ -28,6 +29,21 @@ export function mergeParams(params?: Partial<MetricParams>): MetricParams {
   if (!Number.isInteger(result.windowMinutes) || result.windowMinutes < 2) {
     throw new RangeError(
       `windowMinutes must be an integer of 2 or more, got ${result.windowMinutes}`,
+    );
+  }
+  // Section 2: the two version 6 parameters.
+  if (
+    !Number.isFinite(result.nearAthFraction) ||
+    result.nearAthFraction <= 0 ||
+    result.nearAthFraction > 1
+  ) {
+    throw new RangeError(
+      `nearAthFraction must be a finite number above 0 and at most 1, got ${result.nearAthFraction}`,
+    );
+  }
+  if (!Number.isFinite(result.minAthNearVolumeShare) || result.minAthNearVolumeShare < 0) {
+    throw new RangeError(
+      `minAthNearVolumeShare must be a finite number of 0 or more, got ${result.minAthNearVolumeShare}`,
     );
   }
   return result;
@@ -55,15 +71,28 @@ export const computeCoinMetrics: ComputeCoinMetrics = (
   // Section 6: ATH and wick.
   const ath = computeAth(points, input.launchedAt, input.totalSupply);
   ath.flags.forEach((f) => flags.add(f));
-  const wick = computeWick(cleaned.pools, input.totalSupply);
+  const wick = computeWick(cleaned.pools, ath, params, input.totalSupply);
   if (peakOutsideMinuteCoverage(points, ath.athPrice)) flags.add('peak_outside_minute_coverage');
 
   // Sections 7 to 10: level series, time above, drawdown, rug pattern.
   const series = buildLevelSeries(points);
 
+  // Section 6: volume near the ATH, its flag and the backed high. Nothing below reads them.
+  const near = nearAth(
+    countedBars(cleaned.pools),
+    ath.athPrice,
+    ath.fields.athMarketCapUsd,
+    input.totalSupply,
+    params,
+  );
+  if (near.thinlyTraded) flags.add('ath_thinly_traded');
+
   return {
     ...ath.fields,
     ...wick,
+    athHourVolumeUsd: athHourVolume(cleaned.pools, ath.fields.athAt),
+    athNearVolumeUsd: near.athNearVolumeUsd,
+    athBackedMarketCapUsd: near.athBackedMarketCapUsd,
     secondsAbove: secondsAbove(
       series,
       params.thresholdsUsd,

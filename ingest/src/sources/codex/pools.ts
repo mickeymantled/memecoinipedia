@@ -14,7 +14,17 @@ export interface PoolInfo {
   liquidityUsd: number | null;
   /** Address or symbol of the quote (backing) token. */
   quoteToken: string | null;
+  /** Mint address of the quote (backing) token, or null when Codex gives none. */
+  quoteTokenAddress: string | null;
 }
+
+/**
+ * The quote tokens an "other" pool (not the bonding curve, not the graduation pool) may have to
+ * be stored and fetched: wrapped SOL, USDC and USDT, by mint address. Matching the address and
+ * not the symbol, so a token that merely calls itself "SOL" does not pass. The constant lives in
+ * /db (the metric loader applies the same rule there) and is re-exported from here.
+ */
+export { OTHER_POOL_QUOTE, OTHER_POOL_QUOTE_MINTS } from '@memecoinipedia/db';
 
 export interface PoolsResult {
   pools: PoolInfo[];

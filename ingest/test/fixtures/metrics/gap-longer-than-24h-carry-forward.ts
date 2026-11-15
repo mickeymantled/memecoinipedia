@@ -24,6 +24,8 @@ G0 -> G1: 60 s.
 G1 -> asOf: 272,880 - 172,860 = 100,020 s, capped at 86,400.
 Total above $100k (levels $200k, $200k, $300k): 86,400 + 60 + 86,400 = 172,860. None above $1M.
 Drawdown 0 (levels .0002, .0002, .0003). Rug false.
+
+Rules v4 (this paragraph supersedes any wick figure above). athLiquidityUsd null (no bar of the ATH window reports liquidity); athHourVolumeUsd 1,000 (volume of the clean 1-minute bars of every pool in the hour ending at m2881). Wick: only a clean 1-minute bar with at least $1,000 of volume and 5 traders of its own, funded or of unknown liquidity, is a candidate, valued at max(open, close); the ATH takes over when higher. Here the best candidate is not above the ATH (or there is none), so the wick is the ATH: 300,000 at m2881.
 `,
   input: input(
     [
@@ -42,8 +44,10 @@ Drawdown 0 (levels .0002, .0002, .0003). Rug false.
     athPoolAddress: 'pool-a',
     secondsToAth: 172_860,
     athWickMarketCapUsd: 300_000,
-    athWickAt: 1_700_092_800,
+    athWickAt: 1_700_092_860,
     athWickPoolAddress: 'pool-a',
+    athLiquidityUsd: null,
+    athHourVolumeUsd: 1_000,
     secondsAbove: [172_860, 0, 0, 0],
     maxDrawdownPct: 0,
     rugPattern: false,

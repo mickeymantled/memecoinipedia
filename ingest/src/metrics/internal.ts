@@ -19,7 +19,11 @@ export interface Window {
   price: number;
   volume: number;
   traders: number;
+  /** `max(o, h, l, c)` of an hourly or daily bar; equal to `price` for a 1-minute window. */
+  high: number;
   strict: boolean;
+  /** The largest liquidity used in the funded test, or null when none was reported. */
+  liquidity: number | null;
   poolAddress: string;
   isPrimary: boolean;
   resolution: Resolution;
@@ -29,7 +33,11 @@ export interface Window {
 export interface CoinPoint {
   t: number;
   price: number;
+  /** The `high` of the window the point came from. Only the coverage flag reads it. */
+  high: number;
   strict: boolean;
+  /** The `liquidity` of the window the point came from. */
+  liquidity: number | null;
   poolAddress: string;
   resolution: Resolution;
 }
@@ -59,6 +67,27 @@ export function atMost(value: number, limit: number): boolean {
 /** The highest of open, high, low and close. */
 export function barPeak(bar: Bar): number {
   return Math.max(bar.o, bar.h, bar.l, bar.c);
+}
+
+/** A liquidity figure that counts as reported: finite and zero or more. */
+export function reportedLiquidity(bar: Bar | undefined): number | null {
+  const v = bar?.liquidityUsd;
+  return v !== null && v !== undefined && Number.isFinite(v) && v >= 0 ? v : null;
+}
+
+/** The largest of the reported liquidity figures of `bars`, or null when none is. */
+export function maxLiquidity(bars: readonly (Bar | undefined)[]): number | null {
+  let best: number | null = null;
+  for (const bar of bars) {
+    const v = reportedLiquidity(bar);
+    if (v !== null && (best === null || v > best)) best = v;
+  }
+  return best;
+}
+
+/** Section 4: funded when no liquidity is reported or the largest is at least the limit. */
+export function isFunded(liquidity: number | null, minWindowLiquidityUsd: number): boolean {
+  return liquidity === null || atLeast(liquidity, minWindowLiquidityUsd);
 }
 
 export function compareStrings(a: string, b: string): number {

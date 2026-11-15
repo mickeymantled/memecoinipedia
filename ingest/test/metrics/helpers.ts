@@ -1,4 +1,4 @@
-import type { Bar, MetricInput, PoolSeries } from '../../src/metrics/types.js';
+import type { Bar, MetricInput, MetricResult, PoolSeries } from '../../src/metrics/types.js';
 
 /** 2023-11-14 00:00 UTC, a multiple of 86,400. */
 export const DAY = 1_699_920_000;
@@ -59,5 +59,21 @@ export function seededRandom(seed: number): () => number {
     t = Math.imul(t ^ (t >>> 15), t | 1);
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4_294_967_296;
+  };
+}
+
+/**
+ * A result as rules version 5 reported it: without `athNearVolumeUsd` (version 6),
+ * `athBackedMarketCapUsd` (version 7) and the flag `ath_thinly_traded` (version 6).
+ */
+export function withoutVersion6Additions(
+  result: MetricResult,
+): Omit<MetricResult, 'athNearVolumeUsd' | 'athBackedMarketCapUsd'> {
+  const rest: Partial<MetricResult> = { ...result };
+  delete rest.athNearVolumeUsd;
+  delete rest.athBackedMarketCapUsd;
+  return {
+    ...(rest as Omit<MetricResult, 'athNearVolumeUsd' | 'athBackedMarketCapUsd'>),
+    flags: result.flags.filter((f) => f !== 'ath_thinly_traded'),
   };
 }
