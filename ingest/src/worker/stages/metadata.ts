@@ -258,6 +258,8 @@ export interface MetadataLoadersOptions {
   /** Jupiter batch size. Default 100, its maximum. */
   priceBatch?: number;
   errorCooldownMs?: number;
+  /** Failed coins that used this many attempts are not prefetched. Default 3. */
+  maxAttempts?: number;
 }
 
 const notFoundAsset = (mint: string): AssetInfo => ({
@@ -301,6 +303,7 @@ export function createMetadataLoaders(o: MetadataLoadersOptions) {
       version: METADATA_STAGE_VERSION,
       requires: 'discovered',
       ...(o.addresses ? { addresses: o.addresses } : {}),
+      maxAttempts: o.maxAttempts ?? 3,
       limit,
     });
     return rows.map((r) => r.address);

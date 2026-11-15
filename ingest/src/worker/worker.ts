@@ -41,7 +41,7 @@ export interface PipelineWorkerOptions {
   log: Logger;
   /** Jobs running at once, per stage queue. Default 5. */
   concurrency?: number;
-  /** Claims a stage may use before a retryable failure is final. Default 3. */
+  /** Claims a stage may use before a retryable failure is final. Default 3 (`DEFAULT_MAX_ATTEMPTS`). */
   maxAttempts?: number;
   /** First retry delay in seconds; it doubles each time. Default 5. */
   retryDelaySeconds?: number;
@@ -58,6 +58,7 @@ interface JobData {
   coinId: number;
 }
 
+export const DEFAULT_MAX_ATTEMPTS = 3;
 export const queueName = (stage: StageName): string => `ingest.${stage}`;
 const PAGE = 1000;
 
@@ -89,7 +90,7 @@ export class PipelineWorker {
       log: opts.log,
       runId: opts.runId,
       staleAfterMs: (opts.stageTimeoutSeconds ?? 120) * 1000,
-      maxAttempts: opts.maxAttempts ?? 3,
+      maxAttempts: opts.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
     };
     this.boss = new PgBoss({
       connectionString: opts.connectionString,
@@ -114,7 +115,7 @@ export class PipelineWorker {
     if (this.started) return;
     await this.boss.start();
     const timeout = this.opts.stageTimeoutSeconds ?? 120;
-    const maxAttempts = this.opts.maxAttempts ?? 3;
+    const maxAttempts = this.opts.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
     for (const stage of this.stages) {
       await this.boss.createQueue(queueName(stage), {
         // One waiting job per coin; the claim makes extra copies harmless anyway.
@@ -204,6 +205,8 @@ export class PipelineWorker {
         version: stageDef.version,
         ...(previous ? { requires: previous } : {}),
         ...(addresses ? { addresses } : {}),
+        // A stage that used up its attempts is left failed.
+        maxAttempts: this.exec.maxAttempts,
         // A fresh `running` row has a live worker on it.
         runningSince: new Date(this.now().getTime() - this.exec.staleAfterMs),
         afterId,

@@ -12,6 +12,7 @@ import {
   createRun,
   discoverCoins,
   finishRun,
+  requeueFailed,
   startRun,
   type Database,
   type StageName,
@@ -36,7 +37,13 @@ import {
 } from './stages/metadata.js';
 import { buildSummary, formatSummary, type RunSummary } from './summary.js';
 import { UsageMeter, type UsageTotals } from './usage.js';
-import { PipelineWorker, type PipelineWorkerOptions } from './worker.js';
+import { DEFAULT_MAX_ATTEMPTS, PipelineWorker, type PipelineWorkerOptions } from './worker.js';
+
+/**
+ * Requests a second to each metadata gateway. The first live run used 3 and both public
+ * gateways answered 429 for about one coin in eight, so the default is 1.
+ */
+export const DEFAULT_GATEWAY_RPS = 1;
 
 export const RUN_KIND = 'ingest-sample';
 export const DEFAULT_STAGES: StageName[] = ['discovered', 'metadata'];
@@ -62,6 +69,12 @@ export interface IngestOptions {
   stages?: StageName[];
   concurrency?: number;
   maxHeliusCredits?: number | null;
+  /** Give stages that were left failed a full set of retries. Default false: a re-run leaves them. */
+  retryFailed?: boolean;
+  /** Default 3. */
+  maxAttempts?: number;
+  /** Requests a second to each metadata gateway. Default 1. */
+  gatewayRps?: number;
   confirm: boolean;
   env: IngestEnv;
   log: Logger;
@@ -85,7 +98,11 @@ export interface IngestReport {
   summary: RunSummary | null;
 }
 
-export function createLiveClients(env: IngestEnv, maxHeliusCredits: number | null): SourceClients {
+export function createLiveClients(
+  env: IngestEnv,
+  maxHeliusCredits: number | null,
+  gatewayRps = DEFAULT_GATEWAY_RPS,
+): SourceClients {
   if (!env.HELIUS_API_KEY) throw new Error('HELIUS_API_KEY is not set');
   const budget = new UnitBudget(
     maxHeliusCredits === null ? {} : { ceilingUnits: maxHeliusCredits },
@@ -97,7 +114,7 @@ export function createLiveClients(env: IngestEnv, maxHeliusCredits: number | nul
     limiter: new RateLimiter({ maxPerSecond: 1, burst: 1 }),
   });
   const jupiter = new JupiterClient(env.JUPITER_API_KEY ? { apiKey: env.JUPITER_API_KEY } : {});
-  const fetcher = new MetadataFetcher({ gatewayMaxPerSecond: 3 });
+  const fetcher = new MetadataFetcher({ gatewayMaxPerSecond: gatewayRps });
   return {
     helius,
     jupiter,
@@ -117,12 +134,14 @@ export function buildRegistry(
   clients: SourceClients,
   meter: UsageMeter,
   addresses: readonly string[],
+  maxAttempts: number = DEFAULT_MAX_ATTEMPTS,
 ): StageRegistry {
   const { assets, prices } = createMetadataLoaders({
     db,
     helius: clients.helius,
     jupiter: clients.jupiter,
     addresses,
+    maxAttempts,
   });
   return new StageRegistry().register(discoveredStage).register(
     createMetadataStage({
@@ -148,6 +167,7 @@ function validateStages(stages: readonly StageName[]): void {
 export async function runIngest(opts: IngestOptions): Promise<IngestReport> {
   const now = opts.now ?? (() => new Date());
   const stages = opts.stages ?? DEFAULT_STAGES;
+  const maxAttempts = opts.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
   validateStages(stages);
   const sample = await readSampleFile(opts.samplePath);
   for (const p of sample.problems.slice(0, 10)) {
@@ -166,6 +186,8 @@ export async function runIngest(opts: IngestOptions): Promise<IngestReport> {
       db,
       databaseUrl: opts.env.DATABASE_URL,
       maxHeliusCredits: opts.maxHeliusCredits ?? null,
+      maxAttempts,
+      retryFailed: opts.retryFailed ?? false,
     });
     opts.out(formatPlan(plan, opts.confirm));
     if (!opts.confirm)
@@ -177,7 +199,8 @@ export async function runIngest(opts: IngestOptions): Promise<IngestReport> {
     const connectionString = opts.env.DATABASE_URL;
 
     const meter = new UsageMeter();
-    const clients = opts.clients ?? createLiveClients(opts.env, opts.maxHeliusCredits ?? null);
+    const clients =
+      opts.clients ?? createLiveClients(opts.env, opts.maxHeliusCredits ?? null, opts.gatewayRps);
     const syncUsage = () => {
       for (const [p, t] of Object.entries(clients.readUsage?.() ?? {}))
         meter.set(p, t.requests, t.units);
@@ -190,6 +213,8 @@ export async function runIngest(opts: IngestOptions): Promise<IngestReport> {
         stages,
         concurrency: opts.concurrency ?? 5,
         maxHeliusCredits: opts.maxHeliusCredits ?? null,
+        retryFailed: opts.retryFailed ?? false,
+        maxAttempts,
       },
       estimate: plan.estimate,
     });
@@ -207,11 +232,15 @@ export async function runIngest(opts: IngestOptions): Promise<IngestReport> {
     );
     let worker: PipelineWorker | undefined;
     try {
+      if (opts.retryFailed) {
+        const n = await requeueFailed(db, stages, { addresses, now: now() });
+        opts.log.info(`requeued ${n} failed stages for a full set of retries`);
+      }
       if (stages.includes('discovered')) {
         const seeded = await discoverCoins(db, sample.coins, { now: now(), runId });
         opts.log.info('seeded', { ...seeded });
       }
-      const registry = buildRegistry(db, clients, meter, addresses);
+      const registry = buildRegistry(db, clients, meter, addresses, maxAttempts);
       worker = new PipelineWorker({
         connectionString,
         db,
@@ -220,6 +249,7 @@ export async function runIngest(opts: IngestOptions): Promise<IngestReport> {
         runId,
         log: opts.log,
         concurrency: opts.concurrency ?? 5,
+        maxAttempts,
         now,
         ...opts.worker,
       });

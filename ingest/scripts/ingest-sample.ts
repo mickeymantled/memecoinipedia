@@ -3,11 +3,12 @@
  *
  *   node --env-file=.env --import tsx ingest/scripts/ingest-sample.ts \
  *     --sample FILE [--stages discovered,metadata] [--concurrency 5] \
- *     [--max-helius-credits 300] [--confirm]
+ *     [--max-helius-credits 300] [--gateway-rps 1] [--retry-failed] [--confirm]
  *
  * Without --confirm it prints the plan and the cost estimate (requests and
  * credits per provider) and stops: no call, no write. With it, it runs and
- * prints a summary. Keys come from the environment (HELIUS_API_KEY, optional
+ * prints a summary. A stage that used up its retries stays failed on later runs
+ * (a run with nothing else to do says so); --retry-failed gives those a fresh set. Keys come from the environment (HELIUS_API_KEY, optional
  * JUPITER_API_KEY, DATABASE_URL); nothing prints them.
  */
 import { parseArgs } from 'node:util';
@@ -21,7 +22,7 @@ function usage(message?: string): never {
   if (message) process.stderr.write(`${message}\n\n`);
   process.stderr.write(
     'Usage: ingest-sample.ts --sample FILE [--stages discovered,metadata] [--concurrency N]\n' +
-      '                        [--max-helius-credits N] [--confirm]\n',
+      '                        [--max-helius-credits N] [--gateway-rps N] [--retry-failed] [--confirm]\n',
   );
   process.exit(message ? 2 : 0);
 }
@@ -40,6 +41,8 @@ async function main(): Promise<void> {
       stages: { type: 'string' },
       concurrency: { type: 'string' },
       'max-helius-credits': { type: 'string' },
+      'gateway-rps': { type: 'string' },
+      'retry-failed': { type: 'boolean', default: false },
       confirm: { type: 'boolean', default: false },
       help: { type: 'boolean', default: false },
     },
@@ -62,11 +65,14 @@ async function main(): Promise<void> {
 
   const concurrency = positiveInt('--concurrency', values.concurrency);
   const maxHeliusCredits = positiveInt('--max-helius-credits', values['max-helius-credits']);
+  const gatewayRps = positiveInt('--gateway-rps', values['gateway-rps']);
   const report = await runIngest({
     samplePath: values.sample,
     stages: stages as StageName[],
     ...(concurrency !== undefined ? { concurrency } : {}),
     maxHeliusCredits: maxHeliusCredits ?? null,
+    ...(gatewayRps !== undefined ? { gatewayRps } : {}),
+    retryFailed: values['retry-failed'],
     confirm: values.confirm,
     env: process.env,
     log,

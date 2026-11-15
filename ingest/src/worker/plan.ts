@@ -98,6 +98,10 @@ export interface PlanInput {
   db: Kysely<Database> | null;
   databaseUrl?: string | undefined;
   maxHeliusCredits?: number | null | undefined;
+  /** Failed stages with this many attempts are left alone. Default 3. */
+  maxAttempts?: number;
+  /** Count failed stages as work even when their attempts are used up (they will be requeued). */
+  retryFailed?: boolean;
   /** Current versions of the stages, by name. Default 1 each. */
   versions?: Partial<Record<StageName, number>>;
 }
@@ -106,6 +110,7 @@ export async function planIngest(input: PlanInput): Promise<IngestPlan> {
   const addresses = input.sample.coins.map((c) => c.address);
   const wants = (s: StageName) => input.stages.includes(s);
   const version = (s: StageName) => input.versions?.[s] ?? 1;
+  const attempts = input.retryFailed ? {} : { maxAttempts: input.maxAttempts ?? 3 };
 
   let toSeed = addresses.length;
   const stageWork: Partial<Record<StageName, number>> = {};
@@ -118,6 +123,7 @@ export async function planIngest(input: PlanInput): Promise<IngestPlan> {
     const notDiscovered = await listCoinsNotDone(db, 'discovered', {
       addresses,
       version: version('discovered'),
+      ...attempts,
     });
     toSeed = absent + notDiscovered.length;
     for (const s of input.stages) {
@@ -130,6 +136,7 @@ export async function planIngest(input: PlanInput): Promise<IngestPlan> {
       const rows = await listCoinsNotDone(db, s, {
         addresses,
         version: version(s),
+        ...attempts,
         ...(prev && !wants(prev) ? { requires: prev } : {}),
       });
       // Coins not yet in the table appear only if this run seeds them.

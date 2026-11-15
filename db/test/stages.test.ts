@@ -11,6 +11,7 @@ import {
   groupStageFailures,
   listCoinsNotDone,
   replaceCoinIssues,
+  requeueFailed,
 } from '../src/stages.js';
 import { createTestDatabase, type TestDatabase } from '../src/testing.js';
 import { adminUrl, describeDb } from './helpers.js';
@@ -225,6 +226,29 @@ describeDb('stage tracking', () => {
     expect(
       (await listCoinsNotDone(t.db, 'metadata', { version: 2 })).map((r) => r.address),
     ).toContain('B2');
+  });
+
+  it('leaves failed stages that used their attempts, until they are requeued', async () => {
+    const b = await upsertCoin(t.db, { chain: 'solana', address: 'B2' });
+    await ensureStages(t.db, [coin, b], ['metadata']);
+    await t.db
+      .updateTable('coin_stages')
+      .set({ status: 'failed', attempts: 3, last_error: 'metadata_unreachable: x' })
+      .where('coin_id', '=', coin)
+      .execute();
+    await t.db
+      .updateTable('coin_stages')
+      .set({ status: 'failed', attempts: 1 })
+      .where('coin_id', '=', b)
+      .execute();
+    const open = await listCoinsNotDone(t.db, 'metadata', { maxAttempts: 3 });
+    expect(open.map((r) => r.address)).toEqual(['B2']);
+    expect(await requeueFailed(t.db, ['metadata'], { addresses: ['A1'], now: T0 })).toBe(1);
+    expect(await row()).toMatchObject({ status: 'pending', attempts: 0 });
+    expect(
+      (await listCoinsNotDone(t.db, 'metadata', { maxAttempts: 3 })).map((r) => r.address),
+    ).toEqual(['A1', 'B2']);
+    expect(await requeueFailed(t.db, ['metadata'], { now: T0 })).toBe(1); // B2, no address filter
   });
 
   it('requires: only coins whose earlier stage is done or skipped', async () => {

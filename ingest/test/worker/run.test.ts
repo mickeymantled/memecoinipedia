@@ -200,6 +200,68 @@ describeDb('runIngest', () => {
     expect(await tableCounts(db)).toEqual(before);
   }, 60_000);
 
+  it('leaves coins that used up their retries on a re-run, and retries them with --retry-failed', async () => {
+    const flaky = sources();
+    let down = true;
+    const original = flaky.clients.fetchMetadata;
+    flaky.clients.fetchMetadata = async (uri) =>
+      down && uri.includes(mints[2]!) ? badResult('unreachable') : original(uri);
+    const out: string[] = [];
+    const first = await runIngest({
+      ...base(out),
+      confirm: true,
+      db,
+      clients: flaky.clients,
+      maxAttempts: 2,
+      worker: fast,
+    });
+    expect(first.summary!.failures).toEqual([
+      { stage: 'metadata', status: 'failed', reason: 'metadata_unreachable', coins: 1 },
+    ]);
+    const attemptsOf = async () =>
+      (
+        await db
+          .selectFrom('coin_stages')
+          .select('attempts')
+          .where('stage', '=', 'metadata')
+          .where('status', '=', 'failed')
+          .execute()
+      ).map((r) => r.attempts);
+    expect(await attemptsOf()).toEqual([2]);
+
+    // Same run again: the failed coin has used its two attempts, so there is nothing to do.
+    const before = await tableCounts(db);
+    down = false;
+    const again = await runIngest({
+      ...base([]),
+      confirm: true,
+      db,
+      clients: flaky.clients,
+      maxAttempts: 2,
+      worker: fast,
+    });
+    expect(again.status).toBe('nothing_to_do');
+    expect(await tableCounts(db)).toEqual(before);
+
+    // With --retry-failed it gets a fresh set, and now it works.
+    const out3: string[] = [];
+    const retried = await runIngest({
+      ...base(out3),
+      confirm: true,
+      db,
+      clients: flaky.clients,
+      maxAttempts: 2,
+      retryFailed: true,
+      worker: fast,
+    });
+    expect(retried.status).toBe('done');
+    expect(retried.plan.stageWork['metadata']).toBe(1);
+    expect(retried.summary!.failures).toEqual([]);
+    expect(
+      retried.summary!.stages.find((s) => s.stage === 'metadata' && s.status === 'done')?.coins,
+    ).toBe(N);
+  }, 60_000);
+
   it('seeding is limited to the stages asked for', async () => {
     const out: string[] = [];
     const { clients } = sources();

@@ -189,15 +189,13 @@ describeDb('queue worker', () => {
   it('does not retry a failure marked not retryable', async () => {
     const ids = await seedCoins(db, [mintN(1)]);
     const w = worker(
-      new StageRegistry()
-        .register(discoveredStage)
-        .register(
-          stage('metadata', () => ({
-            status: 'failed',
-            reason: 'budget_exceeded: ceiling',
-            retry: false,
-          })),
-        ),
+      new StageRegistry().register(discoveredStage).register(
+        stage('metadata', () => ({
+          status: 'failed',
+          reason: 'budget_exceeded: ceiling',
+          retry: false,
+        })),
+      ),
     );
     await w.start();
     await w.enqueueNotDone();

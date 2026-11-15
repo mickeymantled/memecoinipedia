@@ -169,6 +169,11 @@ export interface ListNotDoneOptions {
   runningSince?: Date;
   /** Keep failed rows out. Default false: failed rows are listed so a re-run retries them. */
   excludeFailed?: boolean;
+  /**
+   * Leave out failed rows that have used this many attempts: the stage was tried that often and
+   * is left failed. A re-run does not touch them; `requeueFailed` makes them eligible again.
+   */
+  maxAttempts?: number;
   /** Return coins with an id above this one. For paging. */
   afterId?: number;
   limit?: number;
@@ -214,6 +219,12 @@ export async function listCoinsNotDone(
     );
   }
   if (opts.excludeFailed) q = q.where((eb) => eb('s.status', 'is distinct from', 'failed'));
+  if (opts.maxAttempts !== undefined) {
+    const max = opts.maxAttempts;
+    q = q.where((eb) =>
+      eb.or([eb('s.status', 'is distinct from', 'failed'), eb('s.attempts', '<', max)]),
+    );
+  }
   if (opts.requires) {
     const requires = opts.requires;
     q = q.where((eb) =>
@@ -243,6 +254,36 @@ export async function listCoinsNotDone(
     status: r.status ?? null,
     attempts: r.attempts ?? 0,
   }));
+}
+
+/**
+ * Puts failed stages back to `pending` with zero attempts, so the next run
+ * gives each a full set of retries. Returns how many rows changed.
+ */
+export async function requeueFailed(
+  db: Kysely<Database>,
+  stages: readonly StageName[],
+  opts: { addresses?: readonly string[]; now: Date },
+): Promise<number> {
+  if (stages.length === 0 || (opts.addresses && opts.addresses.length === 0)) return 0;
+  let q = db
+    .updateTable('coin_stages')
+    .set({ status: 'pending', attempts: 0, updated_at: opts.now })
+    .where('status', '=', 'failed')
+    .where('stage', 'in', [...stages]);
+  if (opts.addresses) {
+    q = q.where(
+      'coin_id',
+      'in',
+      db
+        .selectFrom('coins')
+        .select('id')
+        .where('chain', '=', 'solana')
+        .where('address', 'in', [...opts.addresses]),
+    );
+  }
+  const res = await q.executeTakeFirst();
+  return Number(res.numUpdatedRows);
 }
 
 export interface StageCount {
