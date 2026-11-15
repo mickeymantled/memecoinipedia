@@ -53,7 +53,8 @@ const tokenSchema = z.object({
   updatedAt: z.string().nullish(),
 });
 
-const responseSchema = z.array(tokenSchema);
+/** Only the array is checked here; each row is checked on its own with `tokenSchema`. */
+const responseSchema = z.array(z.unknown());
 
 export interface JupiterToken {
   mint: string;
@@ -75,6 +76,21 @@ export interface JupiterToken {
   isVerified: boolean | null;
   /** When Jupiter last updated the entry (ISO 8601). Not a launch time. */
   updatedAt: string | null;
+  /**
+   * Null for a good row. When Jupiter returned a row for this mint that did not match the
+   * expected shape, `found` is true, every other field is null, and this lists the issues.
+   */
+  invalid: string[] | null;
+}
+
+export class JupiterRedirectError extends Error {
+  readonly status: number;
+
+  constructor(status: number) {
+    super(`Jupiter answered with a redirect (HTTP ${status}); redirects are not followed`);
+    this.name = 'JupiterRedirectError';
+    this.status = status;
+  }
 }
 
 export class JupiterResponseError extends Error {
@@ -98,6 +114,9 @@ export interface JupiterClientOptions {
   http?: Omit<GetBytesOptions, 'fetch' | 'headers' | 'maxBytes'>;
 }
 
+const issueList = (error: z.ZodError): string[] =>
+  error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`);
+
 const notFound = (mint: string): JupiterToken => ({
   mint,
   found: false,
@@ -111,6 +130,7 @@ const notFound = (mint: string): JupiterToken => ({
   totalSupply: null,
   isVerified: null,
   updatedAt: null,
+  invalid: null,
 });
 
 export class JupiterClient {
@@ -138,7 +158,10 @@ export class JupiterClient {
   /**
    * Price and market data for each mint, in input order (duplicates removed).
    * Requests are split at 100 mints. A mint Jupiter does not return is
-   * `found: false`. A mint with no price (a dead pool) is `found: true` with
+   * `found: false`. A row that comes back but does not match the expected shape is
+   * `found: true` with every other field null and `invalid` listing the issues; a row
+   * without a string `id` cannot be matched, so its mint is `found: false`. Only a
+   * response that is not an array at all throws. A mint with no price (a dead pool) is `found: true` with
    * `priceUsd: null`.
    */
   async getTokens(mints: readonly string[]): Promise<JupiterToken[]> {
@@ -147,11 +170,20 @@ export class JupiterClient {
     for (let i = 0; i < unique.length; i += JUPITER_MAX_MINTS_PER_REQUEST) {
       const batch = unique.slice(i, i + JUPITER_MAX_MINTS_PER_REQUEST);
       const rows = await this.fetchBatch(batch);
-      const byId = new Map(rows.map((r) => [r.id, r]));
+      const byId = new Map<string, z.infer<typeof tokenSchema>>();
+      const badById = new Map<string, string[]>();
+      for (const row of rows) {
+        const id = (row as { id?: unknown } | null)?.id;
+        if (typeof id !== 'string') continue;
+        const parsed = tokenSchema.safeParse(row);
+        if (parsed.success) byId.set(id, parsed.data);
+        else badById.set(id, issueList(parsed.error));
+      }
       for (const mint of batch) {
         const r = byId.get(mint);
         if (!r) {
-          out.push(notFound(mint));
+          const bad = badById.get(mint);
+          out.push(bad ? { ...notFound(mint), found: true, invalid: bad } : notFound(mint));
           continue;
         }
         const buy = r.stats24h?.buyVolume;
@@ -169,6 +201,7 @@ export class JupiterClient {
           totalSupply: r.totalSupply ?? null,
           isVerified: r.isVerified ?? null,
           updatedAt: r.updatedAt ?? null,
+          invalid: null,
         });
       }
     }
@@ -196,6 +229,8 @@ export class JupiterClient {
       maxBytes: MAX_RESPONSE_BYTES,
     });
 
+    if (res.status >= 300) throw new JupiterRedirectError(res.status);
+
     let json: unknown;
     try {
       json = JSON.parse(new TextDecoder().decode(res.body));
@@ -203,11 +238,7 @@ export class JupiterClient {
       throw new JupiterResponseError(['response was not JSON']);
     }
     const parsed = responseSchema.safeParse(json);
-    if (!parsed.success) {
-      throw new JupiterResponseError(
-        parsed.error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`),
-      );
-    }
+    if (!parsed.success) throw new JupiterResponseError(issueList(parsed.error));
     return parsed.data;
   }
 }

@@ -23,6 +23,7 @@ import {
 } from './costs.js';
 import {
   assetBatchResultSchema,
+  assetSchema,
   rpcEnvelopeSchema,
   transactionsForAddressResultSchema,
 } from './schemas.js';
@@ -79,6 +80,11 @@ export interface AssetInfo {
   supply: string | null;
   /** DAS `interface`, for example `FungibleToken`. */
   assetInterface: string | null;
+  /**
+   * Null for a good row. When Helius returned a row for this mint that did not match the
+   * expected shape, `found` is true, every other field is null, and this lists the issues.
+   */
+  invalid: string[] | null;
 }
 
 export interface CreateEvent {
@@ -93,6 +99,9 @@ export interface CreateEvent {
    * account of the transaction, which is its fee payer and a signer. The mint
    * itself must also be a signer of that transaction (a new mint's keypair
    * signs its own creation); a first transaction without that is not accepted.
+   * The fee payer is not always the creator pump.fun records (its create event has its
+   * own creator field); where the two differ, that field is the authority. All 20 probe
+   * coins agree.
    */
   creator: string;
   requests: number;
@@ -159,13 +168,17 @@ function programKind(id: string | null): TokenProgramKind | null {
 const clean = (s: string | null | undefined): string | null =>
   typeof s === 'string' ? s.replaceAll('\u0000', '') : null;
 
-type RawAsset = NonNullable<z.infer<typeof assetBatchResultSchema>[number]>;
+type RawAsset = z.infer<typeof assetSchema>;
 
-function assetInfoFrom(mint: string, a: RawAsset | undefined): AssetInfo {
+function assetInfoFrom(
+  mint: string,
+  a: RawAsset | undefined,
+  invalid: string[] | null = null,
+): AssetInfo {
   if (!a) {
     return {
       mint,
-      found: false,
+      found: invalid !== null,
       name: null,
       symbol: null,
       uri: null,
@@ -175,6 +188,7 @@ function assetInfoFrom(mint: string, a: RawAsset | undefined): AssetInfo {
       decimals: null,
       supply: null,
       assetInterface: null,
+      invalid,
     };
   }
   const ext = a.mint_extensions?.metadata;
@@ -200,6 +214,7 @@ function assetInfoFrom(mint: string, a: RawAsset | undefined): AssetInfo {
         ? BigInt(Math.trunc(supply)).toString()
         : null,
     assetInterface: a.interface ?? null,
+    invalid: null,
   };
 }
 
@@ -276,7 +291,10 @@ export class HeliusClient {
   /**
    * On-chain metadata for each mint, in input order (duplicates removed).
    * Requests are split at 1,000 mints, 10 credits each. A mint Helius has no
-   * asset for is `found: false`. Returns `[]` in dry-run mode.
+   * asset for is `found: false`. A row that comes back but does not match the expected shape
+   * is `found: true` with every other field null and `invalid` listing the issues. A row
+   * without a string `id` cannot be matched to a mint, so its mint is `found: false`.
+   * Only a response that is not an array at all throws. Returns `[]` in dry-run mode.
    */
   async getAssets(mints: readonly string[]): Promise<AssetInfo[]> {
     const unique = [...new Set(mints)];
@@ -294,8 +312,17 @@ export class HeliusClient {
       );
       if (result === null) continue; // dry run
       const byId = new Map<string, RawAsset>();
-      for (const a of result) if (a) byId.set(a.id, a);
-      for (const mint of batch) out.push(assetInfoFrom(mint, byId.get(mint)));
+      const badById = new Map<string, string[]>();
+      for (const row of result) {
+        const id = (row as { id?: unknown } | null)?.id;
+        if (typeof id !== 'string') continue;
+        const parsed = assetSchema.safeParse(row);
+        if (parsed.success) byId.set(id, parsed.data);
+        else badById.set(id, issueList(parsed.error));
+      }
+      for (const mint of batch) {
+        out.push(assetInfoFrom(mint, byId.get(mint), badById.get(mint) ?? null));
+      }
     }
     return out;
   }

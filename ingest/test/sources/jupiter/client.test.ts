@@ -180,6 +180,7 @@ describe('no launch-time field', () => {
         'priceUsd',
         'totalSupply',
         'updatedAt',
+        'invalid',
         'volume24hUsd',
       ].sort(),
     );

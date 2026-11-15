@@ -37,8 +37,13 @@ export const assetSchema = z.object({
     .nullish(),
 });
 
-/** A missing or non-token account comes back as null. */
-export const assetBatchResultSchema = z.array(assetSchema.nullable());
+/**
+ * Only the array is checked here. Each row is checked on its own with `assetSchema`,
+ * so one unreadable row does not fail the batch. A missing or non-token account
+ * comes back as null.
+ */
+
+export const assetBatchResultSchema = z.array(z.unknown());
 
 const accountKey = z.union([
   z.string(),

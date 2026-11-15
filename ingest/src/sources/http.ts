@@ -111,6 +111,20 @@ interface AttemptResult<T> {
 }
 
 /** Thrown inside an attempt to stop the retry loop at once (for example a body over its cap). */
+/**
+ * The default fetch of `postJson` refuses redirects (a custom header such as an API key
+ * would otherwise travel to another origin). It throws this, and the retry loop turns it
+ * into an `HttpError` at once, without retrying.
+ */
+class RedirectRefused extends Error {
+  readonly retryable = false;
+
+  constructor() {
+    super('redirect refused');
+    this.name = 'RedirectRefused';
+  }
+}
+
 class StopRetrying extends Error {
   readonly original: Error;
 
@@ -148,7 +162,16 @@ async function withRetries<T>(
     try {
       result = await once(controller.signal);
     } catch (err) {
-      if (err instanceof StopRetrying) throw err.original;
+      if (err instanceof StopRetrying) {
+        if (err.original instanceof RedirectRefused) {
+          throw new HttpError(
+            `Redirect refused from ${new URL(url).host} (redirects are not followed)`,
+            null,
+            attempt,
+          );
+        }
+        throw err.original;
+      }
       const name = err instanceof Error ? err.name : '';
       failure = name === 'AbortError' ? `timed out after ${cfg.timeoutMs} ms` : 'network error';
     } finally {
@@ -180,17 +203,36 @@ async function withRetries<T>(
   }
 }
 
+/** The fetch used when none is injected. Redirects are refused, not followed. */
+const defaultPostFetch: FetchLike = async (input, init) => {
+  try {
+    return await fetch(input, { ...init, redirect: 'error' });
+  } catch (err) {
+    const cause = err instanceof Error ? err.cause : undefined;
+    if (cause instanceof Error && /redirect/i.test(cause.message)) throw new RedirectRefused();
+    throw err;
+  }
+};
+
 export async function postJson(
   url: string,
   payload: unknown,
   opts: PostJsonOptions = {},
 ): Promise<HttpResponse> {
-  const doFetch: FetchLike = opts.fetch ?? ((input, init) => fetch(input, init));
+  const doFetch: FetchLike = opts.fetch ?? defaultPostFetch;
   const body = JSON.stringify(payload);
   const headers = { 'content-type': 'application/json', ...opts.headers };
 
   const out = await withRetries(url, retryConfig(opts), async (signal) => {
-    const res = await doFetch(url, { method: 'POST', headers, body, signal });
+    let res;
+    try {
+      res = await doFetch(url, { method: 'POST', headers, body, signal });
+    } catch (err) {
+      if (err instanceof Error && (err as { retryable?: boolean }).retryable === false) {
+        throw new StopRetrying(err);
+      }
+      throw err;
+    }
     const text = await res.text();
     return {
       status: res.status,

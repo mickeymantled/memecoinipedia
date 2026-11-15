@@ -28,6 +28,7 @@ describe('parseMetadataUri', () => {
       cid: V0,
       path: '',
       originalOrigin: null,
+      originalUrl: null,
     });
     expect(parseMetadataUri(`ipfs://${V1}`)).toMatchObject({ kind: 'ipfs', cid: V1 });
   });
@@ -49,11 +50,13 @@ describe('parseMetadataUri', () => {
       cid: V0,
       path: '',
       originalOrigin: 'https://ipfs.io',
+      originalUrl: expect.any(String),
     });
     expect(parseMetadataUri(`https://cf-ipfs.com/ipfs/${V0}/x.json`)).toMatchObject({
       cid: V0,
       path: '/x.json',
       originalOrigin: 'https://cf-ipfs.com',
+      originalUrl: expect.any(String),
     });
     expect(parseMetadataUri(`https://gateway.ipfs.io/ipfs/${V1}`)).toMatchObject({ cid: V1 });
   });
@@ -64,6 +67,7 @@ describe('parseMetadataUri', () => {
       cid: V1,
       path: '',
       originalOrigin: `https://${V1}.ipfs.dweb.link`,
+      originalUrl: expect.any(String),
     });
     expect(parseMetadataUri(`https://${V1}.ipfs.w3s.link/data.json`)).toMatchObject({
       cid: V1,
@@ -77,12 +81,14 @@ describe('parseMetadataUri', () => {
       id: AR,
       path: '',
       originalOrigin: null,
+      originalUrl: null,
     });
     expect(parseMetadataUri(`https://arweave.net/${AR}`)).toEqual({
       kind: 'arweave',
       id: AR,
       path: '',
       originalOrigin: 'https://arweave.net',
+      originalUrl: expect.any(String),
     });
     expect(parseMetadataUri(`https://arweave.net/${AR}/x`)).toMatchObject({ path: '/x' });
   });

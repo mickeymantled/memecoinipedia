@@ -21,8 +21,16 @@ export type ParsedUri =
       path: string;
       /** Where the URI pointed (`https://host`), or null for `ipfs://`. */
       originalOrigin: string | null;
+      /** The URI exactly as written when it is an http(s) gateway URL, else null. */
+      originalUrl: string | null;
     }
-  | { kind: 'arweave'; id: string; path: string; originalOrigin: string | null }
+  | {
+      kind: 'arweave';
+      id: string;
+      path: string;
+      originalOrigin: string | null;
+      originalUrl: string | null;
+    }
   | { kind: 'http'; url: string }
   | { kind: 'unsupported'; reason: string };
 
@@ -68,7 +76,7 @@ export function parseMetadataUri(input: string): ParsedUri {
     if (!isCid(cid)) return { kind: 'unsupported', reason: 'not a CIDv0 or CIDv1' };
     const path = cleanPath(m[2]!);
     if (path === null) return { kind: 'unsupported', reason: 'bad path' };
-    return { kind: 'ipfs', cid, path, originalOrigin: null };
+    return { kind: 'ipfs', cid, path, originalOrigin: null, originalUrl: null };
   }
 
   if (scheme === 'ar') {
@@ -78,7 +86,7 @@ export function parseMetadataUri(input: string): ParsedUri {
     }
     const path = cleanPath(m[2]!);
     if (path === null) return { kind: 'unsupported', reason: 'bad path' };
-    return { kind: 'arweave', id: m[1]!, path, originalOrigin: null };
+    return { kind: 'arweave', id: m[1]!, path, originalOrigin: null, originalUrl: null };
   }
 
   if (scheme !== 'http' && scheme !== 'https') {
@@ -103,7 +111,13 @@ export function parseMetadataUri(input: string): ParsedUri {
   if (pathGateway && isCid(pathGateway[1]!)) {
     const path = cleanPath(pathGateway[2] ?? '');
     if (path === null) return { kind: 'unsupported', reason: 'bad path' };
-    return { kind: 'ipfs', cid: pathGateway[1]!, path, originalOrigin: url.origin };
+    return {
+      kind: 'ipfs',
+      cid: pathGateway[1]!,
+      path,
+      originalOrigin: url.origin,
+      originalUrl: url.toString(),
+    };
   }
 
   // Subdomain gateway: <cid>.ipfs.<host>[/path]
@@ -111,7 +125,13 @@ export function parseMetadataUri(input: string): ParsedUri {
   if (labels.length >= 3 && labels[1] === 'ipfs' && isCid(labels[0]!)) {
     const path = cleanPath(url.pathname);
     if (path === null) return { kind: 'unsupported', reason: 'bad path' };
-    return { kind: 'ipfs', cid: labels[0]!, path, originalOrigin: url.origin };
+    return {
+      kind: 'ipfs',
+      cid: labels[0]!,
+      path,
+      originalOrigin: url.origin,
+      originalUrl: url.toString(),
+    };
   }
 
   // Arweave gateway: arweave.net/<id>[/path]
@@ -120,7 +140,13 @@ export function parseMetadataUri(input: string): ParsedUri {
     if (m && ARWEAVE_ID.test(m[1]!)) {
       const path = cleanPath(m[2] ?? '');
       if (path === null) return { kind: 'unsupported', reason: 'bad path' };
-      return { kind: 'arweave', id: m[1]!, path, originalOrigin: url.origin };
+      return {
+        kind: 'arweave',
+        id: m[1]!,
+        path,
+        originalOrigin: url.origin,
+        originalUrl: url.toString(),
+      };
     }
   }
 

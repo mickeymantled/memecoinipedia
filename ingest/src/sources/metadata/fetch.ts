@@ -26,7 +26,7 @@ import {
   type GetFetchLike,
 } from '../http.js';
 import { RateLimiter } from '../ratelimit.js';
-import { parseTokenMetadata, type TokenMetadata } from './parse.js';
+import { parseTokenMetadata, stripNulDeep, type TokenMetadata } from './parse.js';
 import {
   BlockedAddressError,
   UnsafeUrlError,
@@ -69,7 +69,7 @@ export interface MetadataResult {
   attempts: MetadataAttempt[];
   /** Parsed fields, for `ok`. */
   metadata: TokenMetadata | null;
-  /** The JSON as received, for `ok`. For `coins.metadata_raw`. */
+  /** The JSON as received, for `ok`. For `coins.metadata_raw`. With NUL removed from every string and key. */
   raw: Record<string, unknown> | null;
   /** Why the URI is unsupported, for `unsupported_uri`. */
   detail: string | null;
@@ -169,10 +169,10 @@ export class MetadataFetcher {
     return l;
   }
 
-  private target(base: string, path: string, cfg?: GatewayConfig): Target | null {
+  private target(base: string, path: string, cfg?: GatewayConfig, exact = false): Target | null {
     let url: URL;
     try {
-      url = new URL(trimSlash(base) + path);
+      url = new URL(exact ? base : trimSlash(base) + path);
     } catch {
       return null;
     }
@@ -206,8 +206,9 @@ export class MetadataFetcher {
         targets.push(t);
       }
     };
-    if (this.opts.tryOriginalHost && parsed.originalOrigin !== null) {
-      add(this.target(parsed.originalOrigin, tail));
+    if (this.opts.tryOriginalHost && parsed.originalUrl !== null) {
+      // The URI exactly as written: a subdomain gateway URI is not a path gateway URL.
+      add(this.target(parsed.originalUrl, '', undefined, true));
     }
     for (const g of list) add(this.target(g.url, tail, g));
     return { targets };
@@ -297,12 +298,14 @@ export class MetadataFetcher {
       const { attempt, json } = await this.attempt(t);
       attempts.push(attempt);
       if (attempt.result === 'ok' && json) {
+        // Postgres rejects NUL in text and jsonb, so keys and values are cleaned first.
+        const cleaned = stripNulDeep(json) as Record<string, unknown>;
         return {
           ...base,
           outcome: 'ok',
           gateway: attempt.gateway,
-          metadata: parseTokenMetadata(json),
-          raw: json,
+          metadata: parseTokenMetadata(cleaned),
+          raw: cleaned,
         };
       }
       // Content is addressed by its hash, so a bigger file is bigger everywhere.

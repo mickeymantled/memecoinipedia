@@ -17,7 +17,26 @@ export interface TokenMetadata {
   website: string | null;
 }
 
-const str = (v: unknown): string | null => (typeof v === 'string' ? v : null);
+/** Postgres rejects the NUL character in both text and jsonb, so it is removed everywhere. */
+export const stripNul = (s: string): string => s.replaceAll('\u0000', '');
+
+/**
+ * A deep copy with NUL removed from every string value and every object key, at any
+ * depth. Numbers, booleans and null are untouched. If two keys become the same after
+ * stripping, the later one wins.
+ */
+export function stripNulDeep(value: unknown): unknown {
+  if (typeof value === 'string') return stripNul(value);
+  if (Array.isArray(value)) return value.map(stripNulDeep);
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([k, v]) => [stripNul(k), stripNulDeep(v)]),
+    );
+  }
+  return value;
+}
+
+const str = (v: unknown): string | null => (typeof v === 'string' ? stripNul(v) : null);
 
 /**
  * `http` becomes `https`. Anything that is not a valid `http(s)` URL, or that
@@ -25,7 +44,7 @@ const str = (v: unknown): string | null => (typeof v === 'string' ? v : null);
  */
 export function normalizeSocialUrl(value: unknown): string | null {
   if (typeof value !== 'string') return null;
-  const trimmed = value.trim();
+  const trimmed = stripNul(value).trim();
   if (trimmed === '' || trimmed.length > 2048) return null;
   let url: URL;
   try {
@@ -42,7 +61,7 @@ export function normalizeSocialUrl(value: unknown): string | null {
 
 function imageValue(value: unknown): string | null {
   if (typeof value !== 'string') return null;
-  const trimmed = value.trim();
+  const trimmed = stripNul(value).trim();
   if (trimmed === '' || trimmed.length > 2048) return null;
   try {
     const url = new URL(trimmed);
