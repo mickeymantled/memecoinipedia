@@ -7,6 +7,7 @@ import {
   loadMetricInput,
   putBars,
   PoolOwnedByOtherCoinError,
+  takeOverPool,
   refreshPoolBarStats,
   upsertPool,
   type StoredPool,
@@ -89,6 +90,7 @@ export async function fetchCandlesForCoin(
     pools: [],
     skippedOtherPools: 0,
     otherQuotePools: null,
+    poolsTakenOver: 0,
     launchInfoNamedPool: null,
     graduationPoolUnverified: false,
     barsFetched: emptyCounts(),
@@ -474,7 +476,21 @@ export async function fetchCandlesForCoin(
       await upsertPool(db, pool);
     } catch (err) {
       if (!(err instanceof PoolOwnedByOtherCoinError)) throw err;
-      clashed.add(pool.address);
+      if (!pool.isPrimary) {
+        clashed.add(pool.address);
+        return;
+      }
+      // The coin's own curve or graduation pool: take it over from a coin that holds it as an
+      // ordinary other pool. Two coins claiming it as their own should never happen: fail loudly.
+      const r = await takeOverPool(db, pool, deps.clock());
+      if (r.status === 'taken') summary.poolsTakenOver += 1;
+      if (r.status === 'claimed_by_two') {
+        throw new Stop({
+          reason: 'pool_claimed_by_two_coins',
+          retry: false,
+          message: `A pool is the curve or graduation pool of both coin ${coin.id} and coin ${r.ownerCoinId}`,
+        });
+      }
     }
   }
 }

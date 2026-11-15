@@ -22,7 +22,7 @@
  * pools leaves `graduation_pool_not_found` as it was.
  */
 import { replaceCoinIssues } from '@memecoinipedia/db';
-import { fetchCandlesForCoin } from '../../candles/index.js';
+import { fetchCandlesForCoin, METRICS_VERSION } from '../../candles/index.js';
 import type { CandleFetchSummary } from '../../candles/index.js';
 import { FLAT_UNITS, RATE_LIMIT_MESSAGE, type CodexClient } from '../../sources/codex/index.js';
 import { failed, done, type Stage, type StageResult } from '../stage.js';
@@ -59,7 +59,15 @@ export interface CandlesDetail extends Record<string, unknown> {
    * left out. Null when no pool list was looked up in the run that finished the stage. No addresses.
    */
   otherQuotePools: number | null;
+  /** Pools moved to this coin from a coin that held them as ordinary other pools. No addresses. */
+  poolsTakenOver: number;
   hourlyCapHit: boolean;
+  /**
+   * The `METRICS_VERSION` the fetch's peak refinement ran under. The metrics stage reopens a coin
+   * whose flag survives a recompute only when this is lower than its own version, so a coin is
+   * refetched once per rules version and never in a loop.
+   */
+  metricsVersion: number;
 }
 
 /** The small JSON kept on the stage row. Well under 1 KB: counters and flags only. */
@@ -75,7 +83,9 @@ export function candlesDetail(summary: CandleFetchSummary): CandlesDetail {
     refinementRequests: summary.refinementRounds,
     launchInfoNamedPool: summary.launchInfoNamedPool,
     otherQuotePools: summary.otherQuotePools,
+    poolsTakenOver: summary.poolsTakenOver,
     hourlyCapHit: summary.hourlyCapHit,
+    metricsVersion: METRICS_VERSION,
   };
 }
 

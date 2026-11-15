@@ -12,8 +12,9 @@ export {
   getCoinPools,
   refreshPoolBarStats,
   PoolOwnedByOtherCoinError,
+  takeOverPool,
 } from './pools.js';
-export type { PoolInput, StoredPool } from './pools.js';
+export type { PoolInput, StoredPool, TakeOverResult } from './pools.js';
 export { replaceCoinIssues } from './dataIssues.js';
 export type { NewIssue } from './dataIssues.js';
 export {

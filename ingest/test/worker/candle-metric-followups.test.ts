@@ -147,6 +147,7 @@ describeDb('candles and metrics stage follow-ups', () => {
             pools: [],
             skippedOtherPools: 0,
             otherQuotePools: null,
+            poolsTakenOver: 0,
             launchInfoNamedPool: null,
             graduationPoolUnverified: false,
             barsFetched: { '1m': 0, '1h': 0, '1d': 0 },

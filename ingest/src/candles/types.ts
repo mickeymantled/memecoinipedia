@@ -77,6 +77,11 @@ export interface CandleFetchSummary {
    */
   otherQuotePools: number | null;
   /**
+   * Pools of this coin's own (curve or graduation) that another coin held as an ordinary other
+   * pool, moved to this coin in this run.
+   */
+  poolsTakenOver: number;
+  /**
    * Launch info named the graduation pool, so no pool-list lookup was needed at stage 0. False
    * when stage 0 had to list the pools. Null when stage 0 did not happen in this run.
    */
