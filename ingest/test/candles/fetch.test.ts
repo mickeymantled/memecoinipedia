@@ -3,6 +3,7 @@ import { sql } from 'kysely';
 import { upsertCoin, getBars, loadMetricInput } from '@memecoinipedia/db';
 import { createTestDatabase, type TestDatabase } from '@memecoinipedia/db/testing';
 import {
+  EXHAUSTIVE_PLAN_LIMITS,
   METRICS_VERSION,
   computeMetricsForCoin,
   fetchCandlesForCoin,
@@ -23,6 +24,8 @@ import {
 } from './helpers.js';
 
 const SYMBOLS = ['USOF', 'VANGOAT', 'WIZARD'] as const;
+/** The recordings were made under the exhaustive plan, so they replay under it. */
+const EX = { limits: EXHAUSTIVE_PLAN_LIMITS };
 
 let t: TestDatabase;
 beforeEach(async () => {
@@ -77,7 +80,7 @@ describeDb('fetchCandlesForCoin on recorded fixtures', () => {
       const replay = replayFetch([f]);
       const deps = depsFor(f, replay);
 
-      const first = await fetchCandlesForCoin(deps, { id, address: f.mint });
+      const first = await fetchCandlesForCoin(deps, { id, address: f.mint }, EX);
       expect(first.ok).toBe(true);
       const s = first.summary;
       // Every recorded response was used, nothing else was asked.
@@ -108,7 +111,7 @@ describeDb('fetchCandlesForCoin on recorded fixtures', () => {
 
       const before = await snapshotTables(t.db);
       const requestsBefore = replay.queries.length;
-      const second = await fetchCandlesForCoin(deps, { id, address: f.mint });
+      const second = await fetchCandlesForCoin(deps, { id, address: f.mint }, EX);
       expect(second.ok).toBe(true);
       expect(replay.queries.length).toBe(requestsBefore); // no request at all, lookups included
       expect(second.summary.requests).toBe(0);
@@ -122,7 +125,7 @@ describeDb('fetchCandlesForCoin on recorded fixtures', () => {
       const f = loadCandleFixture(symbol);
       const id = await addCoin(f);
       const deps = depsFor(f, replayFetch([f]));
-      expect((await fetchCandlesForCoin(deps, { id, address: f.mint })).ok).toBe(true);
+      expect((await fetchCandlesForCoin(deps, { id, address: f.mint }, EX)).ok).toBe(true);
 
       const run1 = await computeMetricsForCoin(deps, { id });
       expect(run1.ok).toBe(true);
@@ -169,7 +172,7 @@ describeDb('fetchCandlesForCoin on recorded fixtures', () => {
     const id = await addCoin(f);
     const replay = replayFetch([f]);
     const deps = depsFor(f, replay);
-    const r = await fetchCandlesForCoin(deps, { id, address: f.mint });
+    const r = await fetchCandlesForCoin(deps, { id, address: f.mint }, EX);
     expect(r.summary.refinementRounds).toBe(1);
     expect(r.summary.refinementRequestsTotal).toBe(1);
     expect(r.summary.flags).not.toContain('peak_outside_minute_coverage');
@@ -193,10 +196,10 @@ describeDb('fetchCandlesForCoin on recorded fixtures', () => {
     const f = loadCandleFixture('VANGOAT');
     const id = await addCoin(f);
     const deps = depsFor(f, replayFetch([f]));
-    const r = await fetchCandlesForCoin(deps, { id, address: f.mint });
+    const r = await fetchCandlesForCoin(deps, { id, address: f.mint }, EX);
     expect(r.summary.hourlyCapHit).toBe(true);
     expect(r.summary.issues).toContain('candle_hourly_cap_hit');
-    await fetchCandlesForCoin(deps, { id, address: f.mint });
+    await fetchCandlesForCoin(deps, { id, address: f.mint }, EX);
     const issues = await t.db
       .selectFrom('data_issues')
       .selectAll()
@@ -215,7 +218,7 @@ describeDb('fetchCandlesForCoin on recorded fixtures', () => {
     const r = await fetchCandlesForCoin(
       deps,
       { id, address: f.mint },
-      { limits: { maxHourlyRequests: 8 } },
+      { limits: { ...EXHAUSTIVE_PLAN_LIMITS, maxHourlyRequests: 8 } },
     );
     const hourly = await t.db
       .selectFrom('candle_coverage')
@@ -231,7 +234,7 @@ describeDb('fetchCandlesForCoin on recorded fixtures', () => {
       const f = loadCandleFixture('USOF');
       const id = await addCoin(f);
       const flaky = replayFetch([f], { fail: (_q, n) => (n === 6 ? 503 : null) });
-      const broken = await fetchCandlesForCoin(depsFor(f, flaky), { id, address: f.mint });
+      const broken = await fetchCandlesForCoin(depsFor(f, flaky), { id, address: f.mint }, EX);
       expect(broken.ok).toBe(false);
       if (broken.ok) return;
       expect(broken.reason).toBe('provider_unavailable');
@@ -240,7 +243,7 @@ describeDb('fetchCandlesForCoin on recorded fixtures', () => {
       expect(broken.summary.requests).toBeGreaterThan(0);
 
       const healthy = replayFetch([f]);
-      const resumed = await fetchCandlesForCoin(depsFor(f, healthy), { id, address: f.mint });
+      const resumed = await fetchCandlesForCoin(depsFor(f, healthy), { id, address: f.mint }, EX);
       expect(resumed.ok).toBe(true);
       // The rerun asked only for what was missing, not for the first requests again.
       expect(healthy.queries.length).toBeLessThan(f.responses.length);
@@ -250,7 +253,7 @@ describeDb('fetchCandlesForCoin on recorded fixtures', () => {
       await t.drop();
       t = await createTestDatabase(adminUrl!);
       const id2 = await addCoin(f);
-      await fetchCandlesForCoin(depsFor(f, replayFetch([f])), { id: id2, address: f.mint });
+      await fetchCandlesForCoin(depsFor(f, replayFetch([f])), { id: id2, address: f.mint }, EX);
       expect(await comparable()).toEqual(interrupted);
     });
 
@@ -258,10 +261,14 @@ describeDb('fetchCandlesForCoin on recorded fixtures', () => {
       const f = loadCandleFixture('USOF');
       const id = await addCoin(f);
       const small = new UnitBudget({ ceilingUnits: 20 });
-      const stopped = await fetchCandlesForCoin(depsFor(f, replayFetch([f]), small), {
-        id,
-        address: f.mint,
-      });
+      const stopped = await fetchCandlesForCoin(
+        depsFor(f, replayFetch([f]), small),
+        {
+          id,
+          address: f.mint,
+        },
+        EX,
+      );
       expect(stopped.ok).toBe(false);
       if (stopped.ok) return;
       expect(stopped.reason).toBe('budget_exhausted');
@@ -274,6 +281,7 @@ describeDb('fetchCandlesForCoin on recorded fixtures', () => {
           id,
           address: f.mint,
         },
+        EX,
       );
       expect(done.ok).toBe(true);
     });
@@ -282,14 +290,14 @@ describeDb('fetchCandlesForCoin on recorded fixtures', () => {
       const f = loadCandleFixture('USOF');
       const id = await addCoin(f);
       const bad = replayFetch([f], { fail: () => 401 });
-      const r = await fetchCandlesForCoin(depsFor(f, bad), { id, address: f.mint });
+      const r = await fetchCandlesForCoin(depsFor(f, bad), { id, address: f.mint }, EX);
       expect(r).toMatchObject({ ok: false, reason: 'provider_auth', retry: false });
     });
 
     it('answers an unknown coin id without calling the provider', async () => {
       const f = loadCandleFixture('USOF');
       const replay = replayFetch([f]);
-      const r = await fetchCandlesForCoin(depsFor(f, replay), { id: 999_999, address: f.mint });
+      const r = await fetchCandlesForCoin(depsFor(f, replay), { id: 999_999, address: f.mint }, EX);
       expect(r).toMatchObject({ ok: false, reason: 'coin_not_found', retry: false });
       expect(replay.queries).toEqual([]);
     });
@@ -299,7 +307,7 @@ describeDb('fetchCandlesForCoin on recorded fixtures', () => {
       const id = await addCoin(f);
       const deps = depsFor(f, replayFetch([f]));
       await t.db.destroy();
-      await expect(fetchCandlesForCoin(deps, { id, address: f.mint })).rejects.toThrow();
+      await expect(fetchCandlesForCoin(deps, { id, address: f.mint }, EX)).rejects.toThrow();
       // Reopen so afterEach can drop the database.
       const { createDb } = await import('@memecoinipedia/db');
       t = { ...t, db: createDb(t.url) };

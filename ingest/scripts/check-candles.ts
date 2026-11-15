@@ -2,18 +2,24 @@
  * Candle fetch plan and live check for pump.fun mints.
  *
  *   tsx --env-file=/path/to/.env ingest/scripts/check-candles.ts MINT [MINT ...] \
- *       [--confirm --max-units N] [--json out.json] [--verify-rerun]
+ *       [--confirm --max-units N] [--json out.json] [--verify-rerun] \
+ *       [--plan staged|exhaustive] [--dune-csv file.csv]
  *
- * Without --confirm: looks up each mint's launch info and pool list (about 9
- * compute units a coin, capped at 200 units in all), then prints the pools, the
- * request plan and the estimated units. Nothing is stored.
+ * `--plan` picks the fetch plan (default staged; exhaustive is the earlier,
+ * costlier plan). `--dune-csv` is a Dune sample file with `mint` and
+ * `peak_p999_usd` columns: each coin's value is stored as
+ * `rough_ath_market_cap_usd` before its fetch, so the escalation rule is exercised.
+ *
+ * Without --confirm: looks up each mint's launch info (and, when the plan needs
+ * it, its pool list), about 4 to 9 compute units a coin, capped at 200 units in
+ * all, then prints what the plan asks for first. Nothing is stored.
  *
  * With --confirm and --max-units N: fetches the candles and computes the metrics
  * for every mint, storing them in a throwaway `mcp_test_<hex>` database on the
  * server TEST_DATABASE_ADMIN_URL points at (created, migrated and dropped by
  * this script; no other database is touched). N is a hard ceiling on Codex.io
- * compute units for the whole run. Prints, per coin, the ATH, the wick, the pool
- * and minute each came from, the flags and the units spent.
+ * compute units for the whole run. Prints, per coin, the path taken, the ATH, the
+ * wick, the pool and minute each came from, the flags and the units spent.
  *
  * The API key is read from CODEX_API_KEY and handed to the client; it is never
  * printed or written.
@@ -23,9 +29,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   DEFAULT_PLAN_LIMITS,
+  EXHAUSTIVE_PLAN_LIMITS,
   estimateCoinUnits,
   planBaseRequests,
   selectPools,
+  type PlanLimits,
   type PlanPool,
 } from '../src/candles/index.js';
 import { UnitBudget } from '../src/sources/budget.js';
@@ -42,13 +50,38 @@ import {
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PLAN_MODE_CEILING = 200;
 
+/** `mint` to `peak_p999_usd`, from a Dune sample CSV (no quoted fields in these files). */
+function readDunePeaks(file: string): Map<string, number> {
+  const [header, ...lines] = fs.readFileSync(file, 'utf8').trim().split('\n');
+  const cols = (header ?? '').split(',');
+  const mintAt = cols.indexOf('mint');
+  const peakAt = cols.indexOf('peak_p999_usd');
+  if (mintAt < 0 || peakAt < 0) {
+    throw new Error('The Dune CSV needs mint and peak_p999_usd columns.');
+  }
+  const out = new Map<string, number>();
+  for (const line of lines) {
+    const f = line.split(',');
+    const v = Number(f[peakAt]);
+    const mint = f[mintAt];
+    if (mint && Number.isFinite(v)) out.set(mint, v);
+  }
+  return out;
+}
+
 function parseArgs(argv: string[]) {
   const mints: string[] = [];
   const flags = new Map<string, string | true>();
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === '--confirm' || a === '--verify-rerun') flags.set(a, true);
-    else if (a === '--max-units' || a === '--json' || a === '--probe')
+    else if (
+      a === '--max-units' ||
+      a === '--json' ||
+      a === '--probe' ||
+      a === '--plan' ||
+      a === '--dune-csv'
+    )
       flags.set(a, argv[++i] ?? '');
     else if (a.startsWith('--')) throw new Error(`Unknown option ${a}`);
     else mints.push(a);
@@ -72,6 +105,13 @@ async function main(): Promise<void> {
       ? (flags.get('--probe') as string)
       : path.join(HERE, '..', '..', 'probes', 'coins.json'),
   );
+  const plan = flags.get('--plan') ?? 'staged';
+  if (plan !== 'staged' && plan !== 'exhaustive')
+    throw new Error('--plan is staged or exhaustive.');
+  const limits: Partial<PlanLimits> = plan === 'exhaustive' ? EXHAUSTIVE_PLAN_LIMITS : {};
+  const duneFile = flags.get('--dune-csv');
+  const dune =
+    typeof duneFile === 'string' && duneFile ? readDunePeaks(duneFile) : new Map<string, number>();
   const budget = new UnitBudget({ ceilingUnits: confirm ? maxUnits! : PLAN_MODE_CEILING });
   const client = new CodexClient({
     apiKey: key,
@@ -80,7 +120,7 @@ async function main(): Promise<void> {
   });
 
   if (!confirm) {
-    await planMode(client, mints, symbols);
+    await planMode(client, mints, symbols, limits, dune);
     const s = client.spend();
     console.log(
       `\nLookups spent ${s.units.toFixed(2)} units in ${s.requests} requests. Nothing was fetched or stored.`,
@@ -92,8 +132,7 @@ async function main(): Promise<void> {
   const adminUrl = process.env['TEST_DATABASE_ADMIN_URL'];
   if (!adminUrl) throw new Error('TEST_DATABASE_ADMIN_URL is not set.');
   console.log(
-    `Fetching ${mints.length} coin(s). Estimate from docs/data-sources.md: 20 to 30 units a coin, ` +
-      `more for coins with many pools or a long life. Hard ceiling: ${maxUnits} units.`,
+    `Fetching ${mints.length} coin(s) with the ${plan} plan. Hard ceiling: ${maxUnits} units.`,
   );
   const rows: CheckRow[] = [];
   await withThrowawayDb(adminUrl, async (t) => {
@@ -108,6 +147,8 @@ async function main(): Promise<void> {
         symbol: symbols.get(mint) ?? null,
         clock: () => at,
         verifyRerun: flags.get('--verify-rerun') === true,
+        limits,
+        roughAthUsd: dune.get(mint) ?? null,
       });
       rows.push(row);
       printRow(row);
@@ -136,12 +177,37 @@ async function planMode(
   client: CodexClient,
   mints: string[],
   symbols: Map<string, string>,
+  limits: Partial<PlanLimits>,
+  dune: Map<string, number>,
 ): Promise<void> {
   const asOf = Math.floor(Date.now() / 1000);
+  const staged = limits.staged !== false;
   for (const mint of mints) {
     const launch = await client.getLaunchInfo(mint);
     if (!launch) {
       console.log(`${symbols.get(mint) ?? mint}: Codex.io does not know this token`);
+      continue;
+    }
+    console.log(`${symbols.get(mint) ?? mint} (${mint})`);
+    if (staged && launch.migratedPoolAddress !== null) {
+      // Stage 0 needs launch info alone: the first request is the screen.
+      const pools: PlanPool[] = [
+        { address: launch.migratedPoolAddress, role: 'graduation', createdAt: null },
+      ];
+      const first = planBaseRequests({
+        asOf,
+        launchedAt: launch.createdAt,
+        graduatedAt: launch.migratedAt,
+        pools,
+        coverage: {},
+        daily: {},
+        roughAthUsd: dune.get(mint) ?? null,
+      });
+      console.log(
+        `  stage 1, screen: ${first.requests.length} request of daily bars on the graduation pool = ` +
+          `${first.estimatedUnits} units; what follows depends on W (screened out under ` +
+          `$${DEFAULT_PLAN_LIMITS.screenBelowUsd.toLocaleString('en-US')})`,
+      );
       continue;
     }
     const listing = await client.getPools(mint);
@@ -172,23 +238,25 @@ async function planMode(
       pools,
       coverage: {},
       daily: {},
+      poolsListed: true,
+      roughAthUsd: dune.get(mint) ?? null,
+      limits,
     };
-    const plan = planBaseRequests(state);
+    const first = planBaseRequests(state);
     const est = estimateCoinUnits(state);
     const byReason = new Map<string, number>();
-    for (const r of plan.requests) byReason.set(r.reason, (byReason.get(r.reason) ?? 0) + 1);
+    for (const r of first.requests) byReason.set(r.reason, (byReason.get(r.reason) ?? 0) + 1);
 
-    console.log(`${symbols.get(mint) ?? mint} (${mint})`);
     console.log(
       `  pools listed ${listing.pools.length}${listing.truncated ? ' (cut off at 250)' : ''}; ` +
         `curve ${sel.curve ? 'yes' : 'no'}, graduation ${sel.graduation ? `${sel.graduation.source}${sel.graduation.unverified ? ' (unverified)' : ''}` : 'NOT FOUND'}, ` +
         `others ${sel.others.length} (+${sel.skippedOthers} skipped)`,
     );
     console.log(
-      `  phase 1: ${plan.requests.length} requests (${[...byReason].map(([k, v]) => `${k} ${v}`).join(', ')}) = ${est.initialUnits} units`,
+      `  first phase: ${first.requests.length} requests (${[...byReason].map(([k, v]) => `${k} ${v}`).join(', ')}) = ${est.initialUnits} units`,
     );
     console.log(
-      `  phase 2 hourly: ${est.hourlyIsUpperBound ? 'up to ' : ''}${est.hourlyRequests} requests = ${est.hourlyUnits} units; ` +
+      `  hourly: ${est.hourlyIsUpperBound ? 'up to ' : ''}${est.hourlyRequests} requests = ${est.hourlyUnits} units; ` +
         `refinement cap ${est.refinementCapUnits} units`,
     );
     console.log(

@@ -143,17 +143,22 @@ This is a price pattern, not proof of intent. Graduated pump.fun pools cannot ha
 | `rugPattern` | boolean |
 | `flags` | list of flag names, each at most once, sorted alphabetically |
 
-Flags: `ath_before_launch`, `bad_bar`, `duplicate_bar`, `implausible_market_cap`, `no_qualifying_window`, `peak_outside_minute_coverage`.
+Flags: `ath_before_launch`, `bad_bar`, `duplicate_bar`, `implausible_market_cap`, `no_qualifying_window`, `peak_outside_minute_coverage`, `screened_out` (set by the fetcher, not by the metric library).
 
 The exact TypeScript shapes are in `/ingest/src/metrics/types.ts`.
 
 ## 12. What the fetcher must provide
 
-These are requirements on ingestion (task A5), listed here because the rules above depend on them:
+These are requirements on ingestion (task A5), listed here because the rules above depend on them. They were tightened on 2026-11-15, after the first live run cost 60 compute units a coin.
 
-- 1-minute bars for the bonding curve's last hours and for the first 48 hours after graduation.
-- Coarser bars for the rest of the coin's life, on every pool that passes the liquidity rule.
-- 1-minute bars for any later day that could hold the peak. When `peak_outside_minute_coverage` is raised, fetch that period at 1-minute resolution and recompute until the flag clears.
+- **Screen.** Daily bars of the graduation pool for its whole life come first. If the highest daily high is under $90,000 as a market cap, the coin cannot have an ATH of $100,000, because an ATH never exceeds a candle high. Nothing else is fetched. The coin is stored with that high as its wick, no ATH, and the flag `screened_out`. A coin whose Dune hourly peak is more than 1.5 times that high is not screened on one pool: its other pools are fetched first.
+- **1-minute bars** for the first 1,500 minutes of the graduation pool, starting five minutes before it began trading.
+- **Hourly bars** for every day whose daily high is $80,000 or more as a market cap and that 1-minute bars do not already cover. A day below that line cannot add time above any threshold, so daily bars are enough for it.
+- **1-minute bars for any later period that could hold the peak.** When `peak_outside_minute_coverage` is raised, fetch 1,500 minutes around the highest such point and recompute until the flag clears.
+- **Other pools** only for a coin whose highest daily high is $1,000,000 or more, or whose Dune peak is far above what its graduation pool shows. They are chosen by the liquidity rule in section 2.
+- **The bonding curve** only when the graduation pool opened at $90,000 or more. The pool opens at the curve's final price, so only then can the curve itself have passed $100,000. Then its last 1,500 minutes are fetched at 1-minute resolution.
+
+What these rules cost in accuracy: time above a threshold is measured to the minute for the first day and to the hour on later days at or above $80,000. A coin under $1,000,000 is measured on its graduation pool alone. Minutes a coin spent above $100,000 on the bonding curve are counted only in the case above. A6 measures the difference against an exhaustive fetch.
 
 ## 13. Known limits
 

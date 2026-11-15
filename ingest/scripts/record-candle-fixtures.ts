@@ -20,6 +20,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { EXHAUSTIVE_PLAN_LIMITS } from '../src/candles/index.js';
 import { UnitBudget } from '../src/sources/budget.js';
 import { CodexClient } from '../src/sources/codex/index.js';
 import type { FetchLike } from '../src/sources/http.js';
@@ -93,6 +94,8 @@ await withThrowawayDb(adminUrl, async (t) => {
       symbol,
       clock: () => asOfDate,
       verifyRerun: true,
+      // The fixtures are replayed under the exhaustive plan, which asks for the most.
+      limits: EXHAUSTIVE_PLAN_LIMITS,
     });
     rows.push(row);
     printRow(row);

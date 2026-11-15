@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_PLAN_LIMITS,
+  EXHAUSTIVE_PLAN_LIMITS,
   estimateCoinUnits,
   graduationStart,
   mergeIntervals,
@@ -37,6 +38,7 @@ function state(over: Partial<PlanState> = {}): PlanState {
     pools: [CURVE, GRADPOOL],
     coverage: {},
     daily: {},
+    limits: EXHAUSTIVE_PLAN_LIMITS,
     ...over,
   };
 }
@@ -123,7 +125,7 @@ describe('graduation start', () => {
   });
 });
 
-describe('initial phase', () => {
+describe('initial phase (exhaustive plan)', () => {
   const plan = planBaseRequests(state({ pools: [CURVE, GRADPOOL, other('A')] }));
 
   it('is the initial phase, and every request is one aligned window of at most 1,500 buckets', () => {
@@ -247,7 +249,7 @@ describe('follow-up phase: hourly bars', () => {
   const dailyState = (days: number[], limits: PlanState['limits'] = undefined): PlanState => {
     const s = state({
       daily: { GRAD: dayBars(...days), CURVE: dayBars(T0) },
-      limits,
+      limits: { ...EXHAUSTIVE_PLAN_LIMITS, ...limits },
     });
     return { ...s, coverage: withCovered(s, planBaseRequests(s).requests) };
   };

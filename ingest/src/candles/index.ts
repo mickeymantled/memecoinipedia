@@ -10,10 +10,13 @@
  *     options?: { limits?: Partial<PlanLimits>; maxSecondaryPools?: number },
  *   ): Promise<{ ok: true; summary } | { ok: false; reason; retry; message; summary }>
  *
- *     Picks the pools, plans the requests, fetches under the client's unit
- *     budget, stores bars and the requested ranges, refines the peak, and
- *     returns a summary (pools, bars per resolution, requests, units spent,
- *     refinement rounds, flags). A second call with the same clock makes no
+ *     Runs the staged plan (see plan.ts; `EXHAUSTIVE_PLAN_LIMITS` is the old
+ *     one): launch info, a screen on daily bars, then minute and hourly bars,
+ *     and the other pools and the bonding curve only when the coin needs them.
+ *     Fetches under the client's unit budget, stores bars and the requested
+ *     ranges, refines the peak, and returns a summary (path taken, pools, bars
+ *     per resolution, requests, units this coin cost, refinement rounds,
+ *     flags). A screened-out coin stops after the screen. A second call with the same clock makes no
  *     request and changes no row. Expected provider failures (network, quota,
  *     bad key, budget ceiling, odd responses) come back as `ok: false` with a
  *     `reason` and whether a `retry` makes sense; anything else (a database
@@ -34,12 +37,21 @@
  * planning functions; `selectPools` is the pure pool split.
  */
 export { fetchCandlesForCoin } from './fetch.js';
-export { computeMetricsForCoin, METRICS_VERSION, type ComputeMetricsResult } from './metrics.js';
+export {
+  computeMetricsForCoin,
+  screenedOutResult,
+  METRICS_VERSION,
+  SCREENED_OUT_FLAG,
+  type ComputeMetricsResult,
+  type StoredMetricResult,
+} from './metrics.js';
 export {
   DEFAULT_PLAN_LIMITS,
+  EXHAUSTIVE_PLAN_LIMITS,
   UNITS_PER_BARS_REQUEST,
   estimateCoinUnits,
   graduationStart,
+  packHourlyWindows,
   planBaseRequests,
   planPeakRefinement,
   summarizeDaily,
@@ -56,6 +68,7 @@ export {
   type PoolRole,
   type RefinementPlan,
   type ResolutionSec,
+  type StageInfo,
   type UnitEstimate,
 } from './plan.js';
 export { selectPools, type PoolSelection, type SelectPoolsArgs } from './poolSelection.js';

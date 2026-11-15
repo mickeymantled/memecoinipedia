@@ -12,7 +12,12 @@ import {
   type StoredPool,
 } from '@memecoinipedia/db';
 import { computeCoinMetrics } from '../metrics/index.js';
-import { pairIdFor, type LaunchInfo, type PoolInfo } from '../sources/codex/index.js';
+import {
+  pairIdFor,
+  type CallMeter,
+  type LaunchInfo,
+  type PoolInfo,
+} from '../sources/codex/index.js';
 import { classifyProviderError, type CandleFailure } from './errors.js';
 import { findCoveragePeaks } from './peaks.js';
 import {
@@ -22,6 +27,7 @@ import {
   planPeakRefinement,
   resolutionCode,
   summarizeDaily,
+  type BasePlan,
   type Interval,
   type PlanPool,
   type PlanState,
@@ -31,6 +37,7 @@ import {
   type ResolutionSec,
 } from './plan.js';
 import { selectPools } from './poolSelection.js';
+import { SCREENED_OUT_FLAG } from './metrics.js';
 import type {
   BarCounts,
   CandleCoin,
@@ -44,8 +51,8 @@ const DEFAULT_MAX_SECONDARY_POOLS = 8;
 /** A coin that graduated this recently may simply not be indexed yet, so a later retry can work. */
 const YOUNG_COIN_SEC = 6 * 3_600;
 const RESOLUTIONS: ResolutionSec[] = [60, 3600, 86400];
-/** Safety stop for the base-plan loop; the plan has two phases. */
-const MAX_BASE_ROUNDS = 5;
+/** Safety stop for the base-plan loop: screen, pool list, other pools, minutes, curve, hourly. */
+const MAX_BASE_ROUNDS = 12;
 
 const emptyCounts = (): BarCounts => ({ '1m': 0, '1h': 0, '1d': 0 });
 const countKey = (res: ResolutionSec): keyof BarCounts =>
@@ -68,12 +75,17 @@ export async function fetchCandlesForCoin(
   const asOf = Math.floor(deps.clock().getTime() / 1000);
   const limits = { ...DEFAULT_PLAN_LIMITS, ...stripUndefined(options.limits) };
   const maxSecondaryPools = options.maxSecondaryPools ?? DEFAULT_MAX_SECONDARY_POOLS;
-  const spentAtStart = codex.spend();
+  // What this coin's own calls cost; the client's running total is shared with other coins.
+  const meter: CallMeter = { requests: 0, units: 0 };
 
   const summary: CandleFetchSummary = {
     coinId: coin.id,
     mint: coin.address,
     asOf,
+    path: limits.staged ? 'screen' : 'exhaustive',
+    screenedOut: false,
+    w: null,
+    escalated: false,
     pools: [],
     skippedOtherPools: 0,
     graduationPoolUnverified: false,
@@ -90,16 +102,22 @@ export async function fetchCandlesForCoin(
     issues: [],
   };
   const finish = (): void => {
-    const spent = codex.spend();
-    summary.units = round6(spent.units - spentAtStart.units);
-    summary.lookupRequests = spent.requests - spentAtStart.requests - summary.requests;
+    summary.units = round6(meter.units);
   };
+
+  let stored: StoredPool[] = [];
+  let totalSupply = 1_000_000_000;
+  let roughAthUsd: number | null = null;
+  let launchedAt: number | null = null;
+  let graduatedAt: number | null = null;
+  /** The pool list has been looked up for this coin, in this run or one before. */
+  let listed = false;
 
   try {
     // 1. The coin row and its pools.
     const row = await db
       .selectFrom('coins')
-      .select(['id', 'launched_at', 'graduated_at'])
+      .select(['id', 'launched_at', 'graduated_at', 'total_supply', 'rough_ath_market_cap_usd'])
       .where('id', '=', coin.id)
       .executeTakeFirst();
     if (!row) {
@@ -109,17 +127,39 @@ export async function fetchCandlesForCoin(
         message: `No coin with id ${coin.id}`,
       });
     }
+    totalSupply = Number(row.total_supply);
+    roughAthUsd = row.rough_ath_market_cap_usd ?? null;
+    launchedAt = row.launched_at ? row.launched_at.getTime() / 1000 : null;
+    graduatedAt = row.graduated_at ? row.graduated_at.getTime() / 1000 : null;
+    stored = await getCoinPools(db, coin.id);
+    // A pool from the list carries its creation time; one named by launch info alone does not.
+    listed = stored.some((p) => p.createdAtChain !== null);
 
-    let launchedAt = row.launched_at ? row.launched_at.getTime() / 1000 : null;
-    let graduatedAt = row.graduated_at ? row.graduated_at.getTime() / 1000 : null;
-    let stored = await getCoinPools(db, coin.id);
-
-    if (stored.length === 0 || coin.refreshPools === true || launchedAt === null) {
-      const found = await discoverPools();
-      launchedAt ??= found.launch.createdAt;
-      graduatedAt ??= found.launch.migratedAt;
-      await fillCoinTimes(found.launch);
+    if (stored.length === 0 || coin.refreshPools === true) {
+      // Stage 0: launch info, and the pool list only when launch info names no migrated pool.
+      const launch = await launchInfo();
+      launchedAt ??= launch.createdAt;
+      graduatedAt ??= launch.migratedAt;
+      await fillCoinTimes(launch);
+      if (limits.staged && launch.migratedPoolAddress !== null && coin.refreshPools !== true) {
+        await upsertPool(db, {
+          chain,
+          address: launch.migratedPoolAddress,
+          coinId: coin.id,
+          dex: 'unknown',
+          isPrimary: true,
+          isGraduationPool: true,
+          sourcePairId: pairIdFor(launch.migratedPoolAddress),
+        });
+      } else {
+        await lookupPools(launch, true);
+      }
       stored = await getCoinPools(db, coin.id);
+    } else if (launchedAt === null) {
+      const launch = await launchInfo();
+      launchedAt = launch.createdAt;
+      graduatedAt ??= launch.migratedAt;
+      await fillCoinTimes(launch);
     }
     if (launchedAt === null) {
       throw new Stop({
@@ -128,21 +168,10 @@ export async function fetchCandlesForCoin(
         message: 'Neither the coin row nor Codex.io has a creation time',
       });
     }
+    setPoolSummary();
 
     const roleOf = (p: StoredPool): PoolRole =>
       p.isGraduationPool ? 'graduation' : p.isPrimary ? 'curve' : 'other';
-    const planPools: PlanPool[] = stored.map((p) => ({
-      address: p.address,
-      role: roleOf(p),
-      createdAt: p.createdAtChain,
-    }));
-    const poolIds = new Map(stored.map((p) => [p.address, p.id]));
-    summary.pools = stored.map((p) => ({
-      address: p.address,
-      role: roleOf(p),
-      dex: p.dex,
-      poolId: p.id,
-    }));
 
     const buildState = async (): Promise<PlanState> => {
       const coverage: Record<string, Partial<Record<ResolutionSec, Interval[]>>> = {};
@@ -156,38 +185,86 @@ export async function fetchCandlesForCoin(
         daily[p.address] = summarizeDaily(
           await getBars(db, p.id, 86400),
           limits.minSecondaryPoolLiquidityUsd,
+          totalSupply,
         );
       }
-      return { asOf, launchedAt, graduatedAt, pools: planPools, coverage, daily, limits };
+      const pools: PlanPool[] = stored.map((p) => ({
+        address: p.address,
+        role: roleOf(p),
+        createdAt: p.createdAtChain,
+      }));
+      return {
+        asOf,
+        launchedAt,
+        graduatedAt,
+        pools,
+        coverage,
+        daily,
+        roughAthUsd,
+        poolsListed: listed,
+        limits,
+      };
     };
 
     const execute = async (req: PlannedRequest): Promise<void> => {
-      const poolId = poolIds.get(req.poolAddress);
-      if (poolId === undefined) throw new Error(`No stored pool for ${req.poolAddress}`);
+      const pool = stored.find((p) => p.address === req.poolAddress);
+      if (pool === undefined) throw new Error(`No stored pool for ${req.poolAddress}`);
       const bars = await codex.getPoolBars({
         pairAddress: req.poolAddress,
         resolution: resolutionCode(req.resolution),
         from: req.from,
         to: req.to,
+        meter,
       });
       summary.requests += 1;
       summary.barsFetched[countKey(req.resolution)] += bars.length;
-      await putBars(db, poolId, req.resolution, bars);
+      await putBars(db, pool.id, req.resolution, bars);
       // Coverage goes in after the bars: a crash in between only repeats the request.
-      await addCoverage(db, poolId, req.resolution, req.cover, req.reason);
+      await addCoverage(db, pool.id, req.resolution, req.cover, req.reason);
     };
 
-    // 2. The base plan: minute windows and daily bars, then hourly bars.
-    const first = await buildState();
-    summary.estimate = estimateCoinUnits(first);
+    // 2. The base plan: screen, then minute windows, then hourly bars (staged);
+    // or minute windows and daily bars, then hourly bars (exhaustive).
+    let last: BasePlan | null = null;
     for (let round = 0; round < MAX_BASE_ROUNDS; round++) {
-      const plan = planBaseRequests(round === 0 ? first : await buildState());
+      const state = await buildState();
+      if (round === 0) summary.estimate = estimateCoinUnits(state);
+      const plan = planBaseRequests(state);
+      last = plan;
       if (plan.hourly.capHit) summary.hourlyCapHit = true;
-      if (plan.requests.length === 0) break;
-      for (const req of plan.requests) await execute(req);
+      if (plan.requests.length > 0) {
+        for (const req of plan.requests) await execute(req);
+        continue;
+      }
+      if (plan.needsPoolList && !listed) {
+        await lookupPools(await launchInfoFromStore(), false);
+        stored = await getCoinPools(db, coin.id);
+        setPoolSummary();
+        continue;
+      }
+      break;
+    }
+    if (last && limits.staged) {
+      summary.path = last.stage.screenedOut ? 'screened_out' : last.stage.path;
+      summary.screenedOut = last.stage.screenedOut;
+      summary.w = last.stage.w;
+      summary.escalated = last.stage.escalated;
     }
     if (summary.hourlyCapHit) {
-      await issue('candle_hourly_cap_hit', { maxHourlyRequests: limits.maxHourlyRequests });
+      await issue('candle_hourly_cap_hit', {
+        maxHourlyRequests:
+          last?.stage.path === 'full' ? limits.maxHourlyRequestsFull : limits.maxHourlyRequests,
+      });
+    }
+
+    // A screened-out coin is done: its highest daily high cannot make an ATH of $100,000.
+    if (summary.screenedOut) {
+      const loaded = await loadMetricInput(db, coin.id, asOf);
+      if (loaded.ok) summary.barsStored = countBars(loaded.input.pools);
+      summary.flags = [SCREENED_OUT_FLAG];
+      for (const p of stored) await refreshPoolBarStats(db, p.id);
+      finish();
+      return { ok: true, summary };
     }
 
     // 3. Peak refinement: while the metrics say the peak may sit where we hold no
@@ -229,10 +306,24 @@ export async function fetchCandlesForCoin(
     return { ok: false, ...failure, summary };
   }
 
-  /** Looks up launch info and the pool list, stores the pools, records issues. */
-  async function discoverPools(): Promise<{ launch: LaunchInfo }> {
-    const launch =
-      coin.launchInfo !== undefined ? coin.launchInfo : await codex.getLaunchInfo(coin.address);
+  function setPoolSummary(): void {
+    summary.pools = stored.map((p) => ({
+      address: p.address,
+      role: p.isGraduationPool ? 'graduation' : p.isPrimary ? 'curve' : 'other',
+      dex: p.dex,
+      poolId: p.id,
+    }));
+  }
+
+  /** One launch-info lookup, unless the caller handed the launch info in. */
+  async function launchInfo(): Promise<LaunchInfo> {
+    let launch: LaunchInfo | null;
+    if (coin.launchInfo !== undefined) {
+      launch = coin.launchInfo;
+    } else {
+      summary.lookupRequests += 1;
+      launch = await codex.getLaunchInfo(coin.address, meter);
+    }
     if (!launch) {
       throw new Stop({
         reason: 'token_not_found',
@@ -240,7 +331,40 @@ export async function fetchCandlesForCoin(
         message: 'Codex.io does not know this token',
       });
     }
-    const listing = await codex.getPools(coin.address);
+    return launch;
+  }
+
+  /**
+   * What the pool selection needs of launch info, rebuilt from the stored coin
+   * and graduation pool when the launch info itself is not at hand.
+   */
+  async function launchInfoFromStore(): Promise<LaunchInfo> {
+    const grad = stored.find((p) => p.isGraduationPool);
+    return {
+      mint: coin.address,
+      symbol: null,
+      name: null,
+      createdAt: launchedAt,
+      creator: null,
+      launchpadName: null,
+      migrated: graduatedAt !== null ? true : null,
+      migratedAt: graduatedAt,
+      migratedPoolAddress: grad?.address ?? null,
+      completed: null,
+      completedAt: null,
+      launchpadPoolAddress: null,
+    };
+  }
+
+  /**
+   * Looks up the pool list, selects the curve, the graduation pool and the
+   * liquid other pools, stores them, records issues. At stage 0 a list with
+   * nothing usable stops the coin; later it just leaves the pools as they are.
+   */
+  async function lookupPools(launch: LaunchInfo, stage0: boolean): Promise<void> {
+    summary.lookupRequests += 1;
+    const listing = await codex.getPools(coin.address, meter);
+    listed = true;
     const selection = selectPools({
       pools: listing,
       migratedPoolAddress: launch.migratedPoolAddress,
@@ -250,6 +374,7 @@ export async function fetchCandlesForCoin(
       maxSecondaryPools,
     });
     if (!selection.curve && !selection.graduation && selection.others.length === 0) {
+      if (!stage0) return;
       const young = launch.migratedAt !== null && asOf - launch.migratedAt < YOUNG_COIN_SEC;
       for (const i of selection.issues) await issue(i.kind, i.detail);
       throw new Stop({
@@ -280,12 +405,12 @@ export async function fetchCandlesForCoin(
     if (selection.graduation) {
       await put(selection.graduation.address, selection.graduation.pool, 'graduation', 'unknown');
     }
+    // Other pools are stored now so a later run needs no second list; only the full path fetches them.
     for (const p of selection.others) await put(p.address, p, 'other', 'unknown');
 
     summary.skippedOtherPools = selection.skippedOthers;
     summary.graduationPoolUnverified = selection.graduation?.unverified ?? false;
     for (const i of selection.issues) await issue(i.kind, i.detail);
-    return { launch };
   }
 
   /** Sets launch and graduation time on the coin when they are empty. Never overwrites. */

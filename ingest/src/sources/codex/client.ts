@@ -162,7 +162,20 @@ function launchInfoFrom(t: TokenRow): LaunchInfo {
   };
 }
 
+/**
+ * Collects what the calls made with it cost, so one coin's units can be counted
+ * while other coins run on the same client (the client's own `spend()` is a
+ * running total over everything). Pass the same meter to each call of a coin.
+ */
+export interface CallMeter {
+  /** Requests made, retries not counted. */
+  requests: number;
+  /** Compute units, from each response's reported cost (an estimate where it reported none). */
+  units: number;
+}
+
 interface CallSpec<S extends z.ZodType> {
+  meter?: CallMeter | undefined;
   operation: CodexOperation;
   query: string;
   schema: S;
@@ -310,8 +323,9 @@ export class CodexClient {
   // Token launch info ---------------------------------------------------
 
   /** Launchpad fields for one mint, or null when Codex does not know it (always null in dry-run mode). */
-  async getLaunchInfo(mint: string): Promise<LaunchInfo | null> {
+  async getLaunchInfo(mint: string, meter?: CallMeter): Promise<LaunchInfo | null> {
     const data = await this.call({
+      meter,
       operation: 'token',
       query: tokenQuery(mint),
       schema: tokenDataSchema,
@@ -330,8 +344,9 @@ export class CodexClient {
    * missing, so a graduation pool chosen from this list by creation time is
    * unverified (see `pickGraduationPool`'s `truncated` field).
    */
-  async getPools(mint: string): Promise<PoolsResult> {
+  async getPools(mint: string, meter?: CallMeter): Promise<PoolsResult> {
     const data = await this.call({
+      meter,
       operation: 'pairs',
       query: pairsQuery(mint),
       schema: pairsDataSchema,
@@ -369,11 +384,14 @@ export class CodexClient {
     resolution: BarResolution;
     from: number;
     to: number;
+    /** Counts this call's cost when given. */
+    meter?: CallMeter;
   }): Promise<Bar[]> {
     const windows = planBarRequests(args);
     const all: Bar[] = [];
     for (const w of windows) {
       const data = await this.call({
+        meter: args.meter,
         operation: 'bars',
         query: barsQuery(args.pairAddress, w.from, w.to, args.resolution),
         schema: barsDataSchema,
@@ -390,6 +408,12 @@ export class CodexClient {
   }
 
   // Plumbing ------------------------------------------------------------
+
+  private meterCall(meter: CallMeter | undefined, entries: readonly SpendEntry[]): void {
+    if (!meter) return;
+    meter.requests += 1;
+    for (const e of entries) meter.units += e.units;
+  }
 
   /** Runs one GraphQL request. Returns null in dry-run mode (after recording the plan). */
   private async call<S extends z.ZodType>(spec: CallSpec<S>): Promise<z.infer<S> | null> {
@@ -449,15 +473,19 @@ export class CodexClient {
       const reported = reportedUnits(data);
       // Earlier attempts (429 or 5xx) are assumed charged at the estimate; the last one at its reported cost.
       const earlier = failed().slice(0, attempts - 1);
-      this.budget.settle(reservation, [
+      const entries: SpendEntry[] = [
         ...earlier,
         reported !== null
           ? { units: reported, estimated: false }
           : { units: spec.estimateAfter(data), estimated: true },
-      ]);
+      ];
+      this.budget.settle(reservation, entries);
+      this.meterCall(spec.meter, entries);
       return data;
     } catch (err) {
-      this.budget.settle(reservation, failed());
+      const entries = failed();
+      this.budget.settle(reservation, entries);
+      this.meterCall(spec.meter, entries);
       throw err;
     }
   }

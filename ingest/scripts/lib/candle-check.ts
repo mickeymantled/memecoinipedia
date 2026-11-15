@@ -8,7 +8,11 @@
 import fs from 'node:fs';
 import { upsertCoin } from '@memecoinipedia/db';
 import { createTestDatabase, type TestDatabase } from '@memecoinipedia/db/testing';
-import { computeMetricsForCoin, fetchCandlesForCoin } from '../../src/candles/index.js';
+import {
+  computeMetricsForCoin,
+  fetchCandlesForCoin,
+  type PlanLimits,
+} from '../../src/candles/index.js';
 import type { CandleFailure } from '../../src/candles/errors.js';
 import type { CandleFetchSummary } from '../../src/candles/types.js';
 import type { CodexClient } from '../../src/sources/codex/index.js';
@@ -18,6 +22,13 @@ export interface CheckRow {
   symbol: string | null;
   ok: boolean;
   failure: CandleFailure | null;
+  /** `screened_out`, `light`, `full` or `exhaustive` (see CandleFetchSummary.path). */
+  path: string;
+  /** W: the highest daily high as a market cap, USD. */
+  w: number | null;
+  escalated: boolean;
+  /** `coins.rough_ath_market_cap_usd` as set for this run. */
+  roughAthUsd: number | null;
   athMarketCapUsd: number | null;
   athAt: string | null;
   athPool: string | null;
@@ -79,6 +90,10 @@ export async function checkCoin(args: {
   symbol: string | null;
   clock: () => Date;
   verifyRerun?: boolean;
+  /** Plan limits: `{ staged: false }` is the exhaustive plan. Default: the staged plan. */
+  limits?: Partial<PlanLimits>;
+  /** Stored as `coins.rough_ath_market_cap_usd` before the fetch, so escalation can be exercised. */
+  roughAthUsd?: number | null;
 }): Promise<CheckRow> {
   const { t, client, mint, symbol, clock } = args;
   const id = await upsertCoin(t.db, {
@@ -87,8 +102,16 @@ export async function checkCoin(args: {
     ticker: symbol,
     launchpad: 'pump.fun',
   });
+  if (args.roughAthUsd !== undefined && args.roughAthUsd !== null) {
+    await t.db
+      .updateTable('coins')
+      .set({ rough_ath_market_cap_usd: args.roughAthUsd })
+      .where('id', '=', id)
+      .execute();
+  }
   const deps = { db: t.db, codex: client, clock };
-  const fetched = await fetchCandlesForCoin(deps, { id, address: mint });
+  const options = args.limits ? { limits: args.limits } : {};
+  const fetched = await fetchCandlesForCoin(deps, { id, address: mint }, options);
   const row: CheckRow = {
     mint,
     symbol,
@@ -96,6 +119,10 @@ export async function checkCoin(args: {
     failure: fetched.ok
       ? null
       : { reason: fetched.reason, retry: fetched.retry, message: fetched.message },
+    path: fetched.summary.path,
+    w: fetched.summary.w,
+    escalated: fetched.summary.escalated,
+    roughAthUsd: args.roughAthUsd ?? null,
     athMarketCapUsd: null,
     athAt: null,
     athPool: null,
@@ -137,7 +164,7 @@ export async function checkCoin(args: {
     row.flags = r.flags;
   }
   if (args.verifyRerun) {
-    const again = await fetchCandlesForCoin(deps, { id, address: mint });
+    const again = await fetchCandlesForCoin(deps, { id, address: mint }, options);
     row.rerun = { requests: again.summary.requests, units: again.summary.units };
   }
   return row;
@@ -153,6 +180,7 @@ export function printRow(row: CheckRow): void {
       : `  fetch: FAILED ${row.failure?.reason} retry=${row.failure?.retry}: ${row.failure?.message}`,
     `  ATH ${usd(row.athMarketCapUsd)} at ${row.athAt ?? '-'} in pool ${row.athPool ?? '-'}`,
     `  wick ${usd(row.athWickMarketCapUsd)} at ${row.athWickAt ?? '-'} in pool ${row.athWickPool ?? '-'}`,
+    `  path ${row.path}${row.escalated ? ' (escalated)' : ''}, W ${usd(row.w)}, Dune peak ${usd(row.roughAthUsd)}`,
     `  status ${row.status ?? '-'}, rug pattern ${row.rugPattern}, flags [${row.flags.join(', ')}]`,
     `  units ${row.units.toFixed(2)} (bars requests ${row.requests}, lookups ${row.lookupRequests}, ` +
       `refinement rounds ${row.refinementRounds}), pools ${row.pools} (+${row.skippedOtherPools} skipped)`,

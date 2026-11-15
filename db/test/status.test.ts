@@ -63,16 +63,16 @@ describe('decideStatus (plan Q3)', () => {
     const asOf = T0 + 30 * DAY;
     const old = pool({
       bars1h: [
-        bar(asOf - 25 * HOUR, 9_000, 20_000),
+        bar(asOf - 8 * DAY, 9_000, 20_000),
         bar(asOf - 23 * HOUR, 400, 20_000),
         bar(asOf - HOUR, 400, 20_000),
       ],
     });
-    // 800 inside the window; the 9,000 bar is too old.
+    // 800 inside the window; the 9,000 bar is 8 days back, outside the last 7 days' windows.
     expect(decideStatus({ pools: [old], asOf }, calm)).not.toBe('alive');
     const enough = pool({
       bars1h: [
-        bar(asOf - 25 * HOUR, 9_000, 20_000),
+        bar(asOf - 8 * DAY, 9_000, 20_000),
         bar(asOf - 23 * HOUR, 600, 20_000),
         bar(asOf - HOUR, 400, 20_000),
       ],
@@ -87,21 +87,26 @@ describe('decideStatus (plan Q3)', () => {
     expect(decideStatus({ pools: [dead], asOf }, calm)).toBe('dead');
   });
 
-  it('is unknown, not dead, when the coin went quiet less than 7 days ago', () => {
+  it('is alive when the line was met on any of the last 7 days, and dead only after 7 days below it', () => {
     const asOf = T0 + 60 * DAY;
     const quiet = pool({ bars1h: [bar(asOf - 3 * DAY, 80_000, 60_000)] });
-    expect(decideStatus({ pools: [quiet], asOf }, calm)).toBe('unknown');
-    // Exactly 7 days: alive at the end of day asOf - 6d? The last bar is 6.5 days back, so yes.
+    expect(decideStatus({ pools: [quiet], asOf }, calm)).toBe('alive');
+    // The last bar is 6.5 days back: the line was met at the end of the day 6 days ago.
     const edge = pool({ bars1h: [bar(asOf - 6 * DAY - 12 * HOUR, 80_000, 60_000)] });
-    expect(decideStatus({ pools: [edge], asOf }, calm)).toBe('unknown');
+    expect(decideStatus({ pools: [edge], asOf }, calm)).toBe('alive');
+    // 7 days and an hour back: below the line on each of the last 7 days.
+    const gone = pool({ bars1h: [bar(asOf - 7 * DAY - HOUR, 80_000, 60_000)] });
+    expect(decideStatus({ pools: [gone], asOf }, calm)).toBe('dead');
     const dead = pool({ bars1h: [bar(asOf - 8 * DAY, 80_000, 60_000)] });
     expect(decideStatus({ pools: [dead], asOf }, calm)).toBe('dead');
   });
 
-  it('is unknown for a coin younger than 7 days that is not alive', () => {
+  it('is unknown for a coin younger than 7 days that never met the line, alive if it did', () => {
     const asOf = T0 + 3 * DAY;
-    const young = pool({ bars1h: [bar(T0 + HOUR, 80_000, 60_000)] });
+    const young = pool({ bars1h: [bar(T0 + HOUR, 80_000, 1_000)] });
     expect(decideStatus({ pools: [young], asOf }, calm)).toBe('unknown');
+    const metIt = pool({ bars1h: [bar(T0 + HOUR, 80_000, 60_000)] });
+    expect(decideStatus({ pools: [metIt], asOf }, calm)).toBe('alive');
   });
 
   it('is dead when liquidity is under the line even with volume', () => {

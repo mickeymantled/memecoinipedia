@@ -159,13 +159,14 @@ function stateAt(
  * The status rule from plan Q3.
  *
  * - rugged: the metric library reports the rug pattern.
- * - alive: at least $1,000 of volume in the 24 hours before `asOf` and at least
- *   $5,000 of liquidity (primary pools count fully; another pool counts only on
- *   bars that pass the $5,000 liquidity rule).
- * - dead: not alive at the end of any of the last 7 days, and bars exist from at
- *   least 7 days before `asOf`.
- * - unknown: no bars are stored, or the coin is neither alive nor yet 7 days
- *   below the line (Q3 names no state for that gap).
+ * - alive: the alive line was met at the end of any of the last 7 days: at least
+ *   $1,000 of volume in the 24 hours before and at least $5,000 of liquidity
+ *   (primary pools count fully; another pool counts only on bars that pass the
+ *   $5,000 liquidity rule).
+ * - dead: below the line at the end of each of the last 7 days, and bars exist
+ *   from at least 7 days before `asOf`.
+ * - unknown: no bars are stored, or the coin has under 7 days of history and has
+ *   never met the line.
  *
  * The bars must have been fetched up to `asOf` for the answer to mean anything:
  * a missing bar reads as "nobody traded".
@@ -189,11 +190,12 @@ export function decideStatus(
       s.volume24h >= STATUS_RULES.minVolume24hUsd && s.liquidity >= STATUS_RULES.minLiquidityUsd
     );
   };
-  if (aliveAt(input.asOf)) return 'alive';
-  if (input.asOf - firstBar < STATUS_RULES.deadAfterDays * DAY) return 'unknown';
-  for (let k = 1; k < STATUS_RULES.deadAfterDays; k++) {
-    if (aliveAt(input.asOf - k * DAY)) return 'unknown';
+  // Alive when the line was met on any of the last 7 days (the end of each).
+  for (let k = 0; k < STATUS_RULES.deadAfterDays; k++) {
+    if (aliveAt(input.asOf - k * DAY)) return 'alive';
   }
+  // Below the line for all 7 days: dead once there are 7 full days of history.
+  if (input.asOf - firstBar < STATUS_RULES.deadAfterDays * DAY) return 'unknown';
   return 'dead';
 }
 
