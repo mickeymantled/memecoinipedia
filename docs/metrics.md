@@ -40,10 +40,12 @@ Bars may arrive unsorted. Sort each list by `t` before use. The result must not 
 | `rugDropPct` | 80 | Fall from ATH that counts as a rug |
 | `rugWithinSec` | 1,800 | How soon after ATH the fall must happen |
 | `rugRecoveryFraction` | 0.5 | A later recovery to this share of ATH cancels the rug |
+| `nearAthFraction` | 0.5 | A bar counts as near the ATH when its close is at least this share of the ATH price (section 6) |
+| `minAthNearVolumeShare` | 0.05 | Volume near the ATH, as a share of the ATH market cap, below which the flag `ath_thinly_traded` is raised (section 6) |
 
 All comparisons against a parameter are inclusive: a window with exactly $1,000 of volume counts, and a market cap of exactly $100,000 is above the $100k threshold. They allow a relative tolerance of 1e-12, so a value that sits exactly on a limit in decimal terms is not lost to binary rounding.
 
-`windowMinutes` must be 2 or more.
+`windowMinutes` must be 2 or more. `nearAthFraction` must be a finite number above 0 and at most 1. `minAthNearVolumeShare` must be a finite number of 0 or more.
 
 ## 3. Step 1: clean the bars
 
@@ -101,7 +103,10 @@ Using the busiest pool, not the highest price, means a small side pool that drif
 - **`athLiquidityUsd`** is the `liquidity` of the coin point that set the ATH. Null when the ATH is null or that value is null.
 - **`athHourVolumeUsd`** is the sum of `volumeUsd` over the clean 1-minute bars of every pool with `athAt - 3600 < t <= athAt`. Null when the ATH is null.
 
-These two say how much stood behind a peak. No rule reads them.
+- **`athNearVolumeUsd`** is the sum of `volumeUsd` over the clean bars (section 3) of every pool that counts (section 1) whose close `c` is at or above `nearAthFraction` times the ATH price. Each stretch of time is counted once, at the finest resolution held, by the rule "finer data wins" in section 4: every clean 1-minute bar counts; a clean hourly or daily bar counts only when it is used as a window, that is, when "finer data wins" does not remove it. A bar is judged on its own close, never on the median price of its window. Bars before and after the ATH both count. The sum is taken over clean bars, before section 5 picks one window per timestamp, so the volume of every pool that counts is added, not the busiest pool's alone. Null when the ATH is null.
+- **Flag `ath_thinly_traded`** is raised when the ATH is not null and `athNearVolumeUsd` is strictly below `minAthNearVolumeShare` times `athMarketCapUsd`. A volume equal to that product, within the tolerance of section 2, is not below it and does not raise the flag. The flag is not raised when the ATH is null.
+
+These three say how much stood behind a peak. No rule reads them: the ATH, the wick, time above, drawdown and the rug pattern are the same with or without them. What the site does with a flagged coin is not decided here.
 
 **Coverage flag.** If a strict coin point from an hourly or daily bar has a high (`max(o, h, l, c)` of its bar) above the ATH price, or the ATH is null while such a point exists, raise `peak_outside_minute_coverage`. A period can hold a higher ATH only if it traded above the current one, and its close says nothing about that: a coin can spike and collapse inside one hour. The flag means the real peak may sit in a period we hold no 1-minute bars for, and the fetcher must fetch them and recompute.
 
@@ -149,13 +154,13 @@ This is a price pattern, not proof of intent. Graduated pump.fun pools cannot ha
 |---|---|
 | `athMarketCapUsd`, `athAt`, `athPoolAddress`, `secondsToAth` | number or string, or null |
 | `athWickMarketCapUsd`, `athWickAt`, `athWickPoolAddress` | number or string, or null |
-| `athLiquidityUsd`, `athHourVolumeUsd` | number or null |
+| `athLiquidityUsd`, `athHourVolumeUsd`, `athNearVolumeUsd` | number or null |
 | `secondsAbove` | one number of seconds for each threshold |
 | `maxDrawdownPct` | number from 0 to 100, or null |
 | `rugPattern` | boolean |
 | `flags` | list of flag names, each at most once, sorted alphabetically |
 
-Flags: `ath_before_launch`, `bad_bar`, `duplicate_bar`, `implausible_market_cap`, `no_candles` (set by the metrics stage for a coin with no bar in any pool that counts, section 1: a coin whose only bars sit on left-out side pools gets it too; every metric is then null), `no_qualifying_window`, `peak_outside_minute_coverage`, `screened_out` (set by the fetcher, not by the metric library).
+Flags: `ath_before_launch`, `ath_thinly_traded`, `bad_bar`, `duplicate_bar`, `implausible_market_cap`, `no_candles` (set by the metrics stage for a coin with no bar in any pool that counts, section 1: a coin whose only bars sit on left-out side pools gets it too; every metric is then null), `no_qualifying_window`, `peak_outside_minute_coverage`, `screened_out` (set by the fetcher, not by the metric library).
 
 The exact TypeScript shapes are in `/ingest/src/metrics/types.ts`.
 
@@ -166,7 +171,7 @@ These are requirements on ingestion (task A5), listed here because the rules abo
 - **Screen.** Daily bars of the graduation pool for its whole life come first. If the highest daily high is under $90,000 as a market cap, the coin cannot have an ATH of $100,000, because an ATH never exceeds a candle high. Nothing else is fetched. The coin is stored with no ATH, no wick and the flag `screened_out`; the daily bars stay stored. A coin whose Dune hourly peak is more than 1.5 times that high is not screened on one pool: its other pools are fetched first.
 - **1-minute bars** for the first 1,500 minutes of the graduation pool, starting five minutes before it began trading.
 - **Hourly bars** for every day whose daily high is $80,000 or more as a market cap and that 1-minute bars do not already cover. A day below that line cannot add time above any threshold, so daily bars are enough for it.
-- **1-minute bars for any later period that could hold the peak.** When `peak_outside_minute_coverage` is raised, fetch 1,500 minutes around the highest such bar and recompute, until the flag clears or only bars under $90,000 are left. Those cannot make a coin listed, so they are not fetched and the flag stays. A coin whose candles were fetched under an older metrics version and whose metrics run raises the flag for a period of $90,000 or more (a later version can lower an ATH) has its candles and metrics stages put back to pending once, unless its hourly cap was hit; the refetch records the current version in the candles detail, so it never repeats for the same version.
+- **1-minute bars for any later period that could hold the peak.** When `peak_outside_minute_coverage` is raised, fetch 1,500 minutes around the highest such bar and recompute, until the flag clears or only bars under $90,000 are left. Those cannot make a coin listed, so they are not fetched and the flag stays. A coin whose candles were fetched under an older candle rules version and whose metrics run raises the flag for a period of $90,000 or more (an earlier version could report an ATH that a later one lowers) has its candles and metrics stages put back to pending once, unless its hourly cap was hit. The candle rules version (`CANDLE_RULES_VERSION`, currently 5) is the last rules version that changed which bars count or how a peak is found, so a coin whose candles were fetched under an older one may need bars that fetch did not ask for. A version that only adds an output, such as rules version 6, does not raise it, and so reopens nothing. The refetch records the current metrics version in the candles detail, which is at or above the candle rules version, so it never repeats for the same candle rules version.
 - **Other pools** only for a coin whose highest daily high is $1,000,000 or more, or whose Dune peak is far above what its graduation pool shows. They are chosen by the liquidity rule in section 2.
 - **The bonding curve** only when the graduation pool opened at $90,000 or more. The pool opens at the curve's final price, so only then can the curve itself have passed $100,000. Then its last 1,500 minutes are fetched at 1-minute resolution.
 
@@ -183,4 +188,7 @@ What these rules cost in accuracy: time above a threshold is measured to the min
 - A busier window that is not strict hides a strict one in the same minute. One large trade on a side pool can outweigh the main pool's three-minute volume, and that minute then yields a point that cannot raise the level or set the ATH. The error is on the cautious side: it can understate, never overstate. Preferring strict windows was considered and rejected, because it would let a marginal side pool set the price whenever the main pool traded heavily among a few wallets. A6 counts how often this happens at the peak.
 - The first two or three windows of a coin are noisy, because one early bad bar sits in every one of them.
 - A coin under the listing line can keep `peak_outside_minute_coverage` for good: the fetcher does not fetch periods whose high is under $90,000, so the flag stays on it.
+- `athNearVolumeUsd` counts the trades of the wallet that moved the price like anyone else's, so it is an upper bound on what outsiders traded.
+- Where only hourly or daily bars are held, a bar's whole volume is counted or not on its close alone, however the price moved inside it.
+- A coin with large trading on an exchange we do not read is understated by `athNearVolumeUsd`, and can raise `ath_thinly_traded` without being thinly traded.
 - A side pool counts on its quote token as stored. `pools.quote_token` holds the symbol when Codex.io gave one, else the address. Rows stored before the fetcher matched by address can therefore pass on the symbol alone: a token that merely calls itself `USDC` would be counted on such a row. New fetches match by mint address and never store such a pool, so the gap closes as coins are refetched. It is not worth a second source of truth now.
