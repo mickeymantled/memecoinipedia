@@ -1,0 +1,17 @@
+packages:
+  - db
+  - ingest
+  - pipeline
+  - api
+  - web
+
+# One version of the shared tools for every package.
+# TypeScript stays on 6.0 until typescript-eslint supports 7.
+catalog:
+  '@types/node': ^22.20.5
+  tsx: ^4.23.15
+  typescript: ~6.0.3
+  vitest: ^5.1.0
+
+allowBuilds:
+  esbuild: true
