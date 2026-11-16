@@ -37,7 +37,20 @@ export const GRADUATE_COLUMNS = [
 
 export const REQUIRED_COLUMNS = ['mint', 'created_at', 'graduated_at'] as const;
 
-type Column = (typeof GRADUATE_COLUMNS)[number];
+/**
+ * The second candidate list (`curve-only-candidates.sql`, issue #102): coins that never graduated.
+ * The columns are the graduates' with one more, `is_mayhem_mode`, at the end. `graduated_at` must be
+ * in the header and empty in every row: a row that carries one is an error, so a graduates file
+ * cannot be read as this list. `is_mayhem_mode` is `true`, `false`, or empty / `<nil>` (null), and
+ * may be absent from the header.
+ */
+export const CURVE_ONLY_COLUMNS = [...GRADUATE_COLUMNS, 'is_mayhem_mode'] as const;
+
+/** Which candidate list a file is. Always chosen by the caller (an option), never guessed. */
+export type CandidateList = 'graduates' | 'curve-only';
+export const CANDIDATE_LISTS: readonly CandidateList[] = ['graduates', 'curve-only'];
+
+type Column = (typeof CURVE_ONLY_COLUMNS)[number];
 
 export interface GraduateRow {
   mint: string;
@@ -55,6 +68,14 @@ export interface GraduateRow {
   lastHourMs: number | null;
   /** The rough peak used for sizing and the sample: always `peakP999Usd`. */
   roughPeakUsd: number | null;
+}
+
+/** A row of the curve-only list: a graduate's row with no graduation time, and the mayhem flag. */
+export interface CurveOnlyRow extends Omit<GraduateRow, 'graduatedAtMs'> {
+  /** Always null: the coin never graduated. */
+  graduatedAtMs: null;
+  /** The creation event's flag; null when the event does not carry it. */
+  isMayhemMode: boolean | null;
 }
 
 export interface BadRow {
@@ -78,18 +99,21 @@ export class CsvHeaderError extends Error {
   }
 }
 
-export interface ReadGraduatesResult {
+export type ReadGraduatesResult = ReadRowsResult<GraduateRow>;
+
+export interface ReadRowsResult<R> {
   /** Empty when `onRow` was given. */
-  rows: GraduateRow[];
+  rows: R[];
   /** Data records seen, good and bad. */
   records: number;
   bad: BadRows;
 }
 
-export interface ReadGraduatesOptions {
+export interface ReadRowsOptions<R> {
   /** Called for each good row instead of collecting it. */
-  onRow?: (row: GraduateRow) => void;
+  onRow?: (row: R) => void;
 }
+export type ReadGraduatesOptions = ReadRowsOptions<GraduateRow>;
 
 type Chunk = string | Uint8Array;
 
@@ -245,17 +269,17 @@ function optHours(name: string, v: string): number | null {
   return n;
 }
 
-function toRow(get: (name: Column) => string): GraduateRow {
+/** The columns both lists share. `check` runs after the mint and creation-time presence checks. */
+function baseFields(get: (name: Column) => string, check: () => void) {
   const mint = get('mint').trim();
   if (!BASE58.test(mint)) throw new FieldError('mint: missing or not a base58 address');
   if (blank(get('created_at'))) throw new FieldError('created_at: missing');
-  if (blank(get('graduated_at'))) throw new FieldError('graduated_at: missing');
+  check();
   const p999 = optUsd('peak_p999_usd', get('peak_p999_usd'));
   return {
     mint,
     createdAtMs: seconds('created_at', get('created_at')),
     creator: optText('creator', get('creator'), BASE58),
-    graduatedAtMs: seconds('graduated_at', get('graduated_at')),
     hours: optHours('hours', get('hours')),
     peakMaxUsd: optUsd('peak_max_usd', get('peak_max_usd')),
     peakP999Usd: p999,
@@ -265,14 +289,61 @@ function toRow(get: (name: Column) => string): GraduateRow {
   };
 }
 
+function toRow(get: (name: Column) => string): GraduateRow {
+  const base = baseFields(get, () => {
+    if (blank(get('graduated_at'))) throw new FieldError('graduated_at: missing');
+  });
+  return { ...base, graduatedAtMs: seconds('graduated_at', get('graduated_at')) };
+}
+
+function optBool(name: string, v: string): boolean | null {
+  if (blank(v)) return null;
+  const t = v.trim().toLowerCase();
+  if (t === 'true') return true;
+  if (t === 'false') return false;
+  throw new FieldError(`${name}: not true, false or empty`);
+}
+
+function toCurveOnlyRow(get: (name: Column) => string): CurveOnlyRow {
+  const base = baseFields(get, () => {
+    if (!blank(get('graduated_at'))) {
+      throw new FieldError('graduated_at: a curve-only row must not carry a graduation time');
+    }
+  });
+  return {
+    ...base,
+    graduatedAtMs: null,
+    isMayhemMode: optBool('is_mayhem_mode', get('is_mayhem_mode')),
+  };
+}
+
 // Reader ---------------------------------------------------------------
 
 /** Reads graduates from a stream of chunks. Throws `CsvHeaderError` for a bad header. */
-export async function readGraduates(
+export function readGraduates(
   source: AsyncIterable<Chunk>,
   options: ReadGraduatesOptions = {},
 ): Promise<ReadGraduatesResult> {
-  const rows: GraduateRow[] = [];
+  return readRows(source, toRow, options);
+}
+
+/**
+ * Reads the curve-only list (see `CURVE_ONLY_COLUMNS`). Which reader to use is the caller's
+ * explicit choice: neither this nor `readGraduates` guesses the list from the file.
+ */
+export function readCurveOnly(
+  source: AsyncIterable<Chunk>,
+  options: ReadRowsOptions<CurveOnlyRow> = {},
+): Promise<ReadRowsResult<CurveOnlyRow>> {
+  return readRows(source, toCurveOnlyRow, options);
+}
+
+async function readRows<R>(
+  source: AsyncIterable<Chunk>,
+  parse: (get: (name: Column) => string) => R,
+  options: ReadRowsOptions<R>,
+): Promise<ReadRowsResult<R>> {
+  const rows: R[] = [];
   const bad: BadRows = { count: 0, stored: [] };
   let records = 0;
   let index: Map<string, number> | null = null;
@@ -304,7 +375,7 @@ export async function readGraduates(
     }
     try {
       const idx = index;
-      const row = toRow((name) => {
+      const row = parse((name) => {
         const at = idx.get(name);
         return at === undefined ? '' : (rec.fields[at] ?? '');
       });
@@ -324,6 +395,13 @@ export function readGraduatesFile(
   options: ReadGraduatesOptions = {},
 ): Promise<ReadGraduatesResult> {
   return readGraduates(fs.createReadStream(path), options);
+}
+
+export function readCurveOnlyFile(
+  path: string,
+  options: ReadRowsOptions<CurveOnlyRow> = {},
+): Promise<ReadRowsResult<CurveOnlyRow>> {
+  return readCurveOnly(fs.createReadStream(path), options);
 }
 
 /**

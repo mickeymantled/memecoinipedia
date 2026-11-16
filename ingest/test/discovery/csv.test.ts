@@ -3,8 +3,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  CURVE_ONLY_COLUMNS,
   CsvHeaderError,
   GRADUATE_COLUMNS,
+  readCurveOnly,
   MAX_BAD_ROW_REASONS,
   parseCsvRecords,
   readGraduates,
@@ -324,6 +326,53 @@ describe('readGraduates', () => {
   it('reads a header-only file as zero rows', async () => {
     const r = await readGraduates(chunks(HEADER + '\n'));
     expect(r).toMatchObject({ rows: [], records: 0 });
+  });
+});
+
+describe('readCurveOnly (the curve-only list, issue #102)', () => {
+  const HEAD = CURVE_ONLY_COLUMNS.join(',');
+  const row = (grad: string, mayhem: string, mint = A) =>
+    `${mint},1.764e+09,${CREATOR},${grad},40,209739,209739,1.765e+09,1.766e+09,${mayhem}`;
+
+  it('reads rows with no graduation time and the flag as true, false or null', async () => {
+    const r = await readCurveOnly(
+      chunks(
+        [HEAD, row('<nil>', 'true'), row('', 'false', B), row('<nil>', '<nil>', C)].join('\n') +
+          '\n',
+      ),
+    );
+    expect(r.bad.count).toBe(0);
+    expect(r.rows.map((x) => [x.graduatedAtMs, x.isMayhemMode])).toEqual([
+      [null, true],
+      [null, false],
+      [null, null],
+    ]);
+    expect(r.rows[0]).toMatchObject({ createdAtMs: 1.764e12, roughPeakUsd: 209739 });
+  });
+
+  it('rejects a row that carries a graduation time, and a flag that is not a boolean', async () => {
+    const r = await readCurveOnly(
+      chunks([HEAD, row('1710535885', 'true'), row('<nil>', 'maybe', B)].join('\n') + '\n'),
+    );
+    expect(r.rows).toHaveLength(0);
+    expect(r.bad.stored.map((b) => b.reason)).toEqual([
+      'graduated_at: a curve-only row must not carry a graduation time',
+      'is_mayhem_mode: not true, false or empty',
+    ]);
+  });
+
+  it('accepts a header without the flag column (the flag is null)', async () => {
+    const r = await readCurveOnly(chunks(`${HEADER}\n${line({ graduated_at: '<nil>' })}\n`));
+    expect(r.rows[0]).toMatchObject({ graduatedAtMs: null, isMayhemMode: null });
+  });
+
+  it('is not guessed: the graduates reader still rejects a blank graduation time, and still ignores a flag column', async () => {
+    const g = await readGraduates(chunks(`${HEAD}\n${row('<nil>', 'true')}\n`));
+    expect(g.rows).toHaveLength(0);
+    expect(g.bad.stored[0]!.reason).toBe('graduated_at: missing');
+    const ok = await readGraduates(chunks(`${HEAD}\n${row('1710535885', 'true')}\n`));
+    expect(ok.rows).toHaveLength(1);
+    expect(ok.rows[0]).not.toHaveProperty('isMayhemMode');
   });
 });
 

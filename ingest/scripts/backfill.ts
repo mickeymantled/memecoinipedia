@@ -2,7 +2,11 @@
  * The backfill: seed the candidate list, then run the stages over a selection of it.
  *
  *   Seed (writes only; no provider call; needs --confirm to write):
- *     tsx scripts/backfill.ts seed --file FILE [--source NAME] [--confirm]
+ *     tsx scripts/backfill.ts seed --file FILE [--list graduates|curve-only] [--source NAME] [--confirm]
+ *   --list says which candidate list the file is (default graduates; never guessed from the file).
+ *   With curve-only the file has no graduation times (a row that has one is rejected), the source
+ *   is dune-curve-only and the file's is_mayhem_mode column is stored. For graduates a blank
+ *   graduation time is rejected, as before.
  *
  *   Run (a dry run without --confirm: the selection, coins per stage and the estimate in units):
  *     tsx scripts/backfill.ts run [--min-rough-peak 30000] [--limit N] [--order peak|hash]
@@ -53,6 +57,7 @@ import {
   DEFAULT_BACKFILL_STAGES,
   type BackfillStageName,
 } from '../src/backfill/setup.js';
+import { CANDIDATE_LISTS, type CandidateList } from '../src/discovery/index.js';
 import { DEFAULT_MIN_ROUGH_PEAK_USD } from '../src/backfill/defaults.js';
 import { runBackfill } from '../src/backfill/run.js';
 import { formatSeedReport, seedFromCandidateFile } from '../src/backfill/seed.js';
@@ -62,7 +67,7 @@ import { consoleLogger, secretsFromEnv } from '../src/worker/log.js';
 function usage(message?: string): never {
   if (message) process.stderr.write(`${message}\n\n`);
   process.stderr.write(
-    'Usage: backfill.ts seed --file FILE [--source NAME] [--confirm]\n' +
+    'Usage: backfill.ts seed --file FILE [--list graduates|curve-only] [--source NAME] [--confirm]\n' +
       '       backfill.ts run [--min-rough-peak USD] [--limit N] [--order peak|hash]\n' +
       '                       [--include-no-price] [--stages candles,metrics,metadata[,metadata_file]]\n' +
       '                       [--codex-rps N] [--concurrency N] [--metrics-concurrency N]\n' +
@@ -86,6 +91,15 @@ function positive(name: string, value: string | undefined, integer = true): numb
   return n;
 }
 
+/** `--list`: which candidate list the seed file is. Absent: graduates. Never guessed from the file. */
+function parseList(value: string | undefined): CandidateList {
+  if (value === undefined) return 'graduates';
+  if (!(CANDIDATE_LISTS as readonly string[]).includes(value)) {
+    usage(`--list is ${CANDIDATE_LISTS.join(' or ')}`);
+  }
+  return value as CandidateList;
+}
+
 async function main(): Promise<void> {
   const [command, ...rest] = process.argv.slice(2);
   if (command !== 'seed' && command !== 'run' && command !== 'select')
@@ -95,6 +109,7 @@ async function main(): Promise<void> {
     options: {
       file: { type: 'string' },
       source: { type: 'string' },
+      list: { type: 'string' },
       'min-rough-peak': { type: 'string' },
       limit: { type: 'string' },
       order: { type: 'string' },
@@ -133,6 +148,7 @@ async function main(): Promise<void> {
       const report = await seedFromCandidateFile({
         file: values.file,
         confirm: values.confirm,
+        list: parseList(values.list),
         db,
         ...(values.source ? { discoverySource: values.source } : {}),
         onProgress: (n) => {

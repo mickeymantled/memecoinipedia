@@ -65,4 +65,80 @@ describeDb('seeding from the candidate file', () => {
     const coins = await sql<{ n: string }>`select count(*)::text as n from coins`.execute(t.db);
     expect(coins.rows[0]!.n).toBe('4');
   });
+
+  it('a graduates seed stores the same columns as before and no mayhem flag', async () => {
+    const rows = await sql<{ source: string; grad: Date | null; mayhem: boolean | null }>`
+      select discovery_source as source, graduated_at as grad, is_mayhem_mode as mayhem
+      from coins`.execute(t.db);
+    expect(rows.rows).toHaveLength(4);
+    for (const r of rows.rows) {
+      expect(r.source).toBe('dune-graduates');
+      expect(r.grad).toBeInstanceOf(Date);
+      expect(r.mayhem).toBeNull();
+    }
+  });
+});
+
+describeDb('seeding the curve-only list', () => {
+  let t: TestDatabase;
+  let dir: string;
+  const m = (i: number) => syntheticMint(i, 21);
+  const CHEAD =
+    'mint,created_at,creator,graduated_at,hours,peak_max_usd,peak_p999_usd,peak_at,last_hour,is_mayhem_mode\n';
+  const crow = (i: number, grad: string, flag: string) =>
+    `${m(i)},1.764e+09,${m(i + 100)},${grad},40,209739,209739,1.765e+09,1.766e+09,${flag}\n`;
+  beforeAll(async () => {
+    t = await createTestDatabase(adminUrl!);
+    dir = await mkdtemp(join(tmpdir(), 'seed-curve-'));
+  });
+  afterAll(async () => {
+    await t.drop();
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('seeds coins with no graduation time, the source dune-curve-only and the flag', async () => {
+    const file = join(dir, 'curve.csv');
+    await writeFile(
+      file,
+      CHEAD + crow(1, '<nil>', 'true') + crow(2, '<nil>', 'false') + crow(3, '<nil>', '<nil>'),
+    );
+    const dry = await seedFromCandidateFile({ file, list: 'curve-only', confirm: false });
+    expect(dry).toMatchObject({ rows: 3, badRows: 0, mayhem: { yes: 1, no: 1, unknown: 1 } });
+    expect(formatSeedReport(dry, false)).toMatch(
+      /Mayhem flag in the file: true 1, false 1, empty 1/,
+    );
+    await seedFromCandidateFile({ file, list: 'curve-only', confirm: true, db: t.db });
+    const rows = await sql<{
+      address: string;
+      source: string;
+      grad: Date | null;
+      mayhem: boolean | null;
+    }>`
+      select address, discovery_source as source, graduated_at as grad, is_mayhem_mode as mayhem
+      from coins order by address`.execute(t.db);
+    const by = new Map(rows.rows.map((r) => [r.address, [r.source, r.grad, r.mayhem]]));
+    expect(by.get(m(1))).toEqual(['dune-curve-only', null, true]);
+    expect(by.get(m(2))).toEqual(['dune-curve-only', null, false]);
+    expect(by.get(m(3))).toEqual(['dune-curve-only', null, null]);
+    expect(by.size).toBe(3);
+    // Again: nothing changes.
+    const again = await seedFromCandidateFile({
+      file,
+      list: 'curve-only',
+      confirm: true,
+      db: t.db,
+    });
+    expect(again.written).toMatchObject({ inserted: 0, updated: 0, unchanged: 3 });
+  });
+
+  it('neither file can be seeded as the other', async () => {
+    const curve = join(dir, 'curve2.csv');
+    await writeFile(curve, CHEAD + crow(7, '<nil>', 'true'));
+    const asGraduates = await seedFromCandidateFile({ file: curve, confirm: false });
+    expect(asGraduates).toMatchObject({ rows: 0, badRows: 1 });
+    const grad = join(dir, 'grad.csv');
+    await writeFile(grad, CHEAD + crow(8, '1764000000', 'true'));
+    const asCurve = await seedFromCandidateFile({ file: grad, list: 'curve-only', confirm: false });
+    expect(asCurve).toMatchObject({ rows: 0, badRows: 1 });
+  });
 });

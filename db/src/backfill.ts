@@ -29,6 +29,12 @@ export interface BackfillSeedRow {
   creatorWallet: string | null;
   graduatedAt: Date | null;
   roughAthMarketCapUsd: number | null;
+  /**
+   * The creation event's mayhem flag; null or absent when the file does not carry it. A true
+   * (from the file or already stored) is never turned back; otherwise a stored value is kept and
+   * a null stored value takes the file's.
+   */
+  isMayhemMode?: boolean | null;
 }
 
 export interface BackfillSeedResult {
@@ -66,18 +72,21 @@ export async function seedBackfillChunk(
   await db.transaction().execute(async (trx) => {
     const touched = await sql<{ inserted: boolean }>`
       insert into coins (chain, address, launchpad, launched_at, creator_wallet, graduated_at,
-                         discovery_source, rough_ath_market_cap_usd)
+                         discovery_source, rough_ath_market_cap_usd, is_mayhem_mode)
       select ${opts.chain}, t.address, t.launchpad, t.launched_at, t.creator_wallet, t.graduated_at,
-             ${opts.discoverySource}, t.rough
+             ${opts.discoverySource}, t.rough, t.mayhem
       from unnest(
         ${addresses}::text[],
         ${unique.map((r) => r.launchpad)}::text[],
         ${unique.map((r) => r.launchedAt)}::timestamptz[],
         ${unique.map((r) => r.creatorWallet)}::text[],
         ${unique.map((r) => r.graduatedAt)}::timestamptz[],
-        ${unique.map((r) => r.roughAthMarketCapUsd)}::float8[]
-      ) as t(address, launchpad, launched_at, creator_wallet, graduated_at, rough)
+        ${unique.map((r) => r.roughAthMarketCapUsd)}::float8[],
+        ${unique.map((r) => r.isMayhemMode ?? null)}::boolean[]
+      ) as t(address, launchpad, launched_at, creator_wallet, graduated_at, rough, mayhem)
       on conflict (chain, address) do update set
+        is_mayhem_mode = case when coins.is_mayhem_mode is true or excluded.is_mayhem_mode is true then true
+                              else coalesce(coins.is_mayhem_mode, excluded.is_mayhem_mode) end,
         launchpad = coalesce(coins.launchpad, excluded.launchpad),
         launched_at = coalesce(coins.launched_at, excluded.launched_at),
         creator_wallet = coalesce(coins.creator_wallet, excluded.creator_wallet),
@@ -92,6 +101,10 @@ export async function seedBackfillChunk(
          or (coins.discovery_source is null and excluded.discovery_source is not null)
          or (excluded.rough_ath_market_cap_usd is not null
              and coins.rough_ath_market_cap_usd is distinct from excluded.rough_ath_market_cap_usd)
+         or (excluded.is_mayhem_mode is not null
+             and coins.is_mayhem_mode is distinct from
+                 (case when coins.is_mayhem_mode is true or excluded.is_mayhem_mode is true then true
+                       else coalesce(coins.is_mayhem_mode, excluded.is_mayhem_mode) end))
       returning (xmax = 0) as inserted
     `.execute(trx);
     const inserted = touched.rows.filter((r) => r.inserted).length;

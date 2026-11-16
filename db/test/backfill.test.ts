@@ -162,6 +162,28 @@ describeDb('seeding for a backfill', () => {
     expect(c.rough_ath_market_cap_usd).toBe(90_000);
   });
 
+  it('merges the mayhem flag: a true stays true, a null takes the file, no change writes nothing', async () => {
+    const flag = async () =>
+      (await t.db.selectFrom('coins').select('is_mayhem_mode').executeTakeFirstOrThrow())
+        .is_mayhem_mode;
+    await seedBackfillChunk(t.db, [row(1, 90_000)], opts);
+    expect(await flag()).toBeNull(); // a file without the flag leaves it null
+    const a = await seedBackfillChunk(t.db, [row(1, 90_000, { isMayhemMode: false })], {
+      ...opts,
+      now: LATER,
+    });
+    expect(a.updated).toBe(1);
+    expect(await flag()).toBe(false);
+    await seedBackfillChunk(t.db, [row(1, 90_000, { isMayhemMode: true })], opts);
+    expect(await flag()).toBe(true);
+    // A later false, or a null, never turns a true back.
+    await seedBackfillChunk(t.db, [row(1, 90_000, { isMayhemMode: false })], opts);
+    await seedBackfillChunk(t.db, [row(1, 90_000, { isMayhemMode: null })], opts);
+    expect(await flag()).toBe(true);
+    const again = await seedBackfillChunk(t.db, [row(1, 90_000, { isMayhemMode: true })], opts);
+    expect(again).toMatchObject({ updated: 0, unchanged: 1 });
+  });
+
   it('stores hash_order as the first 52 bits of the md5 of the address', async () => {
     await seedBackfillChunk(t.db, [row(7, 50_000)], opts);
     const c = await t.db.selectFrom('coins').select('hash_order').executeTakeFirstOrThrow();
