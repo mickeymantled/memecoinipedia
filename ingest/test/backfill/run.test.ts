@@ -7,7 +7,7 @@ import type { PipelineWorker } from '../../src/worker/worker.js';
 import { runBackfill, countRunningStages, type BackfillOptions } from '../../src/backfill/run.js';
 import { collectStatus } from '../../src/backfill/status.js';
 import { RateLimiter } from '../../src/sources/ratelimit.js';
-import { okResult } from '../worker/helpers.js';
+import { asset } from '../worker/helpers.js';
 import { describeDb, seededDatabase, testClients, testLog, type Fixture } from './helpers.js';
 import { synthProvider } from './synthetic.js';
 
@@ -279,9 +279,11 @@ describeDb('backfill run: a slow later stage does not hold back the first', () =
     // Metadata is held shut until the test lets it through: the slowest later stage there can be.
     let release!: () => void;
     const hold = new Promise<void>((r) => (release = r));
-    tc.clients.fetchMetadata = async (uri) => {
-      await hold;
-      return okResult({ description: `about ${uri.slice(-12)}` });
+    tc.clients.helius = {
+      getAssets: async (mints) => {
+        await hold;
+        return mints.map((m) => asset(m, { uri: `https://example.test/${m}.json` }));
+      },
     };
     const maxQueued = 6;
     let peakMetadata = 0;

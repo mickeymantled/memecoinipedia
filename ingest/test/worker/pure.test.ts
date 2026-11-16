@@ -5,6 +5,7 @@ import {
   CANDLE_UNITS_BY_CELL,
   estimateCandleUnits,
   estimateMetadata,
+  estimateMetadataFile,
   formatPlan,
 } from '../../src/worker/plan.js';
 import { parseCsv, parseSampleCsv } from '../../src/worker/seed.js';
@@ -14,7 +15,7 @@ import {
   requirementOf,
   type Stage,
 } from '../../src/worker/stage.js';
-import { droppedSocialLinks } from '../../src/worker/stages/metadata.js';
+import { droppedSocialLinks } from '../../src/worker/stages/metadataFile.js';
 import { imageReference } from '../../src/worker/stages/image.js';
 import { mintN } from './helpers.js';
 
@@ -181,6 +182,7 @@ describe('StageRegistry', () => {
     expect(STAGE_REQUIRES).toEqual({
       discovered: null,
       metadata: 'discovered',
+      metadata_file: 'metadata',
       candles: 'discovered',
       metrics: 'candles',
     });
@@ -196,7 +198,7 @@ describe('StageRegistry', () => {
         .sort(),
     ).toEqual(['candles', 'metadata']);
     expect(r.dependents('candles').map((x) => x.name)).toEqual(['metrics']);
-    expect(r.dependents('metadata')).toEqual([]);
+    expect(r.dependents('metadata')).toEqual([]); // metadata_file is not registered here
     expect(requirementOf('metrics')).toBe('candles');
     expect(requirementOf('classified')).toBeNull();
   });
@@ -214,9 +216,14 @@ describe('estimate and plan text', () => {
     const e = estimateMetadata(500);
     expect(e.helius).toMatchObject({ requests: 1, credits: 10 });
     expect(e.jupiter).toMatchObject({ requests: 5 });
-    expect(e['metadata-fetch']).toMatchObject({ requests: 500, maxRequests: 1000 });
+    expect(e['metadata-fetch']).toBeUndefined(); // the metadata stage makes no gateway request
     expect(estimateMetadata(1001).helius).toMatchObject({ requests: 2, credits: 20 });
     expect(estimateMetadata(0)).toEqual({});
+    expect(estimateMetadataFile(500)['metadata-fetch']).toMatchObject({
+      requests: 500,
+      maxRequests: 1000,
+    });
+    expect(estimateMetadataFile(500).helius).toBeUndefined();
   });
 
   it('formats a plan with the dry-run notice', () => {

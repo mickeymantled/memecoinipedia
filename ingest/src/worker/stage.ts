@@ -4,7 +4,7 @@
  * A stage is one step of the per-coin pipeline. Each stage states what it
  * requires (`STAGE_REQUIRES`); there is no single line the coins walk along:
  *
- *   discovered -> metadata
+ *   discovered -> metadata -> metadata_file
  *   discovered -> candles -> metrics
  *
  * A coin whose `metadata` failed still gets `candles` and `metrics`. A stage
@@ -65,7 +65,13 @@ import type { CoinsTable, Database, StageName } from '@memecoinipedia/db';
 import type { Logger } from './log.js';
 
 /** The stages this worker runs, in the order they print. */
-export const STAGE_ORDER = ['discovered', 'metadata', 'candles', 'metrics'] as const;
+export const STAGE_ORDER = [
+  'discovered',
+  'metadata',
+  'metadata_file',
+  'candles',
+  'metrics',
+] as const;
 export type PipelineStageName = (typeof STAGE_ORDER)[number];
 
 /**
@@ -76,6 +82,7 @@ export type PipelineStageName = (typeof STAGE_ORDER)[number];
 export const STAGE_REQUIRES: Readonly<Record<PipelineStageName, PipelineStageName | null>> = {
   discovered: null,
   metadata: 'discovered',
+  metadata_file: 'metadata',
   candles: 'discovered',
   metrics: 'candles',
 };

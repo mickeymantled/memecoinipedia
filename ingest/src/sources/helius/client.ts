@@ -71,6 +71,10 @@ export interface AssetInfo {
   symbol: string | null;
   /** The metadata URI written on chain. */
   uri: string | null;
+  /** `content.metadata.description` as Helius has it (from the metadata file, as Helius read it). */
+  description: string | null;
+  /** `content.links.image` as Helius has it: a gateway URL as the creator wrote it. */
+  image: string | null;
   /** Which on-chain layout the name, symbol and URI came from. */
   layout: MetadataLayout | null;
   tokenProgram: TokenProgramKind | null;
@@ -168,6 +172,8 @@ function programKind(id: string | null): TokenProgramKind | null {
 const clean = (s: string | null | undefined): string | null =>
   typeof s === 'string' ? s.replaceAll('\u0000', '') : null;
 
+const asString = (v: unknown): string | null => (typeof v === 'string' ? v : null);
+
 type RawAsset = z.infer<typeof assetSchema>;
 
 function assetInfoFrom(
@@ -182,6 +188,8 @@ function assetInfoFrom(
       name: null,
       symbol: null,
       uri: null,
+      description: null,
+      image: null,
       layout: null,
       tokenProgram: null,
       tokenProgramId: null,
@@ -205,6 +213,8 @@ function assetInfoFrom(
       useExtension ? ext.symbol : (a.content?.metadata?.symbol ?? a.token_info?.symbol),
     ),
     uri: clean(useExtension ? ext.uri : a.content?.json_uri),
+    description: clean(asString(a.content?.metadata?.description)),
+    image: clean(asString(a.content?.links?.image)),
     layout: useExtension ? 'token-2022-extension' : a.content?.metadata ? 'metaplex' : null,
     tokenProgram: programKind(programId),
     tokenProgramId: programId,

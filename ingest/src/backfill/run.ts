@@ -44,6 +44,8 @@ import type { Logger } from '../worker/log.js';
 import { LISTED_ATH_USD } from '../worker/stage.js';
 import { CANDLES_STAGE_VERSION, CANDLES_TIMEOUT_SECONDS } from '../worker/stages/candles.js';
 import { METADATA_STAGE_VERSION } from '../worker/stages/metadata.js';
+import { METADATA_FILE_STAGE_VERSION } from '../worker/stages/metadataFile.js';
+import { estimateMetadata } from '../worker/plan.js';
 import { UsageMeter } from '../worker/usage.js';
 import { CELL_EDGES, estimateBackfillUnits, type BackfillEstimate } from './cells.js';
 import {
@@ -62,6 +64,7 @@ import { Feeder } from './feeder.js';
 import {
   BACKFILL_STAGES,
   buildBackfillRegistry,
+  DEFAULT_BACKFILL_STAGES,
   createBackfillClients,
   DEFAULT_GATEWAY_RPS,
   type BackfillClients,
@@ -77,7 +80,7 @@ import {
 
 export interface BackfillOptions {
   selection: SelectionSpec;
-  /** Default: candles, metrics, metadata. */
+  /** Default: candles, metrics, metadata. `metadata_file` is run by itself. */
   stages?: readonly BackfillStageName[];
   /** Requests a second to Codex.io. Default `DEFAULT_CODEX_RPS`. */
   codexRps?: number;
@@ -91,7 +94,7 @@ export interface BackfillOptions {
   /** Compute-unit ceiling for Codex.io. Required with `confirm` when candles is a stage. */
   maxCodexUnits?: number | null;
   maxHeliusCredits?: number | null;
-  /** Requests a second to each metadata gateway. */
+  /** Requests a second to each metadata gateway (the `metadata_file` stage only). */
   gatewayRps?: number;
   maxAttempts?: number;
   /** Jobs the feeder keeps waiting or running at most. Default twice the candles concurrency, at least 1,000. */
@@ -137,16 +140,19 @@ const STAGE_VERSIONS: Record<BackfillStageName, number> = {
   candles: CANDLES_STAGE_VERSION,
   metrics: METRICS_VERSION,
   metadata: METADATA_STAGE_VERSION,
+  metadata_file: METADATA_FILE_STAGE_VERSION,
 };
 const STAGE_TIMEOUTS: Record<BackfillStageName, number> = {
   candles: CANDLES_TIMEOUT_SECONDS,
   metrics: DEFAULT_STAGE_TIMEOUT_SECONDS,
   metadata: DEFAULT_STAGE_TIMEOUT_SECONDS,
+  metadata_file: DEFAULT_STAGE_TIMEOUT_SECONDS,
 };
 const REQUIRES: Record<BackfillStageName, StageName> = {
   candles: 'discovered',
   metrics: 'candles',
   metadata: 'metrics',
+  metadata_file: 'metadata',
 };
 
 /** Passes over the selection after the first, to retry what a pass left retryable. */
@@ -167,7 +173,9 @@ async function readyCounts(
       selection: sel,
       maxAttempts,
       runningSince: new Date(now.getTime() - STAGE_TIMEOUTS[stage] * 1000),
-      ...(stage === 'metadata' ? { minAthMarketCapUsd: LISTED_ATH_USD } : {}),
+      ...(stage === 'metadata' || stage === 'metadata_file'
+        ? { minAthMarketCapUsd: LISTED_ATH_USD }
+        : {}),
     });
   }
   return out;
@@ -210,6 +218,7 @@ export function formatBackfillPlan(
     stages: readonly BackfillStageName[];
     codexRps: number;
     candlesConcurrency: number;
+    gatewayRps?: number;
     confirm: boolean;
     maxCodexUnits: number | null;
   },
@@ -224,17 +233,35 @@ export function formatBackfillPlan(
   lines.push('Coins per stage (done / failed / running / waiting):');
   for (const s of plan.stages) {
     const note =
-      s.stage === 'metadata'
+      s.stage === 'metadata' || s.stage === 'metadata_file'
         ? `; ${n(s.notApplicable)} known not to be listed (ATH under $${n(LISTED_ATH_USD)}) are not waiting.`
         : '';
     lines.push(
-      `  ${s.stage.padEnd(9)} ${n(s.done)} / ${n(s.failed)} / ${n(s.running)} / ${n(s.waiting)}${note}`,
+      `  ${s.stage.padEnd(13)} ${n(s.done)} / ${n(s.failed)} / ${n(s.running)} / ${n(s.waiting)}${note}`,
     );
   }
   if (o.stages.includes('metadata')) {
     lines.push(
       `  Metadata runs only for coins whose ATH is $${n(LISTED_ATH_USD)} or more, after their metrics; ` +
         'which coins that is, is not known until then.',
+    );
+  }
+  if (o.stages.includes('metadata')) {
+    const coins = plan.ready.metadata ?? 0;
+    const h = estimateMetadata(coins);
+    lines.push(
+      `Metadata estimate: ${n(coins)} coins ready now (more become ready as metrics finish): ` +
+        `Helius ${n(h.helius?.requests ?? 0)} requests, ${n(h.helius?.credits ?? 0)} credits; ` +
+        `Jupiter ${n(h.jupiter?.requests ?? 0)} requests, no credits. No gateway request.`,
+    );
+  }
+  if (o.stages.includes('metadata_file')) {
+    const coins = plan.ready.metadata_file ?? 0;
+    const rps = o.gatewayRps ?? DEFAULT_GATEWAY_RPS;
+    lines.push(
+      `Metadata file: ${n(coins)} coins ready now, no cost. At ${rps} request a second to each ` +
+        `gateway, one request a coin at the least, that is about ${formatDuration(coins / rps / 60)} ` +
+        'of requests, if the gateways keep up.',
     );
   }
   if (o.stages.includes('candles')) {
@@ -270,7 +297,7 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 export async function runBackfill(opts: BackfillOptions): Promise<BackfillReport> {
   const started = Date.now();
   const now = opts.now ?? (() => new Date());
-  const stages = opts.stages ?? BACKFILL_STAGES;
+  const stages = opts.stages ?? DEFAULT_BACKFILL_STAGES;
   for (const s of stages) {
     if (!BACKFILL_STAGES.includes(s)) throw new Error(`Unknown stage "${s}"`);
   }
@@ -304,6 +331,7 @@ export async function runBackfill(opts: BackfillOptions): Promise<BackfillReport
       stages,
       codexRps,
       candlesConcurrency,
+      gatewayRps: opts.gatewayRps ?? DEFAULT_GATEWAY_RPS,
       confirm: opts.confirm,
       maxCodexUnits,
     });
@@ -425,6 +453,7 @@ export async function runBackfill(opts: BackfillOptions): Promise<BackfillReport
           candles: candlesConcurrency,
           metrics: opts.metricsConcurrency ?? DEFAULT_METRICS_CONCURRENCY,
           metadata: opts.metadataConcurrency ?? DEFAULT_METADATA_CONCURRENCY,
+          metadata_file: opts.metadataConcurrency ?? DEFAULT_METADATA_CONCURRENCY,
         },
         stageBatchSize: BACKFILL_BATCH_SIZE,
         maxAttempts,

@@ -64,6 +64,8 @@ export function asset(mint: string, extra: Partial<AssetInfo> = {}): AssetInfo {
     name: `Name ${mint.slice(0, 6)}`,
     symbol: `T${mint.slice(4, 7)}`,
     uri: `https://example.test/${mint}.json`,
+    description: null,
+    image: null,
     layout: 'metaplex',
     tokenProgram: 'spl-token',
     tokenProgramId: SPL,

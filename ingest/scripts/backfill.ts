@@ -6,10 +6,14 @@
  *
  *   Run (a dry run without --confirm: the selection, coins per stage and the estimate in units):
  *     tsx scripts/backfill.ts run [--min-rough-peak 30000] [--limit N] [--order peak|hash]
- *       [--include-no-price] [--stages candles,metrics,metadata]
+ *       [--include-no-price] [--stages candles,metrics,metadata[,metadata_file]]
  *       [--codex-rps 100] [--concurrency 200] [--metrics-concurrency N] [--metadata-concurrency N]
  *       [--db-pool 30] [--queue-pool 8] [--gateway-rps 1] [--max-attempts 3] [--retry-failed]
  *       [--max-codex-units N] [--max-helius-credits N] [--confirm]
+ *
+ *   The metadata file (social links, the creator's own description and image) is a stage of its own,
+ *   paced by the gateways and not in the default stages: tsx scripts/backfill.ts run --stages metadata_file
+ *   --gateway-rps applies to it only.
  *
  *   What is running, and how far: tsx scripts/backfill-status.ts
  *
@@ -26,7 +30,11 @@
  */
 import { parseArgs } from 'node:util';
 import { createDb } from '@memecoinipedia/db';
-import { BACKFILL_STAGES, type BackfillStageName } from '../src/backfill/setup.js';
+import {
+  BACKFILL_STAGES,
+  DEFAULT_BACKFILL_STAGES,
+  type BackfillStageName,
+} from '../src/backfill/setup.js';
 import { DEFAULT_MIN_ROUGH_PEAK_USD } from '../src/backfill/defaults.js';
 import { runBackfill } from '../src/backfill/run.js';
 import { formatSeedReport, seedFromCandidateFile } from '../src/backfill/seed.js';
@@ -38,7 +46,7 @@ function usage(message?: string): never {
   process.stderr.write(
     'Usage: backfill.ts seed --file FILE [--source NAME] [--confirm]\n' +
       '       backfill.ts run [--min-rough-peak USD] [--limit N] [--order peak|hash]\n' +
-      '                       [--include-no-price] [--stages candles,metrics,metadata]\n' +
+      '                       [--include-no-price] [--stages candles,metrics,metadata[,metadata_file]]\n' +
       '                       [--codex-rps N] [--concurrency N] [--metrics-concurrency N]\n' +
       '                       [--metadata-concurrency N] [--db-pool N] [--queue-pool N]\n' +
       '                       [--gateway-rps N] [--max-attempts N] [--retry-failed]\n' +
@@ -114,7 +122,9 @@ async function main(): Promise<void> {
 
   const order = values.order ?? 'peak';
   if (order !== 'peak' && order !== 'hash') usage('--order is peak or hash');
-  const stages = (values.stages ?? BACKFILL_STAGES.join(',')).split(',').map((s) => s.trim());
+  const stages = (values.stages ?? DEFAULT_BACKFILL_STAGES.join(','))
+    .split(',')
+    .map((s) => s.trim());
   for (const s of stages) {
     if (!(BACKFILL_STAGES as readonly string[]).includes(s)) usage(`Unknown stage "${s}"`);
   }

@@ -92,7 +92,7 @@ describeDb('runIngest', () => {
   const base = (out: string[]) => ({
     samplePath: file,
     // These tests are about the first two stages; the candle stages have their own file.
-    stages: ['discovered', 'metadata'] as StageName[],
+    stages: ['discovered', 'metadata', 'metadata_file'] as StageName[],
     env: { DATABASE_URL: t.url },
     log: testLog,
     out: (s: string) => out.push(s),
@@ -130,7 +130,7 @@ describeDb('runIngest', () => {
     const report = await runIngest({ ...base(out), env: {}, confirm: false });
     expect(report.status).toBe('dry_run');
     expect(report.plan.database).toBeNull();
-    expect(report.plan.stageWork).toEqual({ discovered: N, metadata: N });
+    expect(report.plan.stageWork).toEqual({ discovered: N, metadata: N, metadata_file: N });
   });
 
   it('runs seed and metadata with one Helius request for all coins, then a second run does nothing', async () => {
@@ -218,14 +218,14 @@ describeDb('runIngest', () => {
       worker: fast,
     });
     expect(first.summary!.failures).toEqual([
-      { stage: 'metadata', status: 'failed', reason: 'metadata_unreachable', coins: 1 },
+      { stage: 'metadata_file', status: 'failed', reason: 'metadata_unreachable', coins: 1 },
     ]);
     const attemptsOf = async () =>
       (
         await db
           .selectFrom('coin_stages')
           .select('attempts')
-          .where('stage', '=', 'metadata')
+          .where('stage', '=', 'metadata_file')
           .where('status', '=', 'failed')
           .execute()
       ).map((r) => r.attempts);
@@ -257,10 +257,11 @@ describeDb('runIngest', () => {
       worker: fast,
     });
     expect(retried.status).toBe('done');
-    expect(retried.plan.stageWork['metadata']).toBe(1);
+    expect(retried.plan.stageWork['metadata_file']).toBe(1);
     expect(retried.summary!.failures).toEqual([]);
     expect(
-      retried.summary!.stages.find((s) => s.stage === 'metadata' && s.status === 'done')?.coins,
+      retried.summary!.stages.find((s) => s.stage === 'metadata_file' && s.status === 'done')
+        ?.coins,
     ).toBe(N);
   }, 60_000);
 
