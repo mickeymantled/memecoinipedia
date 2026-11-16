@@ -130,6 +130,86 @@ export async function seedBackfillChunk(
   return result;
 }
 
+/** What `applyMayhemFlags` found (or, in a dry run, would do) for a list of (address, flag) pairs. */
+export interface MayhemFlagResult {
+  /** Distinct addresses given. */
+  given: number;
+  /** Given with true / with false. */
+  givenTrue: number;
+  givenFalse: number;
+  /** Addresses that are no coin in the database (nothing is inserted). */
+  notFound: number;
+  /** Coins whose flag changes: null to true, null to false, false to true. */
+  setTrue: number;
+  setFalse: number;
+  /** Coins already holding a true, which stays true whatever the file says. */
+  keptTrue: number;
+  /** Coins already holding the file's value. */
+  unchanged: number;
+}
+
+/**
+ * Loads Mayhem Mode flags onto coins that are already in the database (it inserts nothing). A true
+ * from either side stays true; a false only fills a null. With `apply` false nothing is written
+ * and the result says what would change. Same rule as the seed's merge.
+ */
+export async function applyMayhemFlags(
+  db: Kysely<Database>,
+  pairs: readonly { address: string; isMayhemMode: boolean }[],
+  opts: { chain: string; apply: boolean; now: Date },
+): Promise<MayhemFlagResult> {
+  const byAddress = new Map<string, boolean>();
+  for (const p of pairs) {
+    byAddress.set(p.address, (byAddress.get(p.address) ?? false) || p.isMayhemMode);
+  }
+  const addresses = [...byAddress.keys()];
+  const flags = addresses.map((a) => byAddress.get(a) as boolean);
+  const result: MayhemFlagResult = {
+    given: addresses.length,
+    givenTrue: flags.filter((f) => f).length,
+    givenFalse: flags.filter((f) => !f).length,
+    notFound: 0,
+    setTrue: 0,
+    setFalse: 0,
+    keptTrue: 0,
+    unchanged: 0,
+  };
+  if (addresses.length === 0) return result;
+  const r = await sql<{ kind: string; n: string }>`
+    select case
+             when c.id is null then 'not_found'
+             when c.is_mayhem_mode is true and not t.flag then 'kept_true'
+             when c.is_mayhem_mode is not distinct from t.flag then 'unchanged'
+             when t.flag then 'set_true'
+             when c.is_mayhem_mode is null then 'set_false'
+             else 'unchanged' end as kind,
+           count(*)::text as n
+    from unnest(${addresses}::text[], ${flags}::boolean[]) as t(address, flag)
+    left join coins c on c.chain = ${opts.chain} and c.address = t.address
+    group by 1`.execute(db);
+  for (const row of r.rows) {
+    const n = Number(row.n);
+    if (row.kind === 'not_found') result.notFound = n;
+    else if (row.kind === 'kept_true') result.keptTrue = n;
+    else if (row.kind === 'unchanged') result.unchanged = n;
+    else if (row.kind === 'set_true') result.setTrue = n;
+    else if (row.kind === 'set_false') result.setFalse = n;
+  }
+  if (opts.apply && result.setTrue + result.setFalse > 0) {
+    await sql`
+      update coins c
+      set is_mayhem_mode = case when c.is_mayhem_mode is true or t.flag then true
+                                else coalesce(c.is_mayhem_mode, t.flag) end,
+          updated_at = ${opts.now}
+      from unnest(${addresses}::text[], ${flags}::boolean[]) as t(address, flag)
+      where c.chain = ${opts.chain} and c.address = t.address
+        and c.is_mayhem_mode is distinct from
+            (case when c.is_mayhem_mode is true or t.flag then true
+                  else coalesce(c.is_mayhem_mode, t.flag) end)`.execute(db);
+  }
+  return result;
+}
+
 // ------------------------------------------------------------------ selection
 
 export type SelectionOrder = 'peak' | 'hash';
