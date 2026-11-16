@@ -27,5 +27,8 @@ export type {
   WriteMetricsContext,
 } from './coinMetrics.js';
 export { seed } from './seed.js';
+export * from './stages.js';
+export * from './runs.js';
+export * from './discovery.js';
 export { databaseShape } from './types.js';
 export type * from './types.js';
