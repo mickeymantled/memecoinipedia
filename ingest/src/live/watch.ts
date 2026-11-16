@@ -225,6 +225,7 @@ export async function watchOnce(
       }
     }
   }
-  await recordWatchPass(deps.db, deps.now(), pass.error === undefined);
+  // A pass that ended paused read no prices to the end: it is not a clean pass.
+  await recordWatchPass(deps.db, deps.now(), pass.error === undefined && pass.paused !== true);
   return pass;
 }

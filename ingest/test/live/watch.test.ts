@@ -205,6 +205,29 @@ describeDb('the watch loop', () => {
       expect(await record(f)).toEqual({ endedAt: again, okAt: again });
     });
 
+    it('does not count a pass that ended paused as a clean one', async () => {
+      fx = await liveFixture();
+      const f = fx;
+      await watched(f, 1, 600);
+      const clean = f.clock.now().toISOString();
+      await watchOnce(f.deps);
+      expect(await record(f)).toEqual({ endedAt: clean, okAt: clean });
+
+      f.clock.advance(1_200_000); // the coin is due again
+      f.jupiter.pausedForMs = () => 30_000;
+      const pausedAt = f.clock.now().toISOString();
+      const pass = await watchOnce(f.deps);
+      expect(pass.paused).toBe(true);
+      expect(pass.requests).toBe(0);
+      expect(await record(f)).toEqual({ endedAt: pausedAt, okAt: clean });
+
+      f.jupiter.pausedForMs = () => 0;
+      f.clock.advance(60_000);
+      const again = f.clock.now().toISOString();
+      expect((await watchOnce(f.deps)).paused).toBeUndefined();
+      expect(await record(f)).toEqual({ endedAt: again, okAt: again });
+    });
+
     it('has no clean time when the first pass fails', async () => {
       fx = await liveFixture();
       const f = fx;
