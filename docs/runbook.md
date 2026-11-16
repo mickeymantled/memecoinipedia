@@ -406,7 +406,8 @@ dry run afterwards picks fewer coins.
   back to `pending` with zero attempts (only rows that are `done` or `skipped` change), so the next
   run does them again. A reopened `candles` stage does not read the pool list again and does not
   start from scratch: with pools already stored it fetches only the bars after what is held. The
-  pool list is read again only by a pool refresh (above).
+  pool list is read again by a pool refresh (above) and, in the live process, by the top-up of a
+  coin whose list is more than 14 days old ("The live process").
 - `requeueFailed(db, stages, { addresses, now })` in the same file puts failed rows back for the
   coins whose addresses are given (the live sweep calls it). `--retry-failed` uses
   `requeueFailedInSelection` in `db/src/backfill.ts`, which is scoped to the run's selection.
