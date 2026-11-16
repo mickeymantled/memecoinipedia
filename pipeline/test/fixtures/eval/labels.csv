@@ -1,0 +1,13 @@
+mint,ticker,primary_narrative,secondary_narratives,parent_mint,confidence,notes
+M01,AAA,animal,,,0.9,
+M02,BBB,animal,culture/meme,,0.8,
+M03,CCC,animal,,P2,0.7,"a note, with a comma"
+M04,DDD,AI,tech,,0.9,
+M05,EEE,AI,,,0.8,
+M06,FFF,celebrity,political | news event,,0.9,
+M07,GGG,celebrity,,,0.6,
+M08,HHH,culture/meme,,P4,0.9,
+M09,III,political,"[""news event""]",,0.9,
+M10,JJJ,gaming,,P6,0.7,
+M11,KKK,utility,,,0.9,
+M12,LLL,derivative,,P1,0.8,

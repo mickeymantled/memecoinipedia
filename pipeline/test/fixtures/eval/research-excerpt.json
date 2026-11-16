@@ -1,0 +1,47 @@
+[
+  {
+    "mint": "9BB6NFEcjBCtnNLFko2FqVQBq8HHM13kCyYcdQbgpump",
+    "ticker": "FARTCOIN",
+    "primary_narrative": "AI",
+    "secondary_narratives": ["culture/meme"],
+    "origin": "Fartcoin was launched anonymously on Pump.fun, riding the 'fartcoin' joke promoted by the AI agent Truth Terminal; it was not created by the bot or its developer.",
+    "origin_date": "",
+    "trigger_event": "Truth Terminal (Andy Ayrey's AI agent) promoted the Fartcoin idea and was sent tokens, then the bot's holdings rally was widely reported.",
+    "parent_mint": null,
+    "key_accounts": ["@FartCoinOfSOL", "@truth_terminal"],
+    "sources": [
+      "https://decrypt.co/296035/fartcoin-meme-coin-explodes",
+      "https://www.theblock.co/news/markets/2024-10-18-marc-andreessen-funded-ai-bot-becomes-a-millionaire-after-fartcoin-holdings-rally-322002",
+      "https://www.coingecko.com/learn/what-is-fartcoin-ai-memecoin-crypto",
+      "https://codywise.io/crypto/solana/memecoins/fartcoin/",
+      "https://api.dexscreener.com/tokens/v1/solana/9BB6NFEcjBCtnNLFko2FqVQBq8HHM13kCyYcdQbgpump",
+      "https://x.com/DeFiTracer/status/1852746861360103799",
+      "https://x.com/TechLeviathan/status/1853091080633262179",
+      "https://lite-api.jup.ag/tokens/v2/search?query=9BB6NFEcjBCtnNLFko2FqVQBq8HHM13kCyYcdQbgpump"
+    ],
+    "confidence": 0.8,
+    "notes": "AI vs culture/meme fit about equally (fart-joke meme, AI-agent trigger); settled by rule: primary = what triggered the run (Truth Terminal AI agent). Jupiter shows pump.fun launch 2024-10-18 06:05 UTC and DexScreener Raydium pair 2024-10-18 06:09 UTC. These are launch times, not origin_date. @FartCoinOfSOL verified: DexScreener socials link it and X lookup shows it (created 2024-10-18, ~83k followers). @truth_terminal from the listed sources and two third-party X posts (DeFiTracer, TechLeviathan) tying the token to Truth Terminal; an X search for Truth Terminal posts about fartcoin in Oct 2024 returned nothing, so that tie is not confirmed from its own posts."
+  },
+  {
+    "mint": "2qEHjDLDLbuBgRYvsxhc5D6uDWAivNFZGan56P1tpump",
+    "ticker": "Pnut",
+    "primary_narrative": "news event",
+    "secondary_narratives": ["animal", "culture/meme"],
+    "origin": "Anonymous Pump.fun token named for Peanut the Squirrel, a pet squirrel seized and euthanized by New York authorities along with raccoon Fred. Not created by owner Mark Longo.",
+    "origin_date": "2024-10-30",
+    "trigger_event": "Public outrage and viral attention after the seizure/euthanasia, amplified by Elon Musk posts.",
+    "parent_mint": null,
+    "key_accounts": ["@pnutsolana", "@elonmusk"],
+    "sources": [
+      "https://cointelegraph.com/news/viral-squirrel-peanut-triggers-solana-memecoin-frenzy",
+      "https://memecoin.wiki/wiki/peanut_the_squirrel",
+      "https://decrypt.co/289856/what-is-pnut-the-meme-coin-dancing-to-elon-musks-tune",
+      "https://pump.fun/coin/2qEHjDLDLbuBgRYvsxhc5D6uDWAivNFZGan56P1tpump",
+      "https://api.dexscreener.com/tokens/v1/solana/2qEHjDLDLbuBgRYvsxhc5D6uDWAivNFZGan56P1tpump",
+      "https://x.com/MarcellxMarcell/status/1855384249555169330",
+      "https://lite-api.jup.ag/tokens/v2/search?query=2qEHjDLDLbuBgRYvsxhc5D6uDWAivNFZGan56P1tpump"
+    ],
+    "confidence": 0.8,
+    "notes": "news event vs animal fit equally; rule: primary = the trigger of the run (the seizure news). Jupiter pump.fun launch 2024-10-31 14:21 UTC and DexScreener Raydium pair 2024-10-31 15:06 UTC These are launch times, not origin_date. @pnutsolana verified: DexScreener socials link it and X lookup shows it (bio 'In memory of Peanut', ~65k followers; account created 2024-08-25, before the seizure news, so it may not be the first Pnut-related account). @elonmusk from a third-party X post saying he shilled it and from the listed sources, not from his own post."
+  }
+]

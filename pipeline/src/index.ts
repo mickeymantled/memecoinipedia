@@ -12,3 +12,4 @@ export * from './classify/prompt.js';
 export * from './classify/schema.js';
 export * from './classify/store.js';
 export * from './classify/synthetic.js';
+export * from './eval/index.js';

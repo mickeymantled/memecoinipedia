@@ -137,3 +137,54 @@ records the error on the stage.
 Nothing was changed outside `/pipeline`. `db-store.ts` holds the queries a `/db` helper could own
 later: selecting coins to classify, claiming and releasing coins, applying a result, and the
 `ingest_runs` bookkeeping. They are in `/pipeline` for now.
+
+## The eval (task B6, issue #34)
+
+Scores a classifier run against the hand labels. No network, no database, no `.env`. Code is in
+`src/eval/`, the command is `scripts/eval.ts` (`pnpm --filter @memecoinipedia/pipeline eval ...`).
+
+```
+# once, by hand: 120 tune and 80 holdout, stratified by primary narrative, seeded.
+# Writes research/evals/split.json and refuses to overwrite it.
+tsx pipeline/scripts/eval.ts make-split --seed 42
+
+# score what `classify.ts --mints eval.jsonl --out results.jsonl --no-db` wrote
+tsx pipeline/scripts/eval.ts score --results results.jsonl                  # tune split (default)
+tsx pipeline/scripts/eval.ts score --results results.jsonl --split holdout  # totals only
+tsx pipeline/scripts/eval.ts score --results results.jsonl --split all --json report.json
+
+# check the research batches
+tsx pipeline/scripts/eval.ts research            # research/narratives/batch-*.json
+```
+
+Inputs: `research/evals/labels.csv` (columns in `AGENTS.md`; narratives as labels or slugs,
+secondaries separated by `;` or `|` or as a JSON array) and `research/evals/split.json`
+(`{ seed, created_at, tune: [mint], holdout: [mint] }`). A problem in the labels, the split or the
+results is printed with its line number, the command exits 2 and nothing is scored.
+
+What the report counts:
+
+- **Accuracy** is exact match of the primary slug over the labelled coins in the split, with a
+  Wilson 95% interval. A labelled coin missing from the results counts as wrong and is listed. A
+  coin whose classification failed (an `{ mint, error }` line) counts as wrong and has its own
+  line. A coin in the results but not in the labels is listed and left out of every number.
+- **Per narrative** accuracy (by the label) and a confusion table (rows are labels; the columns
+  include `(failed)` and `(missing)`, so each row adds up to the label's count).
+- **Confidence bands** on the model's confidence: below 0.5, 0.5 to below 0.7, 0.7 to below 0.85,
+  0.85 and above, each with its share of the classified coins, plus the cut at 0.7. Failed and
+  missing coins have no confidence and are outside the bands.
+- **Secondaries**: how often the label's primary is the model's primary, or only among its
+  secondaries (denominator: all labelled coins in the split).
+- **Parent**: precision is right `parent_address` over results that name one; recall is right over
+  labels that have a `parent_mint`.
+- **Disagreements** (wrong, failed, missing) go to `<results>.disagreements.csv`
+  (`mint,ticker,label,prediction,confidence,reason`) or `--disagreements FILE`.
+
+Holdout: held-out coins are never named in stdout or in the disagreements file unless
+`--show-holdout` is given; their totals are. This also holds for `--split all`, where their
+numbers are inside the totals but they are not listed. `--json FILE` writes the same numbers.
+
+The research loader (`loadResearchDir`, `parseResearchBatch`) validates each entry with zod, skips
+and reports bad ones, and returns the classifier's `research` slot by mint (origin, origin_date,
+trigger_event, key_accounts, notes, confidence; empty strings and lists dropped). The slot does not
+carry Grok's primary narrative, parent or sources.
