@@ -1,0 +1,606 @@
+[
+  {
+    "mint": "DgNEubx7aSkBhf8e9LrhCv5SigaCN6oXFp5QwmW5pump",
+    "ticker": "BZZZZMAN",
+    "primary_narrative": "other",
+    "secondary_narratives": [],
+    "origin": "Name and X bio ('He came looking for blood. The market got to him first.') point to a fictional or invented character; no source identifies who or what BZZZZMAN refers to.",
+    "origin_date": "",
+    "trigger_event": "No trigger event found.",
+    "parent_mint": null,
+    "key_accounts": [
+      "BZZZZMAN"
+    ],
+    "sources": [
+      "https://lite-api.jup.ag/tokens/v2/search?query=DgNEubx7aSkBhf8e9LrhCv5SigaCN6oXFp5QwmW5pump",
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/DgNEubx7aSkBhf8e9LrhCv5SigaCN6oXFp5QwmW5pump/info",
+      "https://x.com/BZZZZMAN",
+      "https://bzzzzman.skin/"
+    ],
+    "confidence": 0.1,
+    "notes": "Could not identify the subject. The linked X account (created 2011, 0 posts, 8 followers) has only the bio line; website bzzzzman.skin timed out when fetched. Best reading is a character/persona bit, but nothing confirms it, so 'other' per guide (no nameable subject). Taxonomy guide does not settle coins with a persona name and no description. Unverified ticker."
+  },
+  {
+    "mint": "EowcL8MJhjJeHUfZnJHipfDJwyExUb5F5g926Zx6pump",
+    "ticker": "COCA COLA",
+    "primary_narrative": "culture/meme",
+    "secondary_narratives": [],
+    "origin": "Coin is named after the Coca-Cola soft drink brand; no description or website, so no evidence of any specific meme, event or link to the company.",
+    "origin_date": "",
+    "trigger_event": "None found.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://lite-api.jup.ag/tokens/v2/search?query=EowcL8MJhjJeHUfZnJHipfDJwyExUb5F5g926Zx6pump",
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/EowcL8MJhjJeHUfZnJHipfDJwyExUb5F5g926Zx6pump/info",
+      "https://x.com/CokeCCBCC"
+    ],
+    "confidence": 0.2,
+    "notes": "Brand/food-name coin with empty description. Its linked X handle (CokeCCBCC) belongs to Coca-Cola Consolidated, a bottler, which is probably a metadata link rather than evidence the company is involved. Guide puts food under culture/meme but does not say where plain corporate-brand coins go (could be utility or other). Nothing found on what triggered it."
+  },
+  {
+    "mint": "Cv2Dr7oqZRrRQxFc1B2byFnyNnDyDRAHVJnRGTDdpump",
+    "ticker": "tibabredan",
+    "primary_narrative": "AI",
+    "secondary_narratives": [
+      "tech",
+      "culture/meme"
+    ],
+    "origin": "Coin tied to the sound_craft_ X account, an AI agent project by developer Nader Dabit (@dabit3) whose GitHub repo describes a personalized agent based on his personality. The coin's website field links to a Dabit post dated 2024-12-20.",
+    "origin_date": "2024-12-20",
+    "trigger_event": "Nader Dabit's X post of 2024-12-20 about the sound_craft_ agent, linked as the coin's website; coin graduated 2024-12-23.",
+    "parent_mint": null,
+    "key_accounts": [
+      "sound_craft_",
+      "dabit3"
+    ],
+    "sources": [
+      "https://lite-api.jup.ag/tokens/v2/search?query=Cv2Dr7oqZRrRQxFc1B2byFnyNnDyDRAHVJnRGTDdpump",
+      "https://x.com/dabit3/status/1869942808888385729",
+      "https://github.com/dabit3/sound_craft_",
+      "https://www.solflare.com/prices/sound-craft/Fu1QfR4M67cvVmUtVBqPrZMdb1aZeVkjJxKPSwDbpump/"
+    ],
+    "confidence": 0.4,
+    "notes": "The linked post could not be retrieved (not found via X API, 403 on web), so its text is unread; the date comes from the post ID. The solflare source is for a different mint (sound_craft_ / TIBADREDAN) and shows an AI-agent token existed with a similar name; this mint's ticker spelling 'tibabredan' differs and the link between them is not confirmed. Whether this is a copy/derivative of that coin is unresolved, so parent_mint null. Guide tie-break 3 (AI agent) used; unclear whether the agent was launched by or merely linked to the coin."
+  },
+  {
+    "mint": "J87xSnJVKJxE8tseW2xpq84DzBCZobXoADZhusNpump",
+    "ticker": "USDP",
+    "primary_narrative": "utility",
+    "secondary_narratives": [
+      "political",
+      "news event"
+    ],
+    "origin": "Coin markets itself as the 'United States Dividend Program', a tokenized fund paying dividends to holders, using government-style branding that echoes Trump's proposed tariff dividend. No government or Trump affiliation is verified.",
+    "origin_date": "2025-11-09",
+    "trigger_event": "Trump's Truth Social post of 2025-11-09 promising a tariff dividend of at least $2,000 per person; coin's own site promotes a distribution date of 2026-10-25.",
+    "parent_mint": null,
+    "key_accounts": [
+      "USDPROGRAM"
+    ],
+    "sources": [
+      "https://lite-api.jup.ag/tokens/v2/search?query=J87xSnJVKJxE8tseW2xpq84DzBCZobXoADZhusNpump",
+      "https://www.usdp.fund/",
+      "https://coincodex.com/article/93576/usdp-crypto-coin/",
+      "https://www.politico.com/news/2025/11/09/trump-tariff-dividends-bessent-00643768",
+      "https://x.com/USDPROGRAM"
+    ],
+    "confidence": 0.55,
+    "notes": "Link between the coin and the tariff-dividend story is inferred from the name and branding (CoinCodex says no verified Trump connection). Guide tie-break 2 (claimed function) gives utility; tie-break 5 would give political if the subject is the tariff dividend. Guide does not settle government-parody coins that also claim a product. Sensitive-flag: no. Multiple Solana tokens share this name; this mint is identified by address only."
+  },
+  {
+    "mint": "Cbr8ZtmgChu6k6iEyESBUagbkwVu9NPU2AP9EJ9Bpump",
+    "ticker": "ROMGUY",
+    "primary_narrative": "culture/meme",
+    "secondary_narratives": [],
+    "origin": "'Just a romantic guy' is a Valentine's-themed meme coin following the 'just a ... guy' naming format popularised by the Chill Guy coin; its description says it helps people spoil their special someone.",
+    "origin_date": "",
+    "trigger_event": "Valentine's Day 2025 timing (graduated 2025-02-08); no specific trigger post found.",
+    "parent_mint": null,
+    "key_accounts": [
+      "justaromguy"
+    ],
+    "sources": [
+      "https://lite-api.jup.ag/tokens/v2/search?query=Cbr8ZtmgChu6k6iEyESBUagbkwVu9NPU2AP9EJ9Bpump",
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/Cbr8ZtmgChu6k6iEyESBUagbkwVu9NPU2AP9EJ9Bpump/info",
+      "https://www.solflare.com/prices/just-a-romantic-guy/Cbr8ZtmgChu6k6iEyESBUagbkwVu9NPU2AP9EJ9Bpump/",
+      "https://www.reddit.com/r/Justavalentineguy/comments/1ieqzdz/start_of_a_great_community/"
+    ],
+    "confidence": 0.35,
+    "notes": "No single viral origin found; the X account justaromguy was not found via the X API and the website returned an error. Resembles sibling coins like 'Just a valentine guy'. Guide says a generic format does not make a derivative unless it names one coin; this one does not name Chill Guy, so parent_mint is null, but the guide does not say how to treat a coin that copies the 'just a ... guy' pattern after a specific coin."
+  },
+  {
+    "mint": "ae1iiiLfJ534FoBJd3i691hs9d6yipDhVbDKZDupump",
+    "ticker": "MIDDLE",
+    "primary_narrative": "political",
+    "secondary_narratives": [
+      "news event",
+      "culture/meme"
+    ],
+    "origin": "Coin refers to a viral video in which Trump gives the middle finger to a Ford factory worker who shouted 'pedophile protector'; BNO News posted the TMZ clip on 2026-01-13.",
+    "origin_date": "2026-01-13",
+    "trigger_event": "BNO News' post of the TMZ clip on X on 2026-01-13, which the coin's twitter link points to; coin graduated 2026-01-14.",
+    "parent_mint": null,
+    "key_accounts": [
+      "BNONews"
+    ],
+    "sources": [
+      "https://lite-api.jup.ag/tokens/v2/search?query=ae1iiiLfJ534FoBJd3i691hs9d6yipDhVbDKZDupump",
+      "https://x.com/BNONews/status/2011188488171888665"
+    ],
+    "confidence": 0.8,
+    "notes": "Post text read via X API (about 15M impressions). Coin has no description, so the middle-finger clip is inferred from the linked post plus ticker 'MIDDLE'. Guide tie-break 5 gives political since Trump is the subject, but the happening itself (tie-break 9) is also a candidate; I picked the person-based label. Content is vulgar; not hateful or sexual."
+  },
+  {
+    "mint": "5n5GbtWvuMSLnpxntScyrKmsstjceYpXH8mEzSr9pump",
+    "ticker": "YEJI",
+    "primary_narrative": "celebrity",
+    "secondary_narratives": [
+      "news event",
+      "culture/meme"
+    ],
+    "origin": "Named after Kim Ye-ji, the South Korean pistol shooter who won silver in the women's 10 m air pistol at the 2024 Paris Olympics and went viral for her calm, stylish look. Coin description is copied from her Wikipedia summary.",
+    "origin_date": "2024-07-28",
+    "trigger_event": "Her Olympic silver medal on 2024-07-28 and the wave of viral attention afterwards, including Elon Musk's comments; coin graduated 2024-07-30.",
+    "parent_mint": null,
+    "key_accounts": [
+      "elonmusk"
+    ],
+    "sources": [
+      "https://lite-api.jup.ag/tokens/v2/search?query=5n5GbtWvuMSLnpxntScyrKmsstjceYpXH8mEzSr9pump",
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/5n5GbtWvuMSLnpxntScyrKmsstjceYpXH8mEzSr9pump/info",
+      "https://www.reuters.com/sports/olympics/south-korean-pistol-shooter-kim-ye-ji-thanks-musk-making-her-famous-2024-08-07/",
+      "https://www.nbcnews.com/news/asian-america/kim-yeji-south-korea-sharpshooter-olympics-social-media-rcna164504",
+      "https://en.theblockbeats.news/news/54477"
+    ],
+    "confidence": 0.7,
+    "notes": "Medal date (2024-07-28) is from my own knowledge, not read from the cited pages (Reuters returned 401); the sources cover the viral attention. Coin graduated before most Musk coverage, so the early trigger was the medal itself. Guide tie-break 6 vs 'person known only from one viral moment' is ambiguous for an athlete who became famous mostly via the Olympics; I used celebrity. Key account elonmusk is from the Reuters headline summary, not checked on X."
+  },
+  {
+    "mint": "2ZCQr8d2qZ916TNXePzuc7dFa5nBoeU7FZg11mHnpump",
+    "ticker": "HWOG",
+    "primary_narrative": "culture/meme",
+    "secondary_narratives": [],
+    "origin": "Coin's description is 'Hello There, I Am HWOG!'; the name and branding appear to riff on the Obi-Wan Kenobi 'Hello there' meme from Star Wars: Revenge of the Sith (2005).",
+    "origin_date": "2005-05-19",
+    "trigger_event": "None found; coin graduated 2024-09-27 with no identified trigger.",
+    "parent_mint": null,
+    "key_accounts": [
+      "HWOGSOL"
+    ],
+    "sources": [
+      "https://lite-api.jup.ag/tokens/v2/search?query=2ZCQr8d2qZ916TNXePzuc7dFa5nBoeU7FZg11mHnpump",
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/2ZCQr8d2qZ916TNXePzuc7dFa5nBoeU7FZg11mHnpump/info",
+      "https://knowyourmeme.com/memes/hello-there",
+      "https://www.solflare.com/prices/hwog/2ZCQr8d2qZ916TNXePzuc7dFa5nBoeU7FZg11mHnpump/"
+    ],
+    "confidence": 0.3,
+    "notes": "The tie to the Hello There meme is my reading of the description, not stated by the project; HWOG may be a character (the ticker could stand for a hog or similar). The X account HWOGSOL was not found via the X API. Origin date is the film's release date from memory; sources show the meme, not that date. Guide: Star Wars is film/franchise so culture/meme, but a movie-quote meme could also be argued as gaming-free fandom; no conflict."
+  },
+  {
+    "mint": "558yaziWUN5GfBzvNBFCBJ1NuBAtsJUganHvAF9rpump",
+    "ticker": "PENGUINU",
+    "primary_narrative": "animal",
+    "secondary_narratives": [
+      "derivative",
+      "culture/meme"
+    ],
+    "origin": "A penguin-themed 'Inu' coin whose site is branded 'Pengu Inu' with an ice-age theme and an earlier presale and airdrop. It appears to play on the Pengu penguin brand, though that link is not stated in what I could read.",
+    "origin_date": "",
+    "trigger_event": "Pump.fun launch on 2026-02-09; no specific trigger found.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://lite-api.jup.ag/tokens/v2/search?query=558yaziWUN5GfBzvNBFCBJ1NuBAtsJUganHvAF9rpump",
+      "https://penguinu.fun/",
+      "https://rca-efda.preview.pump.fun/coin/558yaziWUN5GfBzvNBFCBJ1NuBAtsJUganHvAF9rpump",
+      "https://www.idcrypt.xyz/2025/12/penguinu-ignites-solana-with-cute.html"
+    ],
+    "confidence": 0.35,
+    "notes": "Could not find a trigger or key accounts; the linked X community was not searched in detail and a name search on X returned only unrelated publisher posts. Parent not set: the guide says a generic '... Inu' format is not a derivative unless one specific coin is named, and I did not confirm that PENGU is that coin (no mint verified). The guide does not say what to do with a name that merges a known coin's name with 'Inu'."
+  },
+  {
+    "mint": "E8gTvV5aTHpdzj477YtLaKLumKhABbMeDJwpQzTUpump",
+    "ticker": "BULLY",
+    "primary_narrative": "derivative",
+    "secondary_narratives": [
+      "animal",
+      "culture/meme"
+    ],
+    "origin": "'The buff protector of Billy': a bodyguard spin-off of the Billy dog coin, which launched on pump.fun in early June 2024 and was abandoned by its dev before a community takeover.",
+    "origin_date": "",
+    "trigger_event": "Launched 2024-07-06 during the run of the Billy coin, whose community takeover and rise to a roughly $200M market cap was reported by Decrypt on 2024-07-29.",
+    "parent_mint": "3B5wuUrMEi5yATD7on46hKfej3pfmd7t1RKgrsN3pump",
+    "key_accounts": [
+      "MINHxDYNASTY"
+    ],
+    "sources": [
+      "https://lite-api.jup.ag/tokens/v2/search?query=E8gTvV5aTHpdzj477YtLaKLumKhABbMeDJwpQzTUpump",
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/E8gTvV5aTHpdzj477YtLaKLumKhABbMeDJwpQzTUpump/info",
+      "https://decrypt.co/241846/how-solana-meme-coin-billy-survived-being-abandoned-by-its-dev",
+      "https://pump.fun/coin/3B5wuUrMEi5yATD7on46hKfej3pfmd7t1RKgrsN3pump",
+      "https://trenchwiki.com/w/billy"
+    ],
+    "confidence": 0.65,
+    "notes": "Parent mint taken from the pump.fun page for $BILLY found via search; I could not open it (Cloudflare), so it is the search result's address, not independently checked. origin_date left blank because only 'early June 2024' is known for Billy. Several coins share the Billy name; guide says pick the largest at the derivative's launch, which this appears to be. Key account MINHxDYNASTY is a Billy community-takeover member from the article, not a driver of BULLY itself. Guide section 4 'variation' rule fits."
+  },
+  {
+    "mint": "A6pbakh6P2ogKttup8BTEJc5hjdXehN4Ky7EP5bspump",
+    "ticker": "WORK",
+    "primary_narrative": "culture/meme",
+    "secondary_narratives": [],
+    "origin": "Coin metadata presents a jobseeker voice ('I need work boss... I am highly qualified... #opentowork'), a joke on the LinkedIn Open to Work format.",
+    "origin_date": "",
+    "trigger_event": "Pump.fun launch of a joke coin; no specific trigger found.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://rugchecker.com/tokens/A6pbakh6P2ogKttup8BTEJc5hjdXehN4Ky7EP5bspump",
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/A6pbakh6P2ogKttup8BTEJc5hjdXehN4Ky7EP5bspump/info",
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/A6pbakh6P2ogKttup8BTEJc5hjdXehN4Ky7EP5bspump/pools"
+    ],
+    "confidence": 0.3,
+    "notes": "No X posts or articles found about this coin (mint search on X returned nothing). Subject read from the coin's own description only; 'I need work boss' is a generic phrase, no single viral source identified. Origin date unknown. Taxonomy guide covers this under culture/meme (catchphrase/format) but doesn't say how to treat generic work-themed phrases."
+  },
+  {
+    "mint": "RodhH2Xivnpt9AjK1ZniRap6TTcK1yx9CJmZ5zqPipo",
+    "ticker": "PIPO",
+    "primary_narrative": "animal",
+    "secondary_narratives": [
+      "culture/meme"
+    ],
+    "origin": "Pipo is a hippo-mascot meme coin ('Pipo the Hippo') promoted via pipo.meme and a Telegram channel as 'a new heavyweight in the meme arena'.",
+    "origin_date": "",
+    "trigger_event": "Pump.fun launch in the Oct 2024 animal-mascot meme wave; no specific trigger found.",
+    "parent_mint": null,
+    "key_accounts": [
+      "PipoSolana"
+    ],
+    "sources": [
+      "https://www.coindesk.com/price/pipo",
+      "https://t.me/PipoSolana",
+      "https://pipo.meme",
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/RodhH2Xivnpt9AjK1ZniRap6TTcK1yx9CJmZ5zqPipo/info",
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/RodhH2Xivnpt9AjK1ZniRap6TTcK1yx9CJmZ5zqPipo/pools"
+    ],
+    "confidence": 0.45,
+    "notes": "Hippo reading comes from a search-engine summary of aggregator pages, not the coin's own image, which I couldn't view. The @PipoSolana X account is suspended, so no early X posts could be read. Possible link to Moo Deng (hippo, viral Sept 2024) is plausible but NOT evidenced, so not asserted. The guide's tie-break 4 settles animal primary; does not settle whether a hippo coin launched during the Moo Deng wave needs news event/celebrity secondary. Mint ends in 'pipo' (vanity address)."
+  },
+  {
+    "mint": "BcNhFkxKPTxmYzK4G98VafhaHWBSy9deTujuTok6pump",
+    "ticker": "RETCATE",
+    "primary_narrative": "animal",
+    "secondary_narratives": [],
+    "origin": "Coin named 'Retcatecoin' with ticker RETCATE; no description or socials. Best reading from the name is a cat-themed coin, possibly a cat-spelling joke.",
+    "origin_date": "",
+    "trigger_event": "No trigger found.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/BcNhFkxKPTxmYzK4G98VafhaHWBSy9deTujuTok6pump/info",
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/BcNhFkxKPTxmYzK4G98VafhaHWBSy9deTujuTok6pump/pools"
+    ],
+    "confidence": 0.1,
+    "notes": "No description, website, X account or X posts found; name reading ('cat') is a guess. Could not find any web mentions. Subject could be nameable otherwise (e.g. 'Retcate' as a personal name or word); unresolved. Low confidence; chose animal over other since the guide says other is not for unresearchable coins."
+  },
+  {
+    "mint": "66ymgrQGXSyhKVo1om4M72gcWtttkEoU5mdW4gZEpump",
+    "ticker": "Troll250",
+    "primary_narrative": "political",
+    "secondary_narratives": [
+      "culture/meme",
+      "news event"
+    ],
+    "origin": "A parody coin named 'Troll $250 Bill', a prank-currency joke on the proposal to put Donald Trump's image on a U.S. $250 note.",
+    "origin_date": "2026-05-28",
+    "trigger_event": "Reports on 2026-05-28 that the White House was pushing Congress to approve a $250 bill bearing Trump's image; the coin and its X account were created the next day.",
+    "parent_mint": null,
+    "key_accounts": [
+      "Troll250Bill"
+    ],
+    "sources": [
+      "https://www.theguardian.com/us-news/2026/may/28/trump-250-bill",
+      "https://www.congress.gov/bill/119th-congress/house-bill/1761",
+      "https://x.com/Troll250Bill",
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/66ymgrQGXSyhKVo1om4M72gcWtttkEoU5mdW4gZEpump/info",
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/66ymgrQGXSyhKVo1om4M72gcWtttkEoU5mdW4gZEpump/pools"
+    ],
+    "confidence": 0.7,
+    "notes": "The coin's description never names Trump; the link to the Trump $250 bill is my inference from the name and timing (X account created 2026-05-29, pool created same day). Origin date is the Guardian story date; the bill itself dates to 2025-02-27 (H.R.1761). The X account has few followers and no evident drivers. Guide tie-break 5 gives political; whether a coin only implicitly about a politician counts is unsettled."
+  },
+  {
+    "mint": "YMhzCzmvWhnU15BGq8FYj41XvQzphvtqEUQosCppump",
+    "ticker": "RIDERS",
+    "primary_narrative": "culture/meme",
+    "secondary_narratives": [],
+    "origin": "Night Riders is a Solana meme coin inspired by Matt Furie's 2012 wordless picture book The Night Riders. Furie also created Pepe.",
+    "origin_date": "",
+    "trigger_event": "Pump.fun launch in Jan 2025 tied to the book; the coin's description names the book. No specific trigger found.",
+    "parent_mint": null,
+    "key_accounts": [
+      "NightRiders1014"
+    ],
+    "sources": [
+      "https://www.forbes.com/digital-assets/assets/night-riders-riders/",
+      "https://holder.io/coins/riders/",
+      "https://nightriders.meme",
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/YMhzCzmvWhnU15BGq8FYj41XvQzphvtqEUQosCppump/info",
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/YMhzCzmvWhnU15BGq8FYj41XvQzphvtqEUQosCppump/pools"
+    ],
+    "confidence": 0.6,
+    "notes": "Book and Matt Furie link come from the coin description (gecko metadata) and aggregator pages; I did not verify the book's publication date: origin_date left empty because only the year (2012) is known. Listed X handle NightRiders1014 could not be found on X. Other 'Night Riders' coins exist with similar names (e.g. $TNR by Matt Furie, HOPPY); this mint's relation to them is not established, and it might count as derivative under the guide if it copied one, but no evidence of that."
+  },
+  {
+    "mint": "3oWekecXRSqE1jZh5HFTnf2gXWyCoDF4mELiBFd8pump",
+    "ticker": "MUZA",
+    "primary_narrative": "AI",
+    "secondary_narratives": [
+      "utility"
+    ],
+    "origin": "MUZIKA AI is a project claiming an AI music-generation platform where users pick a genre and prompt and the AI makes tracks, with the $MUZA token.",
+    "origin_date": "",
+    "trigger_event": "Launched April 2025 by the @Muza1ai account (created 2025-04-25, two days before the pool); no external trigger found.",
+    "parent_mint": null,
+    "key_accounts": [
+      "Muza1ai"
+    ],
+    "sources": [
+      "https://muzikai.tech",
+      "https://x.com/Muza1ai",
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/3oWekecXRSqE1jZh5HFTnf2gXWyCoDF4mELiBFd8pump/info",
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/3oWekecXRSqE1jZh5HFTnf2gXWyCoDF4mELiBFd8pump/pools"
+    ],
+    "confidence": 0.6,
+    "notes": "Claims come from the coin's own description and X bio; I did not verify that the product exists. Guide tie-break 2 (AI product claim) gives AI with utility secondary; music is also culture but not added. Small account, 171 followers at time of check."
+  },
+  {
+    "mint": "Cmtgg1WtrCF5zUav3ryWAiZeobyQpnoEhmLsdEX2pump",
+    "ticker": "Hopper",
+    "primary_narrative": "animal",
+    "secondary_narratives": [
+      "culture/meme"
+    ],
+    "origin": "Named 'Meditative Hopper'; likely the meditating-frog meme image, but the coin has no description or socials, so this is a reading from the name.",
+    "origin_date": "",
+    "trigger_event": "No trigger found.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://www.solflare.com/prices/meditative-hopper/Cmtgg1WtrCF5zUav3ryWAiZeobyQpnoEhmLsdEX2pump/",
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/Cmtgg1WtrCF5zUav3ryWAiZeobyQpnoEhmLsdEX2pump/info",
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/Cmtgg1WtrCF5zUav3ryWAiZeobyQpnoEhmLsdEX2pump/pools"
+    ],
+    "confidence": 0.25,
+    "notes": "No description, X account or X posts found for the mint. 'Hopper' reading as frog comes from a web-search summary of the phrase 'Meditative Hopper', which pointed to an art print rather than a viral meme; the link to the coin's image was not confirmed. Other possible reading: a humanoid/cartoon character. Frog is a guess; the guide's tie-break 4 exception (humanoid never named species) can't be applied without seeing the image."
+  },
+  {
+    "mint": "6kif8CJPCNAM2S1cydQoELGejdiXmSkVpvqwR7njpump",
+    "ticker": "FIRECAT",
+    "primary_narrative": "animal",
+    "secondary_narratives": [
+      "culture/meme"
+    ],
+    "origin": "Coin named FIRECAT with no description or socials; best reading is a fire-themed cat.",
+    "origin_date": "",
+    "trigger_event": "No trigger found at launch. On 2026-11-13 an X user replied to a post about a viral image saying someone was 'launching $yawn' and cited this mint, suggesting the mint was cited by someone unrelated to its name.",
+    "parent_mint": null,
+    "key_accounts": [
+      "xray_nft"
+    ],
+    "sources": [
+      "https://x.com/xray_nft/status/2121399067964297529",
+      "https://dexscreener.com/solana/co8omf84pomhna45pa3aepszbrtsurprsjg2y7gturvz",
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/6kif8CJPCNAM2S1cydQoELGejdiXmSkVpvqwR7njpump/info",
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/6kif8CJPCNAM2S1cydQoELGejdiXmSkVpvqwR7njpump/pools"
+    ],
+    "confidence": 0.15,
+    "notes": "No metadata beyond name. The only X hit was a Nov 2026 reply citing the mint as '$yawn'; that doesn't explain the 2024 FIRECAT launch (pool created 2024-11-22) and I did not confirm that the cited post (a 4.9M-impression image post by @Urfava7med) is related. Cat guess is from the name only."
+  },
+  {
+    "mint": "APbN7CG64adZ2cg7mtXN3ZmuRxR1cKDW92p2KN2vpump",
+    "ticker": "PRESI",
+    "primary_narrative": "political",
+    "secondary_narratives": [
+      "news event"
+    ],
+    "origin": "Coin named 'PRESIDENT' (ticker PRESI) with no description or socials; the name suggests a U.S. presidential-election theme. Launched on the evening of 2024-06-27, the date of the first Biden-Trump debate, which may be the trigger but I could not confirm it.",
+    "origin_date": "",
+    "trigger_event": "Unconfirmed: launch coincided with the 2024-06-27 presidential debate.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/APbN7CG64adZ2cg7mtXN3ZmuRxR1cKDW92p2KN2vpump/info",
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/APbN7CG64adZ2cg7mtXN3ZmuRxR1cKDW92p2KN2vpump/pools"
+    ],
+    "confidence": 0.2,
+    "notes": "No metadata, X account or posts found. The debate link is from timing only and I have no source URL for it, so I don't claim it as fact; no web source supporting it was fetched. The mint's gecko pool date is the only evidence. origin_date left empty. The tie-break 5 would make 'president' political if it was a politician-coin, but the subject isn't named; other conceivable readings are generic (the title). The guide doesn't address generic office titles."
+  },
+  {
+    "mint": "XMW8wTRGY8DVhyfHMo9vNDush316jyywGG4RFXKpump",
+    "ticker": "Claude",
+    "primary_narrative": "AI",
+    "secondary_narratives": [
+      "tech"
+    ],
+    "origin": "Unofficial coin named 'Claude Ai' that uses the name of Anthropic's Claude assistant and links to the real @claudeai X account in its metadata.",
+    "origin_date": "",
+    "trigger_event": "Pump.fun launch on 2026-09-12; no specific trigger found.",
+    "parent_mint": null,
+    "key_accounts": [
+      "claudeai"
+    ],
+    "sources": [
+      "https://x.com/claudeai",
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/XMW8wTRGY8DVhyfHMo9vNDush316jyywGG4RFXKpump/info",
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/XMW8wTRGY8DVhyfHMo9vNDush316jyywGG4RFXKpump/pools"
+    ],
+    "confidence": 0.5,
+    "notes": "Metadata lists twitter_handle 'claudeai' and a website short link; whether Anthropic is affiliated is not established (almost certainly not, but I found no statement). Coin created 2026-09-12. origin_date left empty: the thing referred to (the Claude product line) has no single date I sourced. Guide tie-break 3: AI subject. Not a derivative of any coin."
+  },
+  {
+    "mint": "BHi2TTAYiJucwXpf8PPiB7VKfLcEv2Qg41MKp9ozpump",
+    "ticker": "SCAT",
+    "primary_narrative": "animal",
+    "secondary_narratives": [
+      "culture/meme"
+    ],
+    "origin": "Token metadata names the coin 'Selfie Cat' (SCAT), a cat taking a selfie. No specific originating meme, post or person was found.",
+    "origin_date": "",
+    "trigger_event": "No trigger found.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://www.solflare.com/prices/selfie-cat/BHi2TTAYiJucwXpf8PPiB7VKfLcEv2Qg41MKp9ozpump/"
+    ],
+    "confidence": 0.3,
+    "notes": "Only a Solflare token page confirms the name. No description, socials or X history found. Reading is from the name; animal by taxonomy (a cat coin). The culture/meme secondary is a guess at selfie-meme humour. Guide does not say how to treat a generic animal-plus-activity name."
+  },
+  {
+    "mint": "EGLU8x7fzi7SQPEiuHQkog7qUDj3YjpPQMPXAYeJpump",
+    "ticker": "HOMER",
+    "primary_narrative": "culture/meme",
+    "secondary_narratives": [],
+    "origin": "Token metadata names the coin 'Homer Simpson', after the fictional character from The Simpsons. No specific trigger or meme post for this coin was found.",
+    "origin_date": "",
+    "trigger_event": "No trigger found.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://www.solflare.com/prices/homer-simpson/EGLU8x7fzi7SQPEiuHQkog7qUDj3YjpPQMPXAYeJpump/"
+    ],
+    "confidence": 0.45,
+    "notes": "Name reading only: fictional TV character per taxonomy (culture/meme). Ticker HOMER could also be generic, but the metadata name is Homer Simpson. Could not find socials, creator handles or a launch-day trend. Origin_date empty since no specific event."
+  },
+  {
+    "mint": "8qGRDPCuCQC4VNxb1Yv1j4DJJhWmAkud16XUdELnpump",
+    "ticker": "GETOUT",
+    "primary_narrative": "culture/meme",
+    "secondary_narratives": [],
+    "origin": "Token metadata names the coin 'Get Out Meme' (GETOUT), apparently a meme built on the 'get out' phrase or format. Which meme it refers to was not established.",
+    "origin_date": "",
+    "trigger_event": "No trigger found.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://www.solflare.com/prices/get-out-meme/8qGRDPCuCQC4VNxb1Yv1j4DJJhWmAkud16XUdELnpump/"
+    ],
+    "confidence": 0.25,
+    "notes": "Name only; no description, socials or X history found. Could refer to the 2017 film Get Out or a 'get out' catchphrase; unconfirmed. Culture/meme is a best reading at low confidence."
+  },
+  {
+    "mint": "6JaZtFZ8yUsXZHZ4FASscrzEuHDQEMWvVDTxLqCppump",
+    "ticker": "Grok Bot",
+    "primary_narrative": "AI",
+    "secondary_narratives": [],
+    "origin": "Token metadata names the coin 'Grok Bot', evoking xAI's Grok chatbot. No evidence found of an official link or of a specific launch trigger.",
+    "origin_date": "",
+    "trigger_event": "No trigger found.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://www.geckoterminal.com/rug-checker/solana/6JaZtFZ8yUsXZHZ4FASscrzEuHDQEMWvVDTxLqCppump"
+    ],
+    "confidence": 0.3,
+    "notes": "Only a GeckoTerminal security page exists for the mint. No description, socials or account history found; whether it is an AI-agent coin or a name-riding coin is unknown. Taxonomy lists a coin named after a model as AI; guide does not settle coins that borrow an AI product name without any agent. Possible naming collision with the assistant running this research is coincidental."
+  },
+  {
+    "mint": "6iyDc4uTS1oB16m5fcYSGBhnigbvvk9PGDxxnQWfpump",
+    "ticker": "GTA 6 Coin",
+    "primary_narrative": "gaming",
+    "secondary_narratives": [],
+    "origin": "Token metadata names the coin 'GTA 6 Coin' (ticker GTA6), referring to Rockstar's Grand Theft Auto VI video game. It launched on pump.fun on 2026-11-04 and migrated to PumpSwap.",
+    "origin_date": "",
+    "trigger_event": "No specific trigger found; launched in a cluster of hundreds of coins sharing the GTA6COIN ticker that same week, suggesting a game-hype trend.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://api.loopholetape.com/token/6iyDc4uTS1oB16m5fcYSGBhnigbvvk9PGDxxnQWfpump",
+      "https://dexscreener.com/solana/6iydc4uts1ob16m5fcysgbhnigbvvk9pgdxxnqwfpump"
+    ],
+    "confidence": 0.5,
+    "notes": "Subject is a game franchise so gaming. Origin_date left empty: I did not source a specific game event (release or trailer date) that the coin refers to. Many copycat mints share the ticker; the mint identifies this one. No parent mint: it is a ticker-copy cluster, not a known derivative."
+  },
+  {
+    "mint": "AKkS9HULrgk19uKzNYpn866UWP3zu5eesQkCTUf6pump",
+    "ticker": "Merbu",
+    "primary_narrative": "other",
+    "secondary_narratives": [],
+    "origin": "Nothing reliable was found on what 'Merbu' refers to.",
+    "origin_date": "",
+    "trigger_event": "None found.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://www.solflare.com/prices/"
+    ],
+    "confidence": 0.1,
+    "notes": "Web searches for the mint and name returned nothing about this coin. Best reading from the name alone is an unknown character or in-joke; 'other' used only because no subject is nameable. Cited source is a generic Solflare token directory, not a page on this coin. No working coin-specific URL found."
+  },
+  {
+    "mint": "xdcX3EBKUaSe99yc2Q9QBYRZfcQ4Rh319nAy6FMpump",
+    "ticker": "TNOS",
+    "primary_narrative": "other",
+    "secondary_narratives": [
+      "political"
+    ],
+    "origin": "Other mints with ticker TNOS describe it as 'Transnational Oil Supply'. Whether this mint uses the same description was not verified.",
+    "origin_date": "",
+    "trigger_event": "Pump.fun daily stats list this mint as a large coin on the day it launched, 2026-08-04; the cause of the run was not found.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://pumpdata.fun/stats/2026-08-04",
+      "https://dexonomics.io/solana/tnos/3F6EmAkejpfpP9Jnnzn47ivm1nSX3Whp92D56X7Ru9C9"
+    ],
+    "confidence": 0.15,
+    "notes": "Mint confirmed on pumpdata.fun as TNOS launched 2026-08-04 and graduated. The 'Transnational Oil Supply' text comes from a different TNOS mint (Dexonomics page), so applied here only as a guess; political/geopolitics secondary is speculative. No socials or X handles found. Guide does not cover shared tickers across mints."
+  },
+  {
+    "mint": "Bf9imbBSgaPhYaK34ZBkvjafPfjcUBEWCTLD9jqT6idH",
+    "ticker": "TINYTANK",
+    "primary_narrative": "other",
+    "secondary_narratives": [],
+    "origin": "Nothing reliable was found on what 'TINYTANK' refers to; the name suggests a small tank, but the meaning is unknown.",
+    "origin_date": "",
+    "trigger_event": "None found.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://pump.fun/coin/Bf9imbBSgaPhYaK34ZBkvjafPfjcUBEWCTLD9jqT6idH"
+    ],
+    "confidence": 0.1,
+    "notes": "Search found no data for the mint. Mint lacks the usual 'pump' suffix, so it may not be a standard pump.fun vanity address. Source is the pump.fun coin page URL, not verified to load (Cloudflare blocked automated checks). No working verified URL."
+  },
+  {
+    "mint": "BMRMVjoA3tf4B3fByMayWbBQEjFTtxQw5Awf3Upvpump",
+    "ticker": "HIRO",
+    "primary_narrative": "other",
+    "secondary_narratives": [],
+    "origin": "Nothing reliable was found on what 'HIRO' refers to; it could be a person, a hero pun or the Hiro dev-tools company, none confirmed.",
+    "origin_date": "",
+    "trigger_event": "None found.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://pump.fun/coin/BMRMVjoA3tf4B3fByMayWbBQEjFTtxQw5Awf3Upvpump"
+    ],
+    "confidence": 0.1,
+    "notes": "Search found no data for the mint. Source is the pump.fun coin page URL, not verified to load (Cloudflare blocked automated checks). No working verified URL."
+  },
+  {
+    "mint": "3DV36psSaEcyMUoTcpg3QE2EArc1TNgX5jJCyFAYpump",
+    "ticker": "Comicoin",
+    "primary_narrative": "culture/meme",
+    "secondary_narratives": [],
+    "origin": "Nothing reliable was found; the name suggests a comics or comedy-themed coin.",
+    "origin_date": "",
+    "trigger_event": "None found.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://pump.fun/coin/3DV36psSaEcyMUoTcpg3QE2EArc1TNgX5jJCyFAYpump"
+    ],
+    "confidence": 0.1,
+    "notes": "Search returned no data for the mint. Reading from name only (comics/comedy as culture). Source is the pump.fun coin page URL, not verified to load. No working verified URL."
+  }
+]
