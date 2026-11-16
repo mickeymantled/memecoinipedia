@@ -89,32 +89,39 @@ describeDb('queue worker', () => {
     `.execute(db)
     ).rows.map((r) => ({ coin: Number(r.coin_id), n: Number(r.n) }));
 
-  it('runs every coin through every stage once, in order', async () => {
+  it('runs every coin through every stage once, each after the stage it requires', async () => {
     const addresses = Array.from({ length: 12 }, (_, i) => mintN(i + 1));
     const ids = [...(await seedCoins(db, addresses)).values()];
     const w = worker(
       new StageRegistry()
         .register(discoveredStage)
         .register(stage('metadata'))
-        .register(stage('candles')),
+        .register(stage('candles'))
+        .register(stage('metrics')),
     );
     await w.start();
-    expect(await w.enqueueNotDone()).toEqual({ discovered: 0, metadata: 12, candles: 0 });
+    // metadata and candles both need only `discovered`; metrics waits for candles.
+    expect(await w.enqueueNotDone()).toEqual({
+      discovered: 0,
+      metadata: 12,
+      candles: 12,
+      metrics: 0,
+    });
     await w.waitUntilIdle();
 
     const rows = await stages();
-    expect(rows).toHaveLength(12 * 3); // no duplicate rows
+    expect(rows).toHaveLength(12 * 4); // no duplicate rows
     expect(rows.every((r) => r.status === 'done')).toBe(true);
     expect((await runsOf()).map((r) => r.n)).toEqual(Array(12).fill(1));
-    // candles started only after metadata finished.
+    // metrics started only after candles finished.
     for (const id of ids) {
-      const m = rows.find((r) => r.coin_id === id && r.stage === 'metadata')!;
       const c = rows.find((r) => r.coin_id === id && r.stage === 'candles')!;
-      expect(c.started_at!.getTime()).toBeGreaterThanOrEqual(m.finished_at!.getTime());
+      const m = rows.find((r) => r.coin_id === id && r.stage === 'metrics')!;
+      expect(m.started_at!.getTime()).toBeGreaterThanOrEqual(c.finished_at!.getTime());
     }
   });
 
-  it('stops after metadata when no later stage is registered', async () => {
+  it('runs only the registered stages', async () => {
     await seedCoins(db, [mintN(1), mintN(2)]);
     const w = worker(new StageRegistry().register(discoveredStage).register(stage('metadata')));
     await w.start();
@@ -126,6 +133,75 @@ describeDb('queue worker', () => {
       'metadata',
       'metadata',
     ]);
+  });
+
+  it('a failed metadata stage does not hold back candles and metrics, and failed candles hold back metrics', async () => {
+    const ids = await seedCoins(db, [mintN(1), mintN(2), mintN(3)]);
+    const noMeta = ids.get(mintN(1))!;
+    const noCandles = ids.get(mintN(2))!;
+    const w = worker(
+      new StageRegistry()
+        .register(discoveredStage)
+        .register(
+          stage('metadata', (id) =>
+            id === noMeta
+              ? { status: 'failed', reason: 'helius_error: x', retry: false }
+              : { status: 'done' },
+          ),
+        )
+        .register(
+          stage('candles', (id) =>
+            id === noCandles
+              ? { status: 'failed', reason: 'no_pools: none', retry: false }
+              : { status: 'done' },
+          ),
+        )
+        .register(stage('metrics')),
+    );
+    await w.start();
+    await w.enqueueNotDone();
+    await w.waitUntilIdle();
+    const status = async (coin: number, stage: string) =>
+      (await stages()).find((r) => r.coin_id === coin && r.stage === stage)?.status ?? 'none';
+    expect(await status(noMeta, 'metadata')).toBe('failed');
+    expect(await status(noMeta, 'candles')).toBe('done');
+    expect(await status(noMeta, 'metrics')).toBe('done');
+    expect(await status(noCandles, 'candles')).toBe('failed');
+    expect(await status(noCandles, 'metrics')).toBe('none');
+    expect(await status(noCandles, 'metadata')).toBe('done');
+  });
+
+  it('a held stage claims no coin and leaves its coins as they were', async () => {
+    const ids = await seedCoins(db, [mintN(1), mintN(2), mintN(3)]);
+    let open = true;
+    let ran = 0;
+    const gated: Stage = {
+      ...stage('candles', () => {
+        ran++;
+        open = false; // the first coin closes the gate, as a spend ceiling does
+        return { status: 'done' };
+      }),
+      admit: () => open,
+    };
+    const w = worker(new StageRegistry().register(discoveredStage).register(gated), {
+      concurrency: 1,
+    });
+    await w.start();
+    await w.enqueueNotDone();
+    await w.waitUntilIdle();
+    const rows = (await stages()).filter((r) => r.stage === 'candles');
+    expect(ran).toBe(1);
+    expect(rows.filter((r) => r.status === 'done')).toHaveLength(1);
+    // The other two were never claimed: no attempt, no row change beyond what was there.
+    expect(rows.filter((r) => r.status !== 'done')).toEqual([]);
+    expect(ids.size).toBe(3);
+    // A later run with the gate open finishes them, and the first coin is not run again.
+    open = true;
+    const again = worker(new StageRegistry().register(discoveredStage).register(gated));
+    await again.start();
+    expect(await again.enqueueNotDone()).toEqual({ discovered: 0, candles: 2 });
+    await again.waitUntilIdle();
+    expect(ran).toBe(3);
   });
 
   it('retries a failing stage with backoff, then leaves it failed with the reason', async () => {
@@ -145,7 +221,8 @@ describeDb('queue worker', () => {
               : { status: 'done' },
           ),
         )
-        .register(stage('candles')),
+        .register(stage('candles'))
+        .register(stage('metrics')),
     );
     await w.start();
     await w.enqueueNotDone();
@@ -158,9 +235,9 @@ describeDb('queue worker', () => {
       attempts: 3, // one try and two retries, then final
       last_error: 'metadata_unreachable: ipfs.filebase.io timeout',
     });
-    // The failed coin never reached the next stage; the others did.
-    expect(rows.filter((r) => r.coin_id === bad && r.stage === 'candles')).toEqual([]);
-    expect(rows.filter((r) => r.stage === 'candles' && r.status === 'done')).toHaveLength(2);
+    // Candles does not need metadata: the failed coin got candles and metrics like the others.
+    expect(rows.filter((r) => r.stage === 'candles' && r.status === 'done')).toHaveLength(3);
+    expect(rows.filter((r) => r.stage === 'metrics' && r.status === 'done')).toHaveLength(3);
     // Its work ran three times and the others once.
     expect((await runsOf()).find((r) => r.coin === bad)?.n).toBe(3);
   }, 30_000);

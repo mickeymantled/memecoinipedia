@@ -9,7 +9,8 @@ export { addCoverage, getCoverage, countCoverageRequests } from './candleCoverag
 export type { CoverageInterval } from './candleCoverage.js';
 export { upsertPool, getCoinPools, refreshPoolBarStats } from './pools.js';
 export type { PoolInput, StoredPool } from './pools.js';
-export { recordDataIssue } from './dataIssues.js';
+export { replaceCoinIssues, recordDataIssue } from './dataIssues.js';
+export type { NewIssue } from './dataIssues.js';
 export {
   loadMetricInput,
   writeCoinMetrics,

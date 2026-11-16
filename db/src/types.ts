@@ -138,6 +138,8 @@ export interface CoinStagesTable {
   started_at: Ts | null;
   finished_at: Ts | null;
   updated_at: TsNow;
+  /** Small per-coin result of a `done` stage (the candles stage stores its path and unit counts). */
+  detail: Json | null;
 }
 
 export interface IngestRunsTable {
@@ -335,6 +337,7 @@ export const databaseShape: { [T in keyof Database]: Record<keyof Database[T], t
     started_at: true,
     finished_at: true,
     updated_at: true,
+    detail: true,
   },
   ingest_runs: {
     id: true,

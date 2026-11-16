@@ -1,9 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { PrefetchLoader } from '../../src/worker/batch.js';
 import { scrub } from '../../src/worker/log.js';
-import { estimateMetadata, formatPlan } from '../../src/worker/plan.js';
+import {
+  CANDLE_UNITS_BY_CELL,
+  estimateCandleUnits,
+  estimateMetadata,
+  formatPlan,
+} from '../../src/worker/plan.js';
 import { parseCsv, parseSampleCsv } from '../../src/worker/seed.js';
-import { StageRegistry, type Stage } from '../../src/worker/stage.js';
+import {
+  StageRegistry,
+  STAGE_REQUIRES,
+  requirementOf,
+  type Stage,
+} from '../../src/worker/stage.js';
 import { droppedSocialLinks } from '../../src/worker/stages/metadata.js';
 import { imageReference } from '../../src/worker/stages/image.js';
 import { mintN } from './helpers.js';
@@ -167,15 +177,32 @@ describe('StageRegistry', () => {
     version: 1,
     run: async () => ({ status: 'done' }),
   });
-  it('takes stages in pipeline order with no gaps', () => {
-    expect(() => new StageRegistry().register(stage('metadata'))).toThrow(/out of order/);
-    const r = new StageRegistry().register(stage('discovered')).register(stage('metadata'));
-    expect(r.next('discovered')?.name).toBe('metadata');
-    expect(r.next('metadata')).toBeUndefined(); // the pipeline stops after metadata until part 3
-    expect(r.previous('metadata')?.name).toBe('discovered');
-    expect(() => r.register(stage('metrics'))).toThrow(/out of order/);
-    r.register(stage('candles')).register(stage('metrics'));
-    expect(r.next('metadata')?.name).toBe('candles');
+  it('states a requirement per stage and lists dependents', () => {
+    expect(STAGE_REQUIRES).toEqual({
+      discovered: null,
+      metadata: 'discovered',
+      candles: 'discovered',
+      metrics: 'candles',
+    });
+    const r = new StageRegistry()
+      .register(stage('discovered'))
+      .register(stage('metadata'))
+      .register(stage('candles'))
+      .register(stage('metrics'));
+    expect(
+      r
+        .dependents('discovered')
+        .map((x) => x.name)
+        .sort(),
+    ).toEqual(['candles', 'metadata']);
+    expect(r.dependents('candles').map((x) => x.name)).toEqual(['metrics']);
+    expect(r.dependents('metadata')).toEqual([]);
+    expect(requirementOf('metrics')).toBe('candles');
+    expect(requirementOf('classified')).toBeNull();
+  });
+  it('lets candles be registered without metadata, and refuses a stage twice', () => {
+    const r = new StageRegistry().register(stage('discovered')).register(stage('candles'));
+    expect(() => r.register(stage('candles'))).toThrow(/twice/);
   });
   it('rejects a version that is not a positive integer', () => {
     expect(() => new StageRegistry().register({ ...stage('discovered'), version: 0 })).toThrow();
@@ -205,14 +232,61 @@ describe('estimate and plan text', () => {
         toSeed: 500,
         stageWork: { discovered: 500, metadata: 500 },
         estimate: estimateMetadata(500),
+        candles: null,
         maxHeliusCredits: 300,
+        maxCodexUnits: null,
         withinCeiling: true,
+        withinCodexCeiling: true,
         nothingToDo: false,
       },
       false,
     );
     expect(text).toContain('helius: 1 requests, 10 credits (ceiling 300)');
     expect(text).toContain('Dry run: no call was made and nothing was written');
+  });
+});
+
+describe('candles estimate', () => {
+  const info = (cell: string, probe = false) => ({ halfYear: '2024-H1', cell, probe });
+  it('uses the per-coin figures by cell, 42 for probe coins and the top figure for an unknown cell', () => {
+    expect(CANDLE_UNITS_BY_CELL).toEqual({
+      '30k-50k': 16,
+      '50k-100k': 18,
+      '100k-1M': 20,
+      '1M-10M': 35,
+      '10M+': 80,
+    });
+    const e = estimateCandleUnits([
+      info('30k-50k'),
+      info('30k-50k'),
+      info('50k-100k'),
+      info('100k-1M'),
+      info('1M-10M'),
+      info('10M+'),
+      info('10M+', true), // a probe coin costs 42 whatever its cell
+      info('odd'),
+      undefined,
+    ]);
+    expect(e.rows).toEqual([
+      { label: '30k-50k', coins: 2, unitsPerCoin: 16, units: 32 },
+      { label: '50k-100k', coins: 1, unitsPerCoin: 18, units: 18 },
+      { label: '100k-1M', coins: 1, unitsPerCoin: 20, units: 20 },
+      { label: '1M-10M', coins: 1, unitsPerCoin: 35, units: 35 },
+      { label: '10M+', coins: 1, unitsPerCoin: 80, units: 80 },
+      { label: 'probe', coins: 1, unitsPerCoin: 42, units: 42 },
+      { label: 'unknown', coins: 2, unitsPerCoin: 80, units: 160 },
+    ]);
+    expect(e.totalUnits).toBe(387);
+  });
+  it('reads cell, half-year and probe from the sample file', () => {
+    const text = [
+      HEADER,
+      row(mintN(1), '2024-05-21T04:58:06Z', mintN(900), '', ''),
+      `${mintN(2)},2025-H2,10M+,false,2,2025-05-21T04:58:06Z,,,670,9,9,2025-05-21T15:00:00Z`,
+    ].join('\n');
+    const { info: byMint } = parseSampleCsv(text);
+    expect(byMint.get(mintN(1))).toEqual({ halfYear: '2024-H1', cell: '100k-1M', probe: true });
+    expect(byMint.get(mintN(2))).toEqual({ halfYear: '2025-H2', cell: '10M+', probe: false });
   });
 });
 

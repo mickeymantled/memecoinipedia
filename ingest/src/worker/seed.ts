@@ -28,8 +28,20 @@ export interface RowProblem {
   problem: string;
 }
 
+/** What the sample file says about a coin besides what `discovered` stores. */
+export interface SampleCoinInfo {
+  /** `2024-H1` and so on; empty when the column is absent. */
+  halfYear: string;
+  /** The sampling cell (`30k-50k`, `50k-100k`, `100k-1M`, `1M-10M`, `10M+`); empty when absent. */
+  cell: string;
+  /** The coin is one of the probe coins. */
+  probe: boolean;
+}
+
 export interface ParsedSample {
   coins: DiscoveredCoin[];
+  /** Sample-file columns that are not stored on the coin, by mint. The columns are optional. */
+  info: Map<string, SampleCoinInfo>;
   /** Data rows read, valid or not. */
   rowsRead: number;
   problems: RowProblem[];
@@ -89,6 +101,11 @@ export function parseSampleCsv(text: string): ParsedSample {
   const at = (r: string[], name: (typeof REQUIRED)[number]): string => r[col.get(name)!] ?? '';
 
   const coins: DiscoveredCoin[] = [];
+  const info = new Map<string, SampleCoinInfo>();
+  const optional = (r: string[], name: string): string => {
+    const i = col.get(name);
+    return i === undefined ? '' : (r[i] ?? '').trim();
+  };
   const problems: RowProblem[] = [];
   const seen = new Set<string>();
   let duplicates = 0;
@@ -127,6 +144,11 @@ export function parseSampleCsv(text: string): ParsedSample {
       continue;
     }
     seen.add(mint);
+    info.set(mint, {
+      halfYear: optional(r, 'half_year'),
+      cell: optional(r, 'cell'),
+      probe: /^(true|t|1|yes)$/i.test(optional(r, 'probe')),
+    });
     coins.push({
       chain: CHAIN,
       address: mint,
@@ -138,7 +160,7 @@ export function parseSampleCsv(text: string): ParsedSample {
       roughAthMarketCapUsd: peak,
     });
   }
-  return { coins, rowsRead: rows.length - 1, problems, duplicates };
+  return { coins, info, rowsRead: rows.length - 1, problems, duplicates };
 }
 
 export async function readSampleFile(path: string): Promise<ParsedSample> {
