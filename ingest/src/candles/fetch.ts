@@ -16,6 +16,7 @@ import {
 } from '@memecoinipedia/db';
 import { computeCoinMetrics } from '../metrics/index.js';
 import {
+  isMayhemLaunchpad,
   pairIdFor,
   type CallMeter,
   type LaunchInfo,
@@ -507,14 +508,19 @@ export async function fetchCandlesForCoin(
     }
   }
 
-  /** Sets launch and graduation time on the coin when they are empty. Never overwrites. */
+  /** Sets launch and graduation time on the coin when they are empty (never overwrites), and the mayhem flag when the launch record says so. */
   async function fillCoinTimes(launch: LaunchInfo): Promise<void> {
     const current = await db
       .selectFrom('coins')
-      .select(['launched_at', 'graduated_at'])
+      .select(['launched_at', 'graduated_at', 'is_mayhem_mode'])
       .where('id', '=', coin.id)
       .executeTakeFirstOrThrow();
-    const set: { launched_at?: Date; graduated_at?: Date } = {};
+    const set: { launched_at?: Date; graduated_at?: Date; is_mayhem_mode?: boolean } = {};
+    // Mayhem mode: Codex.io's launchpad name sets true; no other name changes anything, and a
+    // stored true is never touched.
+    if (isMayhemLaunchpad(launch.launchpadName) && current.is_mayhem_mode !== true) {
+      set.is_mayhem_mode = true;
+    }
     if (!current.launched_at && launch.createdAt !== null) {
       set.launched_at = new Date(launch.createdAt * 1000);
     }

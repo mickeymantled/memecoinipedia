@@ -109,6 +109,17 @@ export class CodexResponseError extends Error {
   }
 }
 
+/**
+ * The launchpad name Codex.io's launch record carries for a coin created in mayhem mode (probe of
+ * six never-graduated coins, issue #102). Compared without regard to case. Any other name says
+ * nothing about the mode.
+ */
+export const MAYHEM_LAUNCHPAD_NAME = 'Pump Mayhem';
+
+/** True when the launch record's launchpad name is `MAYHEM_LAUNCHPAD_NAME`. */
+export const isMayhemLaunchpad = (name: string | null | undefined): boolean =>
+  typeof name === 'string' && name.trim().toLowerCase() === MAYHEM_LAUNCHPAD_NAME.toLowerCase();
+
 export interface LaunchInfo {
   mint: string;
   symbol: string | null;

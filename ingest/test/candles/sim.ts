@@ -30,6 +30,8 @@ export interface SimCoin {
   migratedAt: number | null;
   /** What launch info names as the migrated pool; null makes the fetcher look the pool list up. */
   migratedPoolAddress: string | null;
+  /** The launch record's launchpad name. Default `Pump.fun`. */
+  launchpadName?: string;
   pools: SimPool[];
 }
 
@@ -80,7 +82,7 @@ export function simProvider(coin: SimCoin): {
           createdAt: coin.createdAt,
           creatorAddress: null,
           launchpad: {
-            launchpadName: 'Pump.fun',
+            launchpadName: coin.launchpadName ?? 'Pump.fun',
             migrated: coin.migratedAt !== null,
             migratedAt: coin.migratedAt,
             migratedPoolAddress: coin.migratedPoolAddress,
