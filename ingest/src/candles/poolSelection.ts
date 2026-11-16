@@ -135,6 +135,9 @@ export function selectPools(args: SelectPoolsArgs): PoolSelection {
         listTruncated: result.truncated,
         migrated: args.migrated,
         migratedAt: args.migratedAt,
+        // The distance this list was read under: the rule `late-graduation-pool` leaves the coin
+        // alone while its open issue carries the current one.
+        maxDelaySec: args.maxGraduationPoolDelaySeconds ?? DEFAULT_GRADUATION_DELAY_SEC,
       },
     });
   }

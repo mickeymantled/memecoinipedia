@@ -169,6 +169,7 @@ describe('selectPools', () => {
             listTruncated: true,
             migrated: true,
             migratedAt: MIGRATED_AT,
+            maxDelaySec: 3_600, // the distance the list was read under (issue 86)
           },
         },
       ]);

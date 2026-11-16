@@ -3,6 +3,7 @@ import { sql } from 'kysely';
 import { selectCoinsByRule } from '../src/backfill.js';
 import { putBars, type CandleBar } from '../src/candles.js';
 import { upsertCoin } from '../src/coins.js';
+import { replaceCoinIssues } from '../src/dataIssues.js';
 import {
   getCoinPools,
   moveGraduationPool,
@@ -231,12 +232,17 @@ describeDb('the late-graduation-pool rule (issue 81)', () => {
       pool: { createdAt: GRAD + 3_600, grad: true },
       candles: 'done',
     });
-    await coin('undated', {
+    const undated = await coin('undated', {
       graduated: GRAD,
       pool: { createdAt: null, grad: true },
       candles: 'done',
     });
-    await coin('early', {
+    // Never listed, but its first bar is on time: not late.
+    await sql`update pools set first_bar_at = to_timestamp(${GRAD + 600}) where coin_id = ${undated}`.execute(
+      t.db,
+    );
+    // Created more than an hour before the graduation time: the distance runs both ways.
+    const early = await coin('early', {
       graduated: GRAD,
       pool: { createdAt: GRAD - 90_000, grad: true },
       candles: 'done',
@@ -270,11 +276,86 @@ describeDb('the late-graduation-pool rule (issue 81)', () => {
     const picked = await selectCoinsByRule(t.db, 'late-graduation-pool', {
       maxDelaySeconds: 3_600,
     });
-    expect(picked).toEqual([late, missing, bare, lateFailed].sort((x, y) => x - y));
+    expect(picked).toEqual([late, early, missing, bare, lateFailed].sort((x, y) => x - y));
     // The distance is a parameter.
     expect(
       await selectCoinsByRule(t.db, 'late-graduation-pool', { maxDelaySeconds: 600 }),
     ).toContain(late);
     expect(await selectCoinsByRule(t.db, 'late-graduation-pool')).toEqual(picked);
+  });
+
+  it('sees a named pool that was never listed (late first bar, or no bar), and leaves out coins examined under the current rule (issue 86)', async () => {
+    const coin = async (name: string, over: { first?: number | null; created?: number | null }) => {
+      const id = await upsertCoin(t.db, { chain: 'solana', address: `h-${name}` });
+      await sql`update coins set graduated_at = to_timestamp(${GRAD}) where id = ${id}`.execute(
+        t.db,
+      );
+      await upsertPool(t.db, {
+        chain: 'solana',
+        address: `pool-h-${name}`,
+        coinId: id,
+        dex: 'Raydium',
+        isPrimary: true,
+        isGraduationPool: true,
+        createdAtChain: over.created === undefined ? null : over.created,
+      });
+      if (over.first !== undefined && over.first !== null) {
+        await sql`update pools set first_bar_at = to_timestamp(${over.first}) where coin_id = ${id}`.execute(
+          t.db,
+        );
+      }
+      await sql`insert into coin_stages (coin_id, stage, status) values (${id}, 'candles', 'done')`.execute(
+        t.db,
+      );
+      return id;
+    };
+    const issue = (coinId: number, kind: string, detail: unknown) =>
+      replaceCoinIssues(t.db, coinId, [kind], [{ kind, detail }]);
+    const ids = {
+      lateBar: await coin('lateBar', { first: GRAD + 2 * 86_400 }),
+      noBar: await coin('noBar', {}),
+      goodBar: await coin('goodBar', { first: GRAD + 3_600 }),
+      listed: await coin('listed', { created: GRAD + 5, first: GRAD + 2 * 86_400 }),
+      lateExamined: await coin('lateExamined', { created: GRAD + 99_999 }),
+      lateOldRule: await coin('lateOldRule', { created: GRAD + 99_999 }),
+      lateOtherRule: await coin('lateOtherRule', { created: GRAD + 99_999 }),
+      lateResolved: await coin('lateResolved', { created: GRAD + 99_999 }),
+      notFound: await coin('notFound', { created: GRAD + 99_999 }),
+    };
+    await issue(ids.lateExamined, 'graduation_pool_late', {
+      distanceSec: 99_999,
+      maxDelaySec: 3_600,
+    });
+    await issue(ids.lateOldRule, 'graduation_pool_late', { distanceSec: 99_999, maxDelaySec: 600 });
+    await issue(ids.lateOtherRule, 'graduation_pool_late', { distanceSec: 99_999 });
+    await issue(ids.lateResolved, 'graduation_pool_late', { maxDelaySec: 3_600 });
+    await sql`update data_issues set resolved_at = now() where coin_id = ${ids.lateResolved}`.execute(
+      t.db,
+    );
+    // A not-found issue read under the current rule marks a coin with no graduation pool too.
+    const bare = await upsertCoin(t.db, { chain: 'solana', address: 'h-bare' });
+    await sql`insert into coin_stages (coin_id, stage, status) values (${bare}, 'candles', 'done')`.execute(
+      t.db,
+    );
+    const bareExamined = await upsertCoin(t.db, { chain: 'solana', address: 'h-bareExamined' });
+    await sql`insert into coin_stages (coin_id, stage, status) values (${bareExamined}, 'candles', 'done')`.execute(
+      t.db,
+    );
+    await issue(bareExamined, 'graduation_pool_not_found', { maxDelaySec: 3_600, poolsListed: 4 });
+
+    const picked = await selectCoinsByRule(t.db, 'late-graduation-pool', {
+      maxDelaySeconds: 3_600,
+    });
+    const mine = new Set(Object.values(ids).concat(bare, bareExamined));
+    const expected = [
+      ids.lateBar,
+      ids.noBar,
+      ids.lateOldRule, // examined under another distance
+      ids.lateOtherRule, // an issue with no mark: recorded before the mark existed
+      ids.lateResolved, // the issue is resolved
+      ids.notFound,
+      bare,
+    ].sort((x, y) => x - y);
+    expect(picked.filter((id) => mine.has(id))).toEqual(expected);
   });
 });

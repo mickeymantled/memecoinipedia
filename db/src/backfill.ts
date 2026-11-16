@@ -249,9 +249,19 @@ export const DEFAULT_GRADUATION_POOL_DELAY_SEC = 3_600;
 /**
  * Coin ids picked by a rule, from stored data only (no provider is asked), ascending.
  *
- * `late-graduation-pool`: a coin whose graduation pool was created more than `maxDelaySeconds`
- * after the coin's graduation time (both known), or whose candles stage is done and that holds no
- * graduation pool. A pool or a coin with no time is never late.
+ * `late-graduation-pool`: a coin that
+ *   1. has a graduation pool created more than `maxDelaySeconds` before or after the coin's
+ *      graduation time (both known), or
+ *   2. has a graduation pool with no creation time (named by launch info, never listed) whose first
+ *      stored bar starts more than a day after the graduation time, or that holds no bar on a coin
+ *      whose candles are done, or
+ *   3. has no graduation pool and its candles stage is done.
+ * A pool or a coin with no time is never late by (1).
+ *
+ * A coin with an open `graduation_pool_late` or `graduation_pool_not_found` issue whose detail
+ * says `maxDelaySec` equal to `maxDelaySeconds` was examined by a run under this rule (its pool
+ * list was read and holds no pool created at the migration): it is left out, so a rule run is not
+ * repeated at one list request a coin.
  */
 export async function selectCoinsByRule(
   db: Kysely<Database>,
@@ -261,6 +271,9 @@ export async function selectCoinsByRule(
   const chain = options.chain ?? 'solana';
   const maxDelay = options.maxDelaySeconds ?? DEFAULT_GRADUATION_POOL_DELAY_SEC;
   if (rule !== 'late-graduation-pool') throw new Error(`Unknown rule "${String(rule)}"`);
+  const candlesDone = sql`exists (
+    select 1 from coin_stages s
+    where s.coin_id = c.id and s.stage = 'candles' and s.status = 'done')`;
   const r = await sql<{ id: string }>`
     select c.id::text as id
     from coins c
@@ -270,17 +283,29 @@ export async function selectCoinsByRule(
           select 1 from pools p
           where p.coin_id = c.id and p.is_graduation_pool
             and p.created_at_chain is not null and c.graduated_at is not null
-            and extract(epoch from (p.created_at_chain - c.graduated_at)) > ${maxDelay}
+            and abs(extract(epoch from (p.created_at_chain - c.graduated_at))) > ${maxDelay}
+        )
+        or exists (
+          select 1 from pools p
+          where p.coin_id = c.id and p.is_graduation_pool and p.created_at_chain is null
+            and (
+              (c.graduated_at is not null and p.first_bar_at is not null
+                and p.first_bar_at > c.graduated_at + interval '1 day')
+              or (p.first_bar_at is null and ${candlesDone})
+            )
         )
         or (
-          exists (
-            select 1 from coin_stages s
-            where s.coin_id = c.id and s.stage = 'candles' and s.status = 'done'
-          )
+          ${candlesDone}
           and not exists (
             select 1 from pools p where p.coin_id = c.id and p.is_graduation_pool
           )
         )
+      )
+      and not exists (
+        select 1 from data_issues i
+        where i.coin_id = c.id and i.resolved_at is null
+          and i.kind in ('graduation_pool_late', 'graduation_pool_not_found')
+          and i.detail @> jsonb_build_object('maxDelaySec', ${maxDelay}::numeric)
       )
     order by c.id`.execute(db);
   return r.rows.map((x) => Number(x.id));
@@ -304,6 +329,34 @@ export async function requeueFailedInSelection(
     where c.id = s.coin_id and s.status = 'failed' and s.stage = any(${[...stages]}::text[])
       and ${selectionCondition(sel)}`.execute(db);
   return Number(r.numAffectedRows ?? 0);
+}
+
+/**
+ * When the refresh this run belongs to first started, or null when it is a new refresh.
+ *
+ * The run record already stores what is needed: `params.refreshPools` and the resolved coin ids
+ * (`params.selection.coinIds`). A run is the continuation of earlier runs when they are refreshes
+ * of exactly the same coin list, back to the last one that ended `done` (a refresh that ended `done`
+ * is over: the same list asked again later is a new refresh). The answer is the earliest start
+ * among those earlier runs that is not itself before such a finished one. Runs left `running` by a
+ * crash and runs that were `stopped` or `failed` count as unfinished.
+ */
+export async function refreshFirstStart(
+  db: Kysely<Database>,
+  opts: { kind: string; coinIds: readonly number[]; beforeRunId: number },
+): Promise<Date | null> {
+  const r = await sql<{ status: string; started_at: Date | null }>`
+    select status, started_at from ingest_runs
+    where kind = ${opts.kind} and id < ${opts.beforeRunId}
+      and params ->> 'refreshPools' = 'true'
+      and params -> 'selection' -> 'coinIds' = ${JSON.stringify([...opts.coinIds])}::jsonb
+    order by id desc`.execute(db);
+  let first: Date | null = null;
+  for (const run of r.rows) {
+    if (run.status === 'done') break;
+    if (run.started_at && (first === null || run.started_at < first)) first = run.started_at;
+  }
+  return first;
 }
 
 /** Resolves the limit into a key (an index walk of `limit` rows) and counts the selection. */
