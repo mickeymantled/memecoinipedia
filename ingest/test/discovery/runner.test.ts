@@ -899,3 +899,75 @@ describe('sizeAndSample', () => {
     expect(exists(w, 'sample.csv')).toBe(true);
   });
 });
+
+describe('the curve-only list (issue #102)', () => {
+  const CURVE_HEADER = [...GRADUATE_COLUMNS, 'is_mayhem_mode'].join(',');
+  /** Row i of the curve-only file: graduated_at empty as Dune writes a null. */
+  const curveRow = (i: number, flag: string, graduated = '<nil>'): string => {
+    const f = csvRow(i).split(',');
+    f[3] = graduated;
+    return [...f, flag].join(',');
+  };
+  function setupCurve(extra: string[] = []) {
+    const w = world({ list: 'curve-only' });
+    fs.mkdirSync(w.args.out, { recursive: true });
+    const rows = [curveRow(1, 'true'), curveRow(2, 'false'), curveRow(3, '<nil>'), ...extra];
+    fs.writeFileSync(discoveryFile(w.args.out), `${CURVE_HEADER}\n${rows.join('\n')}\n`);
+    return w;
+  }
+
+  it('parses --list, with the curve-only defaults for the query and the folder, and rejects others', () => {
+    const a = parseRunnerArgs(['--list', 'curve-only']);
+    expect(a.list).toBe('curve-only');
+    expect(a.sql.endsWith('curve-only-candidates.sql')).toBe(true);
+    expect(a.out.endsWith('dune-curve-only')).toBe(true);
+    const g = parseRunnerArgs([]);
+    expect(g.list).toBe('graduates');
+    expect(g.sql.endsWith('discovery.sql')).toBe(true);
+    expect(() => parseRunnerArgs(['--list', 'other'])).toThrow(UsageError);
+  });
+
+  it('reads the file with the new reader: counts by launch month and flag, no sample', async () => {
+    const w = setupCurve();
+    await sizeAndSample(w.args, w.log);
+    const text = w.logs.join('\n');
+    expect(text).toContain('Read 3 rows: 3 kept, 0 rejected.');
+    expect(text).toContain('Rows by launch month (UTC):');
+    expect(text).toContain('  2024-02: 3');
+    expect(text).toContain('Mayhem flag: true 1, false 1, empty 1.');
+    expect(exists(w, 'sample.csv')).toBe(false);
+  });
+
+  it('a row with a graduation time is an error, not a coin', async () => {
+    const w = setupCurve([curveRow(4, 'false', String(HALF_YEAR_START + 4 * 3600 + 1800))]);
+    await sizeAndSample(w.args, w.log);
+    const text = w.logs.join('\n');
+    expect(text).toContain('3 kept, 1 rejected');
+    expect(text).toContain('a curve-only row must not carry a graduation time');
+  });
+
+  it('the dry run from main reads an existing file, sends nothing, and says it is the curve-only list', async () => {
+    const w = setupCurve();
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const code = await main(['--list', 'curve-only', '--out', w.args.out], {});
+    const printed = log.mock.calls.map((c) => String(c[0])).join('\n');
+    log.mockRestore();
+    expect(code).toBe(0);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(printed).toContain('List: curve-only.');
+    expect(printed).toContain('Mayhem flag: true 1, false 1, empty 1.');
+    expect(exists(w, 'sample.csv')).toBe(false);
+  });
+
+  it('without --list nothing changes: the file is read as graduates and the sample is written', async () => {
+    const w = world();
+    fs.mkdirSync(w.args.out, { recursive: true });
+    fs.writeFileSync(discoveryFile(w.args.out), `${HEADER}\n${csvRow(1)}\n`);
+    fs.writeFileSync(w.args.probes, '[]');
+    await sizeAndSample(w.args, w.log);
+    expect(exists(w, 'sample.csv')).toBe(true);
+    expect(w.logs.join('\n')).not.toContain('Mayhem flag');
+  });
+});
