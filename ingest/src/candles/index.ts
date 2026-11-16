@@ -6,7 +6,7 @@
  *   fetchCandlesForCoin(
  *     deps: { db: Kysely<Database>; codex: CodexClient; clock: () => Date },
  *     coin: { id: number; address: string; chain?: string;
- *             launchInfo?: LaunchInfo | null; refreshPools?: boolean },
+ *             launchInfo?: LaunchInfo | null; refreshPools?: boolean | 'top-up' },
  *     options?: { limits?: Partial<PlanLimits>; maxSecondaryPools?: number },
  *   ): Promise<{ ok: true; summary } | { ok: false; reason; retry; message; summary }>
  *

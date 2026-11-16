@@ -10,7 +10,9 @@ import {
   countListedInFlight,
   countTopUp,
   listListedCoins,
+  listPoolListDue,
   listTopUp,
+  markPoolsListed,
   meetsAliveLine,
   storeRefresh,
   type RefreshFigure,
@@ -131,6 +133,7 @@ describeDb('the refresh and top-up queries', () => {
     listedUsd: 100_000,
     athShare: 0.5,
     staleBarSeconds: 7 * DAYSEC,
+    poolListMaxAgeSeconds: 14 * DAYSEC,
   };
 
   it('lists the listed coins in id order, a page at a time', async () => {
@@ -272,7 +275,11 @@ describeDb('the refresh and top-up queries', () => {
     void [tenFresh, dead, rugged, unlisted, notRefreshed];
     const ids = await listTopUp(t.db, SPEC, { afterId: 0, limit: 100 });
     expect(ids).toEqual([sixty, tenStale, noPrice, exactly]);
-    expect(await countTopUp(t.db, SPEC)).toEqual({ total: 4, byMarketCap: 2, byStaleBars: 2 });
+    expect(await countTopUp(t.db, SPEC)).toMatchObject({
+      total: 4,
+      byMarketCap: 2,
+      byStaleBars: 2,
+    });
     // Without the refresh condition (the dry run, before the day's refresh), the unrefreshed coin counts too.
     const dry = await countTopUp(t.db, { ...SPEC, refreshedSince: null });
     expect(dry.total).toBe(5);
@@ -492,7 +499,11 @@ describeDb('the refresh and top-up queries', () => {
     });
     void [retried, justUnder];
     expect(await listTopUp(t.db, SPEC, { afterId: 0, limit: 100 })).toEqual([old]);
-    expect(await countTopUp(t.db, SPEC)).toEqual({ total: 1, byMarketCap: 0, byStaleBars: 1 });
+    expect(await countTopUp(t.db, SPEC)).toMatchObject({
+      total: 1,
+      byMarketCap: 0,
+      byStaleBars: 1,
+    });
     // Rule 1 is not held back by it: a coin at 75% of its ATH is selected whenever its candles
     // finished before today.
     const near = await coin(4, {
@@ -501,5 +512,77 @@ describeDb('the refresh and top-up queries', () => {
       candles: { status: 'done', finishedAgo: 2 * DAYSEC },
     });
     expect(await listTopUp(t.db, SPEC, { afterId: 0, limit: 100 })).toEqual([old, near]);
+  });
+
+  describe('the age of a pool list', () => {
+    const MAX = 14 * DAYSEC;
+    const due = (ids: number[]) => listPoolListDue(t.db, ids, { now: NOW, maxAgeSeconds: MAX });
+    /** A pool row with a creation time (the column defaults to the real clock). */
+    const pool = (i: number, n: number, createdAgo: number) =>
+      sql`insert into pools (chain, address, coin_id, dex, created_at)
+        values ('solana', ${`Q${n}${addr(i).slice(2)}`}, (select id from coins where address = ${addr(i)}),
+          'PumpSwap', ${ago(createdAgo)})`.execute(t.db);
+
+    it('takes the stored time when there is one, whatever the pools and the candles say', async () => {
+      const fresh = await coin(1, { current: 190_000 });
+      const old = await coin(2, { current: 190_000 });
+      await pool(1, 1, 60 * DAYSEC);
+      await pool(2, 1, 1 * DAYSEC);
+      await markPoolsListed(t.db, fresh, ago(13 * DAYSEC));
+      await markPoolsListed(t.db, old, ago(15 * DAYSEC));
+      expect(await due([fresh, old])).toEqual([old]);
+      // Exactly at the limit is not yet old.
+      await markPoolsListed(t.db, fresh, ago(14 * DAYSEC));
+      expect(await due([fresh])).toEqual([]);
+      await markPoolsListed(t.db, fresh, ago(14 * DAYSEC + 1));
+      expect(await due([fresh])).toEqual([fresh]);
+    });
+
+    it('takes the newest pool for a coin with no stored time, then the last finished candles, and is due when the data holds neither', async () => {
+      const newestPoolFresh = await coin(1, { current: 190_000 });
+      await pool(1, 1, 90 * DAYSEC);
+      await pool(1, 2, 3 * DAYSEC);
+      const poolsAllOld = await coin(2, { current: 190_000 });
+      await pool(2, 1, 20 * DAYSEC);
+      await pool(2, 2, 30 * DAYSEC);
+      // No pool: the candles stage's finish, however recent a fetch is, stands in for the read.
+      const candlesRecent = await coin(3, {
+        current: 190_000,
+        candles: { status: 'done', finishedAgo: 2 * DAYSEC },
+      });
+      const candlesOld = await coin(4, {
+        current: 190_000,
+        candles: { status: 'done', finishedAgo: 40 * DAYSEC },
+      });
+      const nothing = await coin(5, { current: 190_000, candles: null, metrics: null });
+      // A coin topped up every day still has its newest pool's age: the daily candles do not count as a read.
+      const toppedUp = await coin(6, {
+        current: 190_000,
+        candles: { status: 'done', finishedAgo: 600 },
+      });
+      await pool(6, 1, 45 * DAYSEC);
+      const all = [newestPoolFresh, poolsAllOld, candlesRecent, candlesOld, nothing, toppedUp];
+      expect(await due(all)).toEqual([poolsAllOld, candlesOld, nothing, toppedUp]);
+    });
+
+    it('counts the due coins among the selected ones, and selects none that were not selected', async () => {
+      const a = await coin(1, { current: 190_000 }); // selected by rule 1, list never stored, no pool: candles finished a day ago
+      const b = await coin(2, { current: 190_000 });
+      await markPoolsListed(t.db, b, ago(2 * DAYSEC));
+      const c = await coin(3, {
+        current: 10_000,
+        candles: { status: 'done', finishedAgo: 40 * DAYSEC },
+      }); // not selected
+      void [a, c];
+      expect(await countTopUp(t.db, SPEC)).toMatchObject({ total: 2, poolListDue: 0 });
+      await markPoolsListed(t.db, b, ago(20 * DAYSEC));
+      await sql`update coin_stages set finished_at = ${ago(30 * DAYSEC)} where coin_id = ${a} and stage = 'candles'`.execute(
+        t.db,
+      );
+      expect(await countTopUp(t.db, { ...SPEC, dayStart: ago(0) })).toMatchObject({
+        total: 2,
+        poolListDue: 2,
+      });
+    });
   });
 });

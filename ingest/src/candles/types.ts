@@ -27,8 +27,15 @@ export interface CandleCoin {
    * coin's pools are already stored.
    */
   launchInfo?: LaunchInfo | null;
-  /** Look the pools up again even when some are stored. Default false. */
-  refreshPools?: boolean;
+  /**
+   * Look the pools up again even when some are stored. Default false. `true` is a pool-list
+   * refresh (`backfill run --refresh-pools`): new pools are stored, the graduation role may move,
+   * and only the new pools' bars are fetched up to what the coin already holds. `'top-up'` is the
+   * live top-up's read of an old list (issue #87): the same list request and the same storing of
+   * new pools, but bars are fetched up to the clock, and the graduation role is never moved or set
+   * (a list that would is recorded as the data issue `graduation_pool_differs`, for a refresh).
+   */
+  refreshPools?: boolean | 'top-up';
 }
 
 export interface FetchCandlesOptions {

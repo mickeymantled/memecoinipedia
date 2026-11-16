@@ -203,3 +203,31 @@ export const TOPUP_BATCH = 100;
 export const TOPUP_STOP_SHARE = 0.8;
 /** Compute units the dry run assumes for one top-up: a new daily bar, a new hourly window and a refinement window (as a later trigger). */
 export const UNITS_PER_TOPUP = UNITS_PER_LATER_TRIGGER;
+
+// ------------------------------------------------------------ the pool list in a top-up
+
+/**
+ * A top-up reads a coin's pool list again when it was last read more than this many days ago
+ * (issue #87). One list request costs about 4 compute units (`UNITS_PER_REQUEST`; 4 plus 0.0048 a
+ * pool listed, 5.2 at most), a top-up of a coin about 12 (`UNITS_PER_TOPUP`), and a coin the top-up
+ * selects every day is read once in this many days, so the lists add 4 / (12 x days) to the
+ * top-up's own spend: 2.4% at 14 days, 4.8% at 7, 1.1% at 30. A later read finds a new pool just
+ * as well, and the pool's bars are fetched from its first trade, so a long limit loses no high; it
+ * only leaves the coin's ATH and metrics stale for that long. Fourteen days: two weeks is the
+ * longest a missing venue stays unseen, for a spend that is small next to the top-up itself.
+ */
+export const TOPUP_POOL_LIST_MAX_AGE_DAYS = 14;
+export const TOPUP_POOL_LIST_MAX_AGE_SECONDS = TOPUP_POOL_LIST_MAX_AGE_DAYS * DAY;
+/**
+ * The most the top-up spends on list requests in one UTC day, as a share of the day's ceiling. It
+ * matters on the first days after this shipped: every coin is then due (no stored time, and its
+ * newest pool is older than the limit), so without it each coin the top-up selects would cost a
+ * list on top of its fetch. A coin left out today is still due tomorrow. Counted in
+ * `live_state` as `topup_lists`, one per coin handed a list, at `UNITS_PER_REQUEST` units each.
+ */
+export const TOPUP_POOL_LIST_UNIT_SHARE = 0.1;
+/** The counter of the day (`dayKey`) of coins handed a list read by the top-up. */
+export const COUNTER_TOPUP_LISTS = 'topup_lists';
+/** List requests the top-up may make in a day under a ceiling of `ceilingUnits`. */
+export const topUpListsPerDay = (ceilingUnits: number): number =>
+  Math.floor((ceilingUnits * TOPUP_POOL_LIST_UNIT_SHARE) / UNITS_PER_REQUEST);

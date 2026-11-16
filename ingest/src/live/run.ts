@@ -59,6 +59,7 @@ import {
 import type { LiveDeps } from './deps.js';
 import { CodexDayGate } from './gate.js';
 import { LiveLoop } from './loop.js';
+import { createPoolListQueue } from './topup.js';
 import { formatLivePlan, planLive, type LivePlan } from './plan.js';
 import { collectLiveStatus, formatLiveStatus } from './status.js';
 import { sleepUnlessAborted } from './util.js';
@@ -172,6 +173,7 @@ export async function runLive(opts: LiveOptions): Promise<LiveReport> {
       log: opts.log,
     });
 
+    const poolLists = createPoolListQueue(gate);
     const metadataRing = new Set<number>();
     const stopFlush = startUsageReporting({
       db,
@@ -194,6 +196,7 @@ export async function runLive(opts: LiveOptions): Promise<LiveReport> {
         maxAttempts,
         metadataCandidateIds: () => [...metadataRing],
         candlesAdmit: () => gate.admit(),
+        topUpPools: (id) => poolLists.take(id),
         metadataStopHoldMs: JUPITER_PAUSE_DEFAULT_MS,
       });
       worker = new PipelineWorker({
@@ -232,6 +235,7 @@ export async function runLive(opts: LiveOptions): Promise<LiveReport> {
         jupiter: clients.jupiter,
         enqueue: (stage, ids) => w.enqueueCoins(stage, ids),
         gate,
+        poolLists,
         now,
         log: opts.log,
       };

@@ -1,0 +1,13 @@
+-- Issue #87: when a coin's pool list was last read from the provider.
+--
+-- The candle top-up (daily refresh, issue #74) extends the bars of the pools a coin already holds
+-- and never asks for the list again, so a pool that appears months after the graduation is not
+-- seen. The top-up now reads the list again when this time is older than a named number of days
+-- (`TOPUP_POOL_LIST_MAX_AGE_DAYS` in ingest/src/live/constants.ts), through the pool-list refresh.
+--
+-- Set by the candles fetch every time it asks Codex.io for the list (first fetch, a pool-list
+-- refresh, a top-up), whether or not the list added a pool. Null for every coin that exists when
+-- this migration is applied: the age of such a coin is taken from its newest stored pool
+-- (`pools.created_at`), else from its last finished candles stage. See `poolListReadAt` in
+-- db/src/refresh.ts.
+ALTER TABLE coins ADD COLUMN pools_listed_at timestamptz;

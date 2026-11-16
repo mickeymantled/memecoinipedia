@@ -77,6 +77,8 @@ export interface CoinsTable {
   socials_source: 'metadata_file' | 'jupiter' | null;
   /** Market cap when the live watch last queued this coin's candle fetch (migration 0015). */
   last_trigger_market_cap_usd: number | null;
+  /** When the coin's pool list was last read from the provider; null before migration 0022 or never (migration 0022). */
+  pools_listed_at: Ts | null;
 
   primary_narrative: string | null;
   secondary_narratives: WithDefault<string[]>;
@@ -309,6 +311,7 @@ export const databaseShape: { [T in keyof Database]: Record<keyof Database[T], t
     last_alive_at: true,
     socials_source: true,
     last_trigger_market_cap_usd: true,
+    pools_listed_at: true,
     primary_narrative: true,
     secondary_narratives: true,
     narrative_confidence: true,

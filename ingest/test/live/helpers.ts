@@ -13,6 +13,7 @@ import { buildBackfillRegistry, BACKFILL_STAGES } from '../../src/backfill/setup
 import { CodexDayGate } from '../../src/live/gate.js';
 import type { LiveDeps } from '../../src/live/deps.js';
 import { LIVE_RUN_KIND } from '../../src/live/constants.js';
+import { createPoolListQueue } from '../../src/live/topup.js';
 import { UnitBudget } from '../../src/sources/budget.js';
 import { CodexClient } from '../../src/sources/codex/index.js';
 import type { FetchLike } from '../../src/sources/http.js';
@@ -68,6 +69,17 @@ export interface WorldCoin {
    * price Jupiter shows, which is also the bar's high): a coin whose price wicks above its closes.
    */
   closeAt?(t: number): number;
+  /**
+   * More pools of the coin, quoted in SOL: each appears in the pool list from `listedFrom` (unix
+   * seconds) and trades from its own `createdAt` at `capAt`.
+   */
+  extraPools?: Array<{
+    address: string;
+    createdAt: number;
+    listedFrom: number;
+    liquidity: number;
+    capAt(t: number): number;
+  }>;
 }
 
 export const poolOf = (mint: string): string => `C${mint.slice(1)}`;
@@ -80,8 +92,10 @@ export interface WorldStats {
   /** Requests the API would have refused: limit above 200 or depth above 10,000. */
   violations: number;
   otherRequests: number;
+  /** Pool-list requests (`listPairsWithMetadataForToken`). */
+  lists: number;
   /** Every getBars request: the mint, resolution code and range asked for. */
-  bars: Array<{ mint: string; resolution: string; from: number; to: number }>;
+  bars: Array<{ mint: string; pool: string; resolution: string; from: number; to: number }>;
 }
 
 export interface World {
@@ -127,6 +141,7 @@ export function createWorld(clock: FakeClock): World {
     maxDepth: 0,
     violations: 0,
     otherRequests: 0,
+    lists: 0,
     bars: [],
   };
   const world: World = {
@@ -190,12 +205,17 @@ export function createWorld(clock: FakeClock): World {
         });
       }
       stats.otherRequests++;
+      if (query.includes('listPairsWithMetadataForToken')) stats.lists++;
       const m =
         /address:"([1-9A-HJ-NP-Za-km-z]{32,44})"/.exec(query)?.[1] ??
         /tokenAddress:"([1-9A-HJ-NP-Za-km-z]{32,44})"/.exec(query)?.[1] ??
         (() => {
           const b = /getBars\(symbol:"([^:]+):/.exec(query);
-          return b ? mintOfPool(b[1]!) : undefined;
+          if (!b) return undefined;
+          return (
+            coins.find((c) => c.extraPools?.some((x) => x.address === b[1]))?.mint ??
+            mintOfPool(b[1]!)
+          );
         })();
       const coin = m ? index.get(m) : undefined;
       const bar = /getBars\(symbol:"[^"]+", from:(\d+), to:(\d+), resolution:"([^"]+)"/.exec(query);
@@ -205,6 +225,7 @@ export function createWorld(clock: FakeClock): World {
           from: Number(bar[1]),
           to: Number(bar[2]),
           resolution: bar[3]!,
+          pool: /getBars\(symbol:"([^:]+):/.exec(query)![1]!,
         });
       }
       if (!coin) throw new Error(`Unexpected query: ${query.slice(0, 100)}`);
@@ -231,6 +252,23 @@ export function createWorld(clock: FakeClock): World {
             liquidity: 30_000,
             minutes,
           },
+          ...(coin.extraPools ?? [])
+            .filter((x) => clock.sec >= x.listedFrom)
+            .map((x) => {
+              const own = [];
+              for (let t = Math.floor(x.createdAt / 60) * 60; t <= last; t += 60) {
+                // Busier than the main pool's 3,000 a minute, so its minutes win the one-window-per-time rule.
+                own.push(minute(t, x.capAt(t) / 1e9, 60_000, x.liquidity));
+              }
+              return {
+                address: x.address,
+                exchange: 'Raydium',
+                protocol: 'Raydium',
+                createdAt: x.createdAt,
+                liquidity: x.liquidity,
+                minutes: own,
+              };
+            }),
         ],
       };
       return simProvider(sim).fetch(url, init);
@@ -355,6 +393,7 @@ export async function liveFixture(
     log,
   });
   const queued: LiveFixture['queued'] = [];
+  const poolLists = createPoolListQueue(gate);
   const deps: LiveDeps = {
     db: t.db,
     codex,
@@ -363,6 +402,7 @@ export async function liveFixture(
       queued.push({ stage, ids: [...ids] });
     },
     gate,
+    poolLists,
     now: clock.now,
     log,
   };
@@ -382,6 +422,7 @@ export async function liveFixture(
     maxAttempts: 3,
     metadataCandidateIds: () => [],
     candlesAdmit: () => gate.admit(),
+    topUpPools: (id) => poolLists.take(id),
   });
   const exec = { db: t.db, registry, now: clock.now, log, runId, maxAttempts: 3 };
   const chain: StageName[] = ['candles', 'metrics', 'metadata', 'metadata_file'];

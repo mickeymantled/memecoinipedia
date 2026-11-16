@@ -302,7 +302,7 @@ describeDb('the candle top-up', () => {
 
     const queuedBefore = f.queued.length;
     const pass = await topUpOnce(f.deps);
-    expect(pass).toEqual({ status: 'ran', queued: 1 });
+    expect(pass).toEqual({ status: 'ran', queued: 1, lists: 0 });
     const ids = f.queued.slice(queuedBefore).flatMap((q) => q.ids);
     expect(ids).toEqual([(await row(f, top.mint)).id]);
     expect(ids).not.toContain((await row(f, low.mint)).id);
@@ -348,7 +348,7 @@ describeDb('the candle top-up', () => {
       } as unknown as CodexDayGate,
     };
     expect((await refreshOnce(atCeiling)).status).toBe('done');
-    expect(await topUpOnce(atCeiling)).toEqual({ status: 'paused', queued: 0 });
+    expect(await topUpOnce(atCeiling)).toEqual({ status: 'paused', queued: 0, lists: 0 });
     expect(f.queued).toEqual([]);
     // Under the stop share the same coin is queued.
     const open = {
@@ -357,6 +357,6 @@ describeDb('the candle top-up', () => {
         snapshot: () => ({ usedToday: 0, ceiling, open: true, opensAt: null }),
       } as unknown as CodexDayGate,
     };
-    expect(await topUpOnce(open)).toEqual({ status: 'ran', queued: 1 });
+    expect(await topUpOnce(open)).toEqual({ status: 'ran', queued: 1, lists: 0 });
   });
 });

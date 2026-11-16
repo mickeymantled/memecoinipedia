@@ -36,6 +36,8 @@ export const CANDLES_ISSUE_KINDS = [
   'graduation_pool_late',
   'candle_hourly_cap_hit',
   'peak_refinement_incomplete',
+  /** A top-up read a list that would move the graduation role; a refresh settles it (issue #87). */
+  'graduation_pool_differs',
 ] as const;
 
 export interface CandlesDetail extends Record<string, unknown> {
@@ -104,6 +106,12 @@ export interface CandlesStageDeps {
    * a coin is first put back to pending by the run. Absent: no coin is refreshed.
    */
   refreshPools?: (coinId: number) => boolean;
+  /**
+   * True for a coin whose old pool list the live top-up reads again (issue #87), asked once as the
+   * stage takes the coin. The list request is made through the same path as a refresh, but bars go
+   * on to the clock and the graduation role is left alone. Absent: no coin is.
+   */
+  topUpPools?: (coinId: number) => boolean;
   /** Test seam. */
   fetchCandles?: typeof fetchCandlesForCoin;
 }
@@ -150,7 +158,11 @@ export function createCandlesStage(deps: CandlesStageDeps): CandlesStage {
           id: coin.id,
           address: coin.address,
           chain: coin.chain,
-          ...(deps.refreshPools?.(coin.id) ? { refreshPools: true } : {}),
+          ...(deps.refreshPools?.(coin.id)
+            ? { refreshPools: true }
+            : deps.topUpPools?.(coin.id)
+              ? { refreshPools: 'top-up' as const }
+              : {}),
         },
       );
       // The issues this run found replace the stage's own open ones (only the kinds it examined).

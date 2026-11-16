@@ -78,6 +78,10 @@ export async function snapshotTables(db: Kysely<Database>): Promise<Record<strin
     const { rows } = await sql<Record<string, unknown>>`
       select * from ${sql.table(name)} order by ${sql.raw(order)}`.execute(db);
     out[name] = JSON.parse(JSON.stringify(rows)) as unknown[];
+    // Every list request stores the time it was made (`coins.pools_listed_at`, migration 0022), so
+    // a second refresh that finds nothing new still moves it: it is not part of what must not change.
+    if (name === 'coins')
+      for (const r of out[name] as Record<string, unknown>[]) delete r['pools_listed_at'];
   }
   return out;
 }

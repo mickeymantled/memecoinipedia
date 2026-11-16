@@ -4,6 +4,7 @@ import type { DiscoveredToken, DiscoverOptions } from '../sources/codex/client.j
 import type { JupiterToken } from '../sources/jupiter/client.js';
 import type { Logger } from '../worker/log.js';
 import type { SpendGate } from './gate.js';
+import type { PoolListQueue } from './topup.js';
 
 /**
  * What a pass of a live loop needs: the database, the clients, a clock. A pass is a plain
@@ -31,6 +32,8 @@ export interface LiveDeps {
   /** Puts coins in a stage's queue (`PipelineWorker.enqueueCoins`). The stage rows stay the truth. */
   enqueue(stage: StageName, coinIds: readonly number[]): Promise<void>;
   gate: SpendGate;
+  /** Where the top-up marks coins whose old pool list is read again by the candles stage. Absent: the top-up reads none. */
+  poolLists?: PoolListQueue;
   now: () => Date;
   log: Logger;
 }

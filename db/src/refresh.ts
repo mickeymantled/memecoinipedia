@@ -187,6 +187,8 @@ export interface TopUpSpec {
   athShare: number;
   /** Rule 2: the newest stored bar is older than this many seconds. */
   staleBarSeconds: number;
+  /** A selected coin whose pool list was last read longer ago than this is due a new list (see `poolListReadAt`). */
+  poolListMaxAgeSeconds: number;
 }
 
 const stageFinished = (stage: string, before?: Date) =>
@@ -224,6 +226,54 @@ const rule2 = (s: TopUpSpec) =>
   sql<boolean>`(${newestBar} < ${s.now}::timestamptz - make_interval(secs => ${s.staleBarSeconds}::float8)
     and ${stageFinished('candles', new Date(s.now.getTime() - s.staleBarSeconds * 1000))})`;
 
+/**
+ * When a coin's pool list was last read, as the data holds it. The stored `pools_listed_at` when
+ * there is one (every list request writes it). A coin that has none (every coin that existed when
+ * migration 0022 was applied) takes the creation time of its newest stored pool, and when it holds
+ * no pool the time its candles stage last finished; null when the data holds neither.
+ *
+ * Why the pool and not the last candle fetch: a top-up fetches candles every day without reading
+ * the list, so a coin topped up for months would look freshly read. The newest pool row is never
+ * newer than the last real read (a pool is stored by a list, or by launch info at the first
+ * fetch, and later pools only by a list), so a coin with no value is read again too early at
+ * worst, never too late.
+ */
+export const poolListReadAt = sql<Date | null>`coalesce(
+  coins.pools_listed_at,
+  (select max(p.created_at) from pools p where p.coin_id = coins.id),
+  (select max(s.finished_at) from coin_stages s where s.coin_id = coins.id and s.stage = 'candles'
+     and s.status in ('done', 'skipped')))`;
+
+/** True when the list was last read before `now` less `maxAgeSeconds`, or when nothing says it was read. */
+const poolListDue = (now: Date, maxAgeSeconds: number) =>
+  sql<boolean>`coalesce(${poolListReadAt} < ${now}::timestamptz - make_interval(secs => ${maxAgeSeconds}::float8), true)`;
+
+/** Of these coins, the ones whose pool list is due to be read again, in id order. */
+export async function listPoolListDue(
+  db: Kysely<Database>,
+  coinIds: readonly number[],
+  o: { now: Date; maxAgeSeconds: number },
+): Promise<number[]> {
+  if (coinIds.length === 0) return [];
+  const rows = await db
+    .selectFrom('coins')
+    .select('id')
+    .where('id', 'in', [...coinIds])
+    .where(poolListDue(o.now, o.maxAgeSeconds))
+    .orderBy('id')
+    .execute();
+  return rows.map((r) => r.id);
+}
+
+/** Records that the coin's pool list was read at `at` (whether or not it added a pool). */
+export async function markPoolsListed(
+  db: Kysely<Database>,
+  coinId: number,
+  at: Date,
+): Promise<void> {
+  await db.updateTable('coins').set({ pools_listed_at: at }).where('id', '=', coinId).execute();
+}
+
 export async function listTopUp(
   db: Kysely<Database>,
   s: TopUpSpec,
@@ -247,6 +297,8 @@ export interface TopUpCounts {
   byMarketCap: number;
   /** Selected by rule 2 (newest bar older than the limit). */
   byStaleBars: number;
+  /** Of those selected, the coins whose pool list is due to be read again now. */
+  poolListDue: number;
 }
 
 /** How many coins the top-up would select now: in all, and by each rule (a coin can be in both). */
@@ -265,10 +317,17 @@ export async function countTopUp(db: Kysely<Database>, s: TopUpSpec): Promise<To
       sql<string>`count(*) filter (where ${rule1(s)} or ${rule2(s)})`.as('total'),
       sql<string>`count(*) filter (where ${rule1(s)})`.as('m'),
       sql<string>`count(*) filter (where ${rule2(s)})`.as('b'),
+      sql<string>`count(*) filter (where (${rule1(s)} or ${rule2(s)})
+        and ${poolListDue(s.now, s.poolListMaxAgeSeconds)})`.as('d'),
     ])
     .where((eb) => base(eb))
     .executeTakeFirstOrThrow();
-  return { total: Number(r.total), byMarketCap: Number(r.m), byStaleBars: Number(r.b) };
+  return {
+    total: Number(r.total),
+    byMarketCap: Number(r.m),
+    byStaleBars: Number(r.b),
+    poolListDue: Number(r.d),
+  };
 }
 
 /** Listed coins whose candles are waiting or running: what a top-up adds to. */
