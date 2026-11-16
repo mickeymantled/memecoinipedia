@@ -8,7 +8,10 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "migrate": "tsx src/cli/migrate.ts",
+    "seed": "tsx src/cli/seed.ts",
+    "measure-storage": "tsx scripts/measure-candle-storage.ts"
   },
   "devDependencies": {
     "@types/node": "catalog:",
