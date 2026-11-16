@@ -5,7 +5,9 @@
  *     tsx scripts/backfill.ts seed --file FILE [--list graduates|curve-only] [--source NAME] [--confirm]
  *   --list says which candidate list the file is (default graduates; never guessed from the file).
  *   With curve-only the file has no graduation times (a row that has one is rejected), the source
- *   is dune-curve-only and the file's is_mayhem_mode column is stored. For graduates a blank
+ *   is always dune-curve-only (--source is refused with it, and dune-curve-only is refused with
+ *   graduates: the selection leaves the list out by that name) and the file's is_mayhem_mode
+ *   column is stored. For graduates a blank
  *   graduation time is rejected, as before.
  *
  *   Run (a dry run without --confirm: the selection, coins per stage and the estimate in units):
@@ -67,7 +69,12 @@ import {
 import { CANDIDATE_LISTS, type CandidateList } from '../src/discovery/index.js';
 import { DEFAULT_MIN_ROUGH_PEAK_USD } from '../src/backfill/defaults.js';
 import { runBackfill } from '../src/backfill/run.js';
-import { formatSeedReport, seedFromCandidateFile } from '../src/backfill/seed.js';
+import {
+  checkSeedSource,
+  CURVE_ONLY_SOURCE,
+  formatSeedReport,
+  seedFromCandidateFile,
+} from '../src/backfill/seed.js';
 import { installStopSignals } from '../src/shared/signals.js';
 import { consoleLogger, secretsFromEnv } from '../src/worker/log.js';
 
@@ -148,6 +155,19 @@ async function main(): Promise<void> {
 
   if (command === 'seed') {
     if (!values.file) usage('--file FILE is required');
+    const list = parseList(values.list);
+    if (list === 'curve-only' && values.source) {
+      usage(
+        '--source cannot be given with --list curve-only: the list is always seeded as ' +
+          `${CURVE_ONLY_SOURCE}, because the selection leaves it out by that name (under another ` +
+          'name a plain run would reach it and spend).',
+      );
+    }
+    try {
+      checkSeedSource(list, values.source);
+    } catch (err) {
+      usage(err instanceof Error ? err.message : String(err));
+    }
     const url = process.env['DATABASE_URL'];
     if (values.confirm && !url) usage('DATABASE_URL is not set');
     const db = values.confirm && url ? createDb(url, { max: 4 }) : undefined;
@@ -155,7 +175,7 @@ async function main(): Promise<void> {
       const report = await seedFromCandidateFile({
         file: values.file,
         confirm: values.confirm,
-        list: parseList(values.list),
+        list,
         db,
         ...(values.source ? { discoverySource: values.source } : {}),
         onProgress: (n) => {

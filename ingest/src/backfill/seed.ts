@@ -86,6 +86,27 @@ export const toSeedRow = (r: GraduateRow | CurveOnlyRow): BackfillSeedRow => ({
 export const discoverySourceFor = (list: CandidateList): string =>
   list === 'curve-only' ? CURVE_ONLY_SOURCE : DEFAULT_DISCOVERY_SOURCE;
 
+/**
+ * The selection leaves coins of `dune-curve-only` out by that name. A curve-only file seeded under
+ * another name would be reached by a plain `run`, and a graduates file seeded as `dune-curve-only`
+ * would never be. So the curve-only list takes no other name, and no other list takes that one.
+ */
+export function checkSeedSource(list: CandidateList, source: string | undefined): void {
+  if (source === undefined) return;
+  if (list === 'curve-only' && source !== CURVE_ONLY_SOURCE) {
+    throw new Error(
+      `A curve-only file is always seeded as ${CURVE_ONLY_SOURCE}: the selection leaves the list ` +
+        `out by that name, so under "${source}" a plain run would reach it and spend. Do not give a source.`,
+    );
+  }
+  if (list !== 'curve-only' && source === CURVE_ONLY_SOURCE) {
+    throw new Error(
+      `${CURVE_ONLY_SOURCE} is the source of the curve-only list only: a ${list} file seeded under it ` +
+        'would be left out of every plain selection. Seed it with --list curve-only, or use another source.',
+    );
+  }
+}
+
 export const cellOf = (rough: number): number => CELL_EDGES.filter((e) => e <= rough).length;
 
 export async function seedFromCandidateFile(opts: SeedOptions): Promise<SeedFileReport> {
@@ -93,6 +114,7 @@ export async function seedFromCandidateFile(opts: SeedOptions): Promise<SeedFile
   const now = opts.now ?? (() => new Date());
   if (opts.confirm && !opts.db) throw new Error('Seeding needs a database');
   const list = opts.list ?? 'graduates';
+  checkSeedSource(list, opts.discoverySource);
   const source = opts.discoverySource ?? discoverySourceFor(list);
 
   const seen = new Set<string>();

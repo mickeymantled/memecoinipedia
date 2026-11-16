@@ -2,9 +2,15 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { sql } from 'kysely';
-import { afterAll, beforeAll, expect, it } from 'vitest';
+import { execFile } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestDatabase, type TestDatabase } from '@memecoinipedia/db/testing';
-import { formatSeedReport, seedFromCandidateFile } from '../../src/backfill/seed.js';
+import {
+  checkSeedSource,
+  formatSeedReport,
+  seedFromCandidateFile,
+} from '../../src/backfill/seed.js';
 import { adminUrl, describeDb } from './helpers.js';
 import { syntheticMint } from './synthetic.js';
 
@@ -141,4 +147,59 @@ describeDb('seeding the curve-only list', () => {
     const asCurve = await seedFromCandidateFile({ file: grad, list: 'curve-only', confirm: false });
     expect(asCurve).toMatchObject({ rows: 0, badRows: 1 });
   });
+});
+
+describe('the source name of a seed (issue #102)', () => {
+  it('a curve-only file takes no other source name, and no other list takes dune-curve-only', async () => {
+    const file = 'unused.csv';
+    // The guard runs before the file is opened.
+    await expect(
+      seedFromCandidateFile({
+        file,
+        list: 'curve-only',
+        discoverySource: 'my-name',
+        confirm: false,
+      }),
+    ).rejects.toThrow(/always seeded as dune-curve-only/);
+    await expect(
+      seedFromCandidateFile({
+        file,
+        list: 'graduates',
+        discoverySource: 'dune-curve-only',
+        confirm: false,
+      }),
+    ).rejects.toThrow(/source of the curve-only list only/);
+    await expect(
+      seedFromCandidateFile({ file, discoverySource: 'dune-curve-only', confirm: false }),
+    ).rejects.toThrow(/source of the curve-only list only/);
+    // The accepted combinations raise nothing in the guard.
+    expect(() => checkSeedSource('curve-only', undefined)).not.toThrow();
+    expect(() => checkSeedSource('curve-only', 'dune-curve-only')).not.toThrow();
+    expect(() => checkSeedSource('graduates', 'my-name')).not.toThrow();
+    expect(() => checkSeedSource('graduates', undefined)).not.toThrow();
+  });
+
+  const script = fileURLToPath(new URL('../../scripts/backfill.ts', import.meta.url));
+  const cwd = fileURLToPath(new URL('../..', import.meta.url));
+  const runScript = (args: string[]) =>
+    new Promise<{ code: number | null; stderr: string }>((resolve) => {
+      execFile(
+        'node',
+        ['--import', 'tsx', script, 'seed', '--file', 'unused.csv', ...args],
+        { cwd, env: { PATH: process.env['PATH'] ?? '' } },
+        (err, _out, stderr) =>
+          resolve({ code: err ? ((err as { code?: number }).code ?? 1) : 0, stderr }),
+      );
+    });
+
+  it('the seed command refuses --source with --list curve-only, and dune-curve-only with graduates', async () => {
+    const a = await runScript(['--list', 'curve-only', '--source', 'my-name']);
+    expect(a.code).toBe(2);
+    expect(a.stderr).toContain('--source cannot be given with --list curve-only');
+    const b = await runScript(['--list', 'graduates', '--source', 'dune-curve-only']);
+    expect(b.code).toBe(2);
+    expect(b.stderr).toContain('source of the curve-only list only');
+    const c = await runScript(['--source', 'dune-curve-only']);
+    expect(c.code).toBe(2);
+  }, 60_000);
 });
