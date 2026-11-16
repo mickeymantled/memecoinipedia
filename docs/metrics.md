@@ -212,3 +212,27 @@ What these rules cost in accuracy: time above a threshold is measured to the min
 - Where only hourly or daily bars are held, a bar's whole volume is counted or not on its close alone, however the price moved inside it; for the backed high such a bar is placed at its close alone.
 - A coin with large trading on an exchange we do not read is understated by `athNearVolumeUsd`, and can raise `ath_thinly_traded` without being thinly traded.
 - A side pool counts on its quote token as stored. `pools.quote_token` holds the symbol when Codex.io gave one, else the address. Rows stored before the fetcher matched by address can therefore pass on the symbol alone: a token that merely calls itself `USDC` would be counted on such a row. New fetches match by mint address and never store such a pool, so the gap closes as coins are refetched. It is not worth a second source of truth now.
+
+## 14. Status and `last_alive_at`
+
+The coin's `status` is not part of the metric library's output. It is decided by one function (`statusFromEvidence`, next to `decideStatus` in `/db`) from three stored facts and the time it is asked at, and the two writers of a coin's status, the metrics computation and the daily refresh, both call it.
+
+Inputs: the stored rug pattern, `coins.last_alive_at`, and whether the coin has 7 days of history.
+
+- **rugged** when the rug pattern is stored as true. Nothing a later refresh reads changes this.
+- **alive** when `last_alive_at` is set and is less than 7 days before the time asked at.
+- **dead** when not alive and the coin has 7 days of history.
+- **unknown** otherwise: no evidence at all, or under 7 days of history and never alive.
+
+`status_changed_at` moves only when the status changes.
+
+**Where `last_alive_at` comes from.** It is the time the alive line was last met. The alive line is the one the status has always used: at least $1,000 of volume in the 24 hours before and at least $5,000 of liquidity.
+
+1. *The metrics computation, from the stored bars.* The line is evaluated at the end of each of the last 7 days before `asOf` (`asOf`, `asOf` minus one day, up to `asOf` minus six days), with the same volume and liquidity rules as before (primary pools count fully; another pool counts only on bars that pass the $5,000 liquidity rule; volume per pool from one resolution at a time). `last_alive_at` is the latest of those day-ends at which the line was met, or null when it was met at none. The metrics computation stores the later of this and the value already stored, then decides the status with the stored rug pattern, that value and the coin's history: for a coin whose `last_alive_at` came from bars alone, this is exactly the status the rule gave before this column existed.
+2. *The daily refresh, from Jupiter.* When Jupiter's liquidity is at least $5,000 and its 24-hour volume at least $1,000 at the time of the refresh, `last_alive_at` is set to the refresh time. A mint Jupiter does not know, or answers without those figures, does not meet the line.
+
+`last_alive_at` never moves backwards: the refresh sets it only forwards, and a metrics recompute keeps the later of the stored value and the one from the bars.
+
+**History.** "7 days of history" is one definition for both writers: at least 7 days between the coin's earliest stored bar (`pools.first_bar_at`, the earliest over its pools) and the time asked at. The metrics computation reads it from the bars it holds; the refresh reads the same value in the query that reads the coin. Only a coin that holds no pool at all falls back to its launch time, and then to its graduation time when there is no launch time.
+
+**Two writers at once.** Each writer reads the coin's row locked, takes the later of the stored `last_alive_at` and its own value, decides the status from that value, and writes `greatest(stored, new)`. The status is therefore always decided from the `last_alive_at` that is stored when the write happens, and a value never moves backwards when a refresh and a metrics computation overlap.

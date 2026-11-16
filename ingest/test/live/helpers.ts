@@ -248,6 +248,10 @@ export interface FakeJupiter {
   unknown: Set<string>;
   /** Supply to report for `fdv`/market cap. Default 1 billion. */
   supply: number;
+  /** Overrides for what Jupiter answers for a mint (liquidity, volume, `found`...), by mint. */
+  figures: Map<string, Partial<JupiterToken>>;
+  /** Overrides for every mint at once: a function of the mint (return undefined for none). */
+  figuresFor?: (mint: string) => Partial<JupiterToken> | undefined;
 }
 
 export function fakeJupiter(world: World, clock: FakeClock): FakeJupiter {
@@ -256,11 +260,23 @@ export function fakeJupiter(world: World, clock: FakeClock): FakeJupiter {
     asked: [],
     unknown: new Set(),
     supply: 1e9,
+    figures: new Map(),
     async getTokens(mints) {
       j.requests++;
       j.asked.push([...mints]);
       return mints.map((mint) => {
+        const over = j.figures.get(mint) ?? j.figuresFor?.(mint);
+        if (over?.found === false)
+          return token(mint, {
+            found: false,
+            priceUsd: null,
+            marketCapUsd: null,
+            liquidityUsd: null,
+            volume24hUsd: null,
+            totalSupply: null,
+          });
         const c = world.byMint(mint);
+        if (over && !c) return token(mint, over);
         if (!c || j.unknown.has(mint) || clock.sec < c.migratedAt) {
           return token(mint, {
             found: false,
@@ -272,7 +288,7 @@ export function fakeJupiter(world: World, clock: FakeClock): FakeJupiter {
           });
         }
         const price = c.capAt(clock.sec) / 1e9;
-        return token(mint, { priceUsd: price, marketCapUsd: price * j.supply });
+        return token(mint, { priceUsd: price, marketCapUsd: price * j.supply, ...over });
       });
     },
   };
@@ -396,4 +412,27 @@ export async function liveFixture(
     },
     cleanup: () => t.drop(),
   };
+}
+
+const MIN_S = 60;
+const HOUR_S = 3_600;
+const DAY_S = 86_400;
+type Bar = WorldStats['bars'][number];
+
+export const BUCKET: Record<string, number> = { '1D': DAY_S, '60': HOUR_S, '1': MIN_S };
+
+/**
+ * The requests of a later fetch that ask again for bars the first fetch held: same resolution, a
+ * range overlapping what the first fetch covered. The bucket that was still forming when the
+ * first fetch ended (today's daily bar, this hour's hourly bar) is not held, so it may be asked.
+ */
+export function reAsked(first: readonly Bar[], later: readonly Bar[], firstAsOf: number): Bar[] {
+  return later.filter((b) =>
+    first.some((h) => {
+      if (h.resolution !== b.resolution) return false;
+      const size = BUCKET[h.resolution]!;
+      const heldEnd = Math.min(h.to + 1, Math.floor(firstAsOf / size) * size);
+      return b.from < heldEnd && b.to + 1 > h.from;
+    }),
+  );
 }

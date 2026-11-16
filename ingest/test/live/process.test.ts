@@ -213,6 +213,12 @@ describeDb('the dry run', () => {
       expect(text).toMatch(/Expected load for 1,000 graduates a day \(given\)/);
       expect(text).toMatch(/Codex\.io\s+[\d,]+ requests, [\d,]+ compute units a day/);
       expect(text).toMatch(/Jupiter\s+[\d,]+ requests a day/);
+      expect(text).toMatch(/daily refresh 1,500/);
+      expect(text).toMatch(/The free rate allows 43,200 a day \(0\.5 a second\): within it/);
+      expect(text).toMatch(/Refresh\s+150,000 listed coins \(assumed: none in the database\)/);
+      expect(text).toMatch(
+        /Top-up\s+selects 0 coins now: 0 by rule 1 .*, 0 by rule 2 .*expected 0 Codex\.io units at 12 each/,
+      );
       expect(text).toMatch(
         /ceiling is 40,000 Codex\.io units a UTC day: the expectation is within it/,
       );
@@ -243,6 +249,16 @@ describeDb('the dry run', () => {
 });
 
 describe('the load model', () => {
+  it('puts the watch and the daily refresh of 150,000 listed coins together under the free Jupiter rate', () => {
+    const l = predictLoad({ graduatesPerDay: 1_000, listedCoins: 150_000 });
+    expect(l.jupiter.refreshRequests).toBe(1_500);
+    expect(l.jupiter.freeRateRequests).toBe(43_200);
+    expect(l.jupiter.requests).toBe(l.jupiter.watchRequests + 1_500 + l.jupiter.metadataRequests);
+    expect(l.jupiter.requests).toBeLessThan(l.jupiter.freeRateRequests);
+    // Without listed coins, nothing is added.
+    expect(predictLoad({ graduatesPerDay: 1_000 }).jupiter.refreshRequests).toBe(0);
+  });
+
   it('predicts the requests and units a day for 1,000 graduates a day', () => {
     const l = predictLoad({ graduatesPerDay: 1_000 });
     // Discovery: 288 passes a day, one request each (about 24 rows a pass).
