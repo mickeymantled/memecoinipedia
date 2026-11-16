@@ -1,0 +1,641 @@
+[
+  {
+    "mint": "DSujtmByDPzwBxSgYjwdnFY72QQRqMUNAWNd4FfYpump",
+    "ticker": "sainttrump",
+    "primary_narrative": "political",
+    "secondary_narratives": [
+      "culture/meme"
+    ],
+    "origin": "Coin named 'saint trump', apparently depicting Donald Trump in a saint-like image. Its metadata links an @GetTrumpMemes reply to meme artist @RobTaeler praising his meme and asking for DMs, so the art likely comes from that meme.",
+    "origin_date": "2025-04-30",
+    "trigger_event": "On 2025-05-20 @GetTrumpMemes publicly replied 'We like your Meme! Check your DMs' to @RobTaeler's image, and the coin launched about three minutes later using that image.",
+    "parent_mint": null,
+    "key_accounts": [
+      "GetTrumpMemes",
+      "RobTaeler"
+    ],
+    "sources": [
+      "https://x.com/i/status/1924881624883134936",
+      "https://x.com/i/status/1917718022195929565",
+      "https://lite-api.jup.ag/tokens/v2/search?query=DSujtmByDPzwBxSgYjwdnFY72QQRqMUNAWNd4FfYpump"
+    ],
+    "confidence": 0.5,
+    "notes": "Subject inferred from name plus the linked post and image; the tweet text does not mention 'saint' or Trump, and I could not view the image or the pump.fun description (Cloudflare blocked). origin_date is the date of Rob Taeler's meme reply, which is the earliest dated item found. Guide: person holding office/seeking office is political (tie-break 5); Trump as a meme figure could also be read celebrity, guide leaves this to rule 5."
+  },
+  {
+    "mint": "5HHaniUPWiDynjgQ8hZirp9MWZCzHvL9xw6fYSbfpump",
+    "ticker": "aSOL",
+    "primary_narrative": "culture/meme",
+    "secondary_narratives": [
+      "tech"
+    ],
+    "origin": "Coin named 'Anime Solana' (aSOL), an anime-styled take on Solana. Its metadata links an Elon Musk reply on X to a user who had asked Musk to 'animate that'.",
+    "origin_date": "2026-03-30",
+    "trigger_event": "On 2026-03-30 a user asked @elonmusk to 'Animate that' on an image and @elonmusk replied to @TxCryptoSaurus with a 6-second video; the coin launched the next day linking that reply.",
+    "parent_mint": null,
+    "key_accounts": [
+      "elonmusk",
+      "TxCryptoSaurus"
+    ],
+    "sources": [
+      "https://x.com/i/status/2038532491422937449",
+      "https://x.com/i/status/2038531896624250969",
+      "https://lite-api.jup.ag/tokens/v2/search?query=5HHaniUPWiDynjgQ8hZirp9MWZCzHvL9xw6fYSbfpump"
+    ],
+    "confidence": 0.35,
+    "notes": "Tweet text is only a link; I did not view the video, so what Musk posted is unconfirmed. Elon is a link target, not necessarily the coin's subject (guide: subject, not trigger). Anime is culture/meme under guide section 2; the Solana angle gets tech as a weak secondary. Could not read the pump.fun description."
+  },
+  {
+    "mint": "2RuDRx9RAcXrSoLupeMLGuBay6w5Q1nUrdPySjA3pump",
+    "ticker": "Fartnoy",
+    "primary_narrative": "celebrity",
+    "secondary_narratives": [
+      "culture/meme"
+    ],
+    "origin": "'Dave Fartnoy' is a joke on Barstool Sports founder Dave Portnoy's name, launched after he promoted the JAILSTOOL coin. Portnoy bought a large share and called it a 'cute collectible' while warning it could be rugged.",
+    "origin_date": "2025-02-09",
+    "trigger_event": "In early February 2025 Dave Portnoy promoted the JAILSTOOL coin, then was sent and publicly bought Dave Fartnoy, drawing attention from his large following.",
+    "parent_mint": null,
+    "key_accounts": [
+      "stoolpresidente"
+    ],
+    "sources": [
+      "https://www.benzinga.com/markets/cryptocurrency/25/02/43647226/dave-portnoy-buys-risk-laden-dave-fartnoy-after-promoting-controversial-jailstool-im-in-this-one-to-make-money",
+      "https://www.bitrue.com/blog/jailstool-to-fartnoy-dave-portnoys-influence-on-solana-meme-coins",
+      "https://x.com/stoolpresidente",
+      "https://lite-api.jup.ag/tokens/v2/search?query=2RuDRx9RAcXrSoLupeMLGuBay6w5Q1nUrdPySjA3pump"
+    ],
+    "confidence": 0.8,
+    "notes": "Origin date set to the coin's launch week because the underlying 'event' is Portnoy's Feb 2025 coin promotion; exact day not confirmed. Fart-joke name is mildly crude, not flagged sensitive. Partly a parody of JAILSTOOL (derivative question): the Fartnoy coin is a play on Portnoy's own name, so celebrity primary; JAILSTOOL parent mint not identified."
+  },
+  {
+    "mint": "ET7zqkqyWVKHJSkKc8fWGMfNRrZ8DhqZLApo2qZZJf9o",
+    "ticker": "TUCKERWIF",
+    "primary_narrative": "celebrity",
+    "secondary_narratives": [
+      "derivative",
+      "culture/meme"
+    ],
+    "origin": "'TUCKERWIFHAT' puns on Tucker Carlson and the dogwifhat coin ('wif hat'). Its metadata links a TuckerWifHatsol X account.",
+    "origin_date": "2024-06-07",
+    "trigger_event": "Coin was created on 2024-06-07 during the June 2024 wave of politician/pundit-themed 'PolitiFi' Solana memecoins.",
+    "parent_mint": null,
+    "key_accounts": [
+      "TuckerWifHatsol"
+    ],
+    "sources": [
+      "https://lite-api.jup.ag/tokens/v2/search?query=ET7zqkqyWVKHJSkKc8fWGMfNRrZ8DhqZLApo2qZZJf9o",
+      "https://www.solflare.com/prices/tuckerwifhat/ET7zqkqyWVKHJSkKc8fWGMfNRrZ8DhqZLApo2qZZJf9o/",
+      "https://www.kucoin.com/news/articles/trending-politifi-memecoins-to-watch-in-june-2024"
+    ],
+    "confidence": 0.4,
+    "notes": "Not a pump.fun-suffix mint. origin_date is the creation date, not a dated Tucker event; I found no specific trigger. Derivative of dogwifhat is likely from the name but I did not verify the dogwifhat mint, so parent_mint is null. Carlson is a media personality not an office-holder, so celebrity (rule 6); guide does not say whether a pun on a coin's name outranks the person. Could not read the description."
+  },
+  {
+    "mint": "5Tv5aqR3E2QNwx9J8KRhrzEGvirxbZyK4s4KYustpump",
+    "ticker": "Gireumee",
+    "primary_narrative": "animal",
+    "secondary_narratives": [
+      "culture/meme"
+    ],
+    "origin": "Gireumee (기름이, 'oil') is a Korean meme dog; a viral January 2024 X post of the dog's photos reached about 20 million impressions.",
+    "origin_date": "2024-01-04",
+    "trigger_event": "A Korean-language X post on 2024-01-04 ('너무 심했잖아. 너, 무심했잖아.') with two dog photos went viral, with about 26k retweets.",
+    "parent_mint": null,
+    "key_accounts": [
+      "gireumee"
+    ],
+    "sources": [
+      "https://x.com/i/status/1742815781086499044",
+      "https://coinmooner.com/coins/gireumee-gireumee",
+      "https://lite-api.jup.ag/tokens/v2/search?query=5Tv5aqR3E2QNwx9J8KRhrzEGvirxbZyK4s4KYustpump"
+    ],
+    "confidence": 0.65,
+    "notes": "Link between the coin and that exact viral post comes from a web-search result calling Gireumee a famous Korean meme dog; the tweet itself does not name the dog and I could not view the images. Guide rule 4 gives animal primary; a dog known mostly from one viral moment could also be culture/meme, and the guide does not settle that."
+  },
+  {
+    "mint": "C37Xx59pRkB86VTXDkTYVyFZTYdtWSfZNqzbCcS3pump",
+    "ticker": "BEAST",
+    "primary_narrative": "celebrity",
+    "secondary_narratives": [],
+    "origin": "Coin named 'MrBeast' (ticker BEAST), about YouTuber MrBeast (Jimmy Donaldson); its metadata links his X account as website and Twitter.",
+    "origin_date": "",
+    "trigger_event": "None identified; no dated trigger found. Launched 2025-08-15 with the creator's X profile attached.",
+    "parent_mint": null,
+    "key_accounts": [
+      "MrBeast"
+    ],
+    "sources": [
+      "https://x.com/MrBeast",
+      "https://lite-api.jup.ag/tokens/v2/search?query=C37Xx59pRkB86VTXDkTYVyFZTYdtWSfZNqzbCcS3pump"
+    ],
+    "confidence": 0.7,
+    "notes": "Subject clear from name and metadata, but I found no evidence MrBeast endorsed it and no trigger event; origin_date left empty. Likely an unofficial fan/opportunist launch. Could not read pump.fun description."
+  },
+  {
+    "mint": "6wWk5pMXNPCwsMLJQMPHeBxKiV7uk2THFK4ddEoipump",
+    "ticker": "CHILLASTER",
+    "primary_narrative": "derivative",
+    "secondary_narratives": [
+      "tech",
+      "culture/meme"
+    ],
+    "origin": "'Just a Chill Asteroid' appears to be a variant of the 'just a chill guy' meme format applied to an asteroid. Its metadata links a Glenn Beck post (2026-04-16) about a teenager's wish to meet Elon Musk, which has no obvious asteroid connection.",
+    "origin_date": "",
+    "trigger_event": "Launched 2026-04-18 with Glenn Beck's Elon Musk post attached; I found no asteroid news or other trigger.",
+    "parent_mint": null,
+    "key_accounts": [
+      "glennbeck",
+      "elonmusk"
+    ],
+    "sources": [
+      "https://x.com/i/status/2044889292225311088",
+      "https://lite-api.jup.ag/tokens/v2/search?query=6wWk5pMXNPCwsMLJQMPHeBxKiV7uk2THFK4ddEoipump",
+      "https://www.coinbase.com/en-mx/price/just-a-chill-asteroid-solana-aefc4eb6"
+    ],
+    "confidence": 0.2,
+    "notes": "Derivative reading is from the name and the guide's 'Just a chill dog' example; the Chill Guy parent mint was not verified so parent_mint is null. The linked post is about a girl who died of cancer; it appears to be an unrelated viral link, and the coin should not be treated as about her. If the format link is rejected, tech (asteroid/space) or culture/meme would be the primary. Origin date empty because the Chill Guy meme date was not sourced here."
+  },
+  {
+    "mint": "J1Kc6vzAFkjoE2vbMUxcWeNQWzRfLLjSzpDvFgrppump",
+    "ticker": "SIREN",
+    "primary_narrative": "other",
+    "secondary_narratives": [
+      "AI"
+    ],
+    "origin": "Coin named SIREN with no description or socials found. A separate BNB Chain AI-themed SIREN token pumped in March 2026, days before this Solana coin launched, so it may borrow that name.",
+    "origin_date": "",
+    "trigger_event": "Launched 2026-03-25, three days after the BNB Chain SIREN pump covered in the press; no direct link shown.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://phemex.com/academy/what-is-siren-ai-meme-coin",
+      "https://cryptojist.com/why-siren-pumped-300-on-march-22-2026/",
+      "https://lite-api.jup.ag/tokens/v2/search?query=J1Kc6vzAFkjoE2vbMUxcWeNQWzRfLLjSzpDvFgrppump"
+    ],
+    "confidence": 0.15,
+    "notes": "No metadata links, no description reachable, so best reading only. Search results show multiple unrelated Solana SIREN coins; I did not confirm this one is tied to the BNB SIREN. Could be a derivative of that coin (different chain, no mint known) per guide section 4; unresolved."
+  },
+  {
+    "mint": "4XKGjKaKowFvL5sYwh2AKx72vj9iwC8MNvpL44E9pump",
+    "ticker": "BRAINLET",
+    "primary_narrative": "culture/meme",
+    "secondary_narratives": [],
+    "origin": "Brainlet is the 4chan Wojak variant with a tiny head, used to mock someone as unintelligent. The coin has an @_brainlet X account and a Telegram.",
+    "origin_date": "2016-06-04",
+    "trigger_event": "The meme began on 4chan /sci/ (earliest use 2015-12-01); the Wojak brainlet image appeared in 2016, including a thread on 2016-06-04. Coin launched in April 2026.",
+    "parent_mint": null,
+    "key_accounts": [
+      "_brainlet"
+    ],
+    "sources": [
+      "https://knowyourmeme.com/memes/brainlet",
+      "https://meme.com/memes/brainlet",
+      "https://x.com/_brainlet",
+      "https://lite-api.jup.ag/tokens/v2/search?query=4XKGjKaKowFvL5sYwh2AKx72vj9iwC8MNvpL44E9pump"
+    ],
+    "confidence": 0.75,
+    "notes": "origin_date uses the 2016 Wojak-variant thread from the sources; the 2015 term date is earlier. No launch-day trigger found. Name is derogatory toward intelligence, mildly; not flagged hateful."
+  },
+  {
+    "mint": "7FJECmfe4TWpJJgBPYQyd1khxkYZWgVqq8FLoWa5pump",
+    "ticker": "TFO",
+    "primary_narrative": "other",
+    "secondary_narratives": [
+      "tech",
+      "political"
+    ],
+    "origin": "Coin named 'Tesla Force One', probably a Tesla/Elon Musk or White House joke. Its metadata links an X live broadcast, but I could not tell what the broadcast was.",
+    "origin_date": "",
+    "trigger_event": "Launched around 2025-03-11 with an X broadcast link attached; I found no news or event behind the name.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://x.com/i/broadcasts/1LyGBWzpPeYJN",
+      "https://lite-api.jup.ag/tokens/v2/search?query=7FJECmfe4TWpJJgBPYQyd1khxkYZWgVqq8FLoWa5pump",
+      "https://rugchecker.com/tokens/7FJECmfe4TWpJJgBPYQyd1khxkYZWgVqq8FLoWa5pump"
+    ],
+    "confidence": 0.15,
+    "notes": "Not researchable beyond the name; web searches returned only token listing pages. Possibly tied to the March 2025 Tesla showcase at the White House, but I found no source, so I did not state it. The 'other' primary is a best-effort placeholder; if the Tesla reading holds it would be news event or celebrity (guide does not cover a company-brand coin). Broadcast not opened."
+  },
+  {
+    "mint": "7uCHQdxAz2ojRgEpXRHas1nJAeTTo9b7JWNgpXXi9D9p",
+    "ticker": "CATF",
+    "primary_narrative": "AI",
+    "secondary_narratives": [
+      "animal",
+      "utility"
+    ],
+    "origin": "The Blinking AI Cat (Catfather) is a blinking-cat mascot coin tied to an AI 'Blink' generator and AI agent product from the @theblinkingcat project.",
+    "origin_date": "",
+    "trigger_event": "Launched on pump.fun in early January 2025, promoted alongside an AI-powered blink generator release; no specific viral trigger found.",
+    "parent_mint": null,
+    "key_accounts": [
+      "@theblinkingcat"
+    ],
+    "sources": [
+      "https://www.coingecko.com/en/coins/the-blinking-ai-cat-catfather",
+      "https://meme-insider.com/ko/article/exploring-catf-token-solana-gmgn-ai",
+      "https://messari.io/project/the-blinking-ai-cat-catfather",
+      "https://api.dexscreener.com/latest/dex/tokens/7uCHQdxAz2ojRgEpXRHas1nJAeTTo9b7JWNgpXXi9D9p"
+    ],
+    "confidence": 0.5,
+    "notes": "Ticker/mint match via DexScreener metadata (website blinkgenerator.com, X @theblinkingcat). Origin date of the 'blinking cat' meme itself not found; left empty. Guide tie-break 2/3 (AI product claim vs animal mascot) settles AI primary. X search for this coin not run in depth."
+  },
+  {
+    "mint": "Bx74hpFiaiBbSonrjyqxjGfAA7gRxM2CeKiy31uN6biR",
+    "ticker": "gomu",
+    "primary_narrative": "animal",
+    "secondary_narratives": [],
+    "origin": "gomu gator is a cartoon alligator mascot coin ('everyone's favorite gator in Solana') run by the @gomugator account.",
+    "origin_date": "",
+    "trigger_event": "Created June 2024; after a long quiet period it surged in March 2026 on renewed community attention and DexScreener trending.",
+    "parent_mint": null,
+    "key_accounts": [
+      "@gomugator"
+    ],
+    "sources": [
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/Bx74hpFiaiBbSonrjyqxjGfAA7gRxM2CeKiy31uN6biR/info",
+      "https://memedesk.co/alpha/gomu-gator-surges-3600-percent-solana-animal-meme",
+      "https://www.coingecko.com/en/coins/gomu-gator"
+    ],
+    "confidence": 0.7,
+    "notes": "Mint address is not a pump.fun-suffix address; token creation date reported as 2024-06-07 by a secondary source (not used as origin_date). No original meme/event found; the mascot appears to be an original character."
+  },
+  {
+    "mint": "BDt8SjiGTd7JdzfMbeAKFazmV1DtbG3uJNMSE8dUpump",
+    "ticker": "butthole",
+    "primary_narrative": "culture/meme",
+    "secondary_narratives": [],
+    "origin": "Token named 'third eye' with ticker 'butthole', a shock-humor joke riffing on the third eye/anus; metadata links to an X post by @okpasquale.",
+    "origin_date": "2025-08-09",
+    "trigger_event": "Launched August 9, 2025 right after the linked @okpasquale post (id timestamp 2025-08-09); the post itself could not be retrieved so its content is unknown.",
+    "parent_mint": null,
+    "key_accounts": [
+      "@okpasquale"
+    ],
+    "sources": [
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/BDt8SjiGTd7JdzfMbeAKFazmV1DtbG3uJNMSE8dUpump/info",
+      "https://solfoundry.io/rug-check/BDt8SjiGTd7JdzfMbeAKFazmV1DtbG3uJNMSE8dUpump",
+      "https://x.com/okpasquale/status/1954172185116828078"
+    ],
+    "confidence": 0.25,
+    "notes": "SENSITIVE: crude/sexual-adjacent name; GeckoTerminal flags it NSFW. The linked X post is not retrievable via API (not found/deleted), so the actual meme is unconfirmed. origin_date is the linked post's snowflake date, inferred. Reading from name only; low confidence. Guide does not cover crude-joke tickers vs 'third eye' spiritual meaning."
+  },
+  {
+    "mint": "7CWLxXfjRZ8WP8HVWBSHoti9pVP9FfN5UwZ71JyXpump",
+    "ticker": "Limited",
+    "primary_narrative": "other",
+    "secondary_narratives": [],
+    "origin": "Limited Coin pitches itself on scarcity ('Born From Scarcity'): value comes from limits, citing gold, Bitcoin and time. No person, event or product is referenced.",
+    "origin_date": "",
+    "trigger_event": "Community takeover of the token reportedly occurred on 2026-02-25 after the original developer abandoned it; no external trigger found.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/7CWLxXfjRZ8WP8HVWBSHoti9pVP9FfN5UwZ71JyXpump/info",
+      "https://limitedcoin.site/"
+    ],
+    "confidence": 0.3,
+    "notes": "Only the on-chain description and a project site were found; no X handle or verifiable origin. 'other' used because the subject is an abstract concept; taxonomy guide does not say where abstract economic ideas like scarcity go (could argue culture/meme). Takeover/rug claim comes from a single search summary, unverified."
+  },
+  {
+    "mint": "9f52wiW2zrt2497HroMHtZtuj7VzWu4AsEusmW3pump",
+    "ticker": "$NRG",
+    "primary_narrative": "utility",
+    "secondary_narratives": [
+      "celebrity"
+    ],
+    "origin": "$NRG ('Energy') is an access token for the DJ BLOND:ISH and his Abracadabra events: holders get guestlist and backstage access and early unreleased music, and burning tokens buys backstage entry.",
+    "origin_date": "",
+    "trigger_event": "Launched on pump.fun around 2025-09-28 as a fan-access token for BLOND:ISH shows; no single viral trigger found.",
+    "parent_mint": null,
+    "key_accounts": [
+      "@everythingisnrg"
+    ],
+    "sources": [
+      "https://www.everythingisnrg.xyz/",
+      "https://api.dexscreener.com/latest/dex/tokens/9f52wiW2zrt2497HroMHtZtuj7VzWu4AsEusmW3pump",
+      "https://www.coingecko.com/en/coins/energy-2"
+    ],
+    "confidence": 0.75,
+    "notes": "Utility claim is from the project site and not verified. Whether BLOND:ISH himself launched/endorsed it was not independently confirmed (site says 'your key to the BLOND:ISH universe'). Guide rule 2 (claimed function) gives utility; celebrity secondary. Not a meme per its own site."
+  },
+  {
+    "mint": "42zTJXcmPRpm9isK3R9s93b91gEU6SL57yuBVimcpump",
+    "ticker": "GOSLINGS",
+    "primary_narrative": "animal",
+    "secondary_narratives": [
+      "news event",
+      "culture/meme"
+    ],
+    "origin": "RIP Goslings is a memorial coin for two baby geese killed when an Arkansas State Police trooper ran over them while trying to clear a goose family off Interstate 57 in May 2026.",
+    "origin_date": "2026-05-23",
+    "trigger_event": "A video of the incident went viral over the weekend (reported May 26, 2026) and sparked outrage; the coin graduated from pump.fun around May 27, 2026.",
+    "parent_mint": null,
+    "key_accounts": [
+      "@RIPGOSLINGS"
+    ],
+    "sources": [
+      "https://www.thv11.com/article/news/local/video-arkansas-police-run-over-geese-outrage/91-ae162ecd-a158-4ac2-aace-7a6ca318d065",
+      "https://katv.com/news/local/arkansas-trooper-striking-goslings-on-interstate-sparks-backlash-roadway-safety-debate-reporter-autumn-foltz-director-mike-hagar-game-and-fish-commission-spokesman-trey-reid",
+      "https://www.ripgoslings.life/",
+      "https://www.bitrue.com/blog/what-is-goslings",
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/42zTJXcmPRpm9isK3R9s93b91gEU6SL57yuBVimcpump/info"
+    ],
+    "confidence": 0.8,
+    "notes": "Exact incident date unknown: news says the video spread 'over the weekend' before May 26, so 2026-05-23 is approximate. The coin's own site only says memorial for two goslings; link to the Arkansas incident is inferred from timing and matching description. Other goslings coins exist (e.g. 'Justice for Goslings') — not parents. Guide rule 4 applies (animal with news event secondary)."
+  },
+  {
+    "mint": "DtR4D9FtVoTX2569gaL837ZgrB6wNjj6tkmnX9Rdk9B2",
+    "ticker": "aura",
+    "primary_narrative": "culture/meme",
+    "secondary_narratives": [],
+    "origin": "aura is based on the 'aura points' internet meme, a Gen Z slang format where people give plus or minus scores for how cool or cringe an action is, paired with a grey cat reaction image.",
+    "origin_date": "",
+    "trigger_event": "Launched 2024-05-30; the big run came in mid-2025 (peak around 2025-07-22) as the aura-points meme peaked on TikTok/X, with another spike in May 2026 after a large exchange account posted an 'aura maxxxing' meme.",
+    "parent_mint": null,
+    "key_accounts": [
+      "@auracoinsolana",
+      "@binance"
+    ],
+    "sources": [
+      "https://memecoinguide.com/coin/aura",
+      "https://infiniteaura.com/",
+      "https://api.dexscreener.com/latest/dex/tokens/DtR4D9FtVoTX2569gaL837ZgrB6wNjj6tkmnX9Rdk9B2"
+    ],
+    "confidence": 0.7,
+    "notes": "Details on history come from a single aggregator article; the meme's exact origin date is not established (aggregator says sports-Twitter 'aura' ~2020, TikTok points format 2023-24). Not a pump.fun-suffix address; launch venue unverified."
+  },
+  {
+    "mint": "DMwbVy48dWVKGe9z1pcVnwF3HLMLrqWdDLfbvx8RchhK",
+    "ticker": "Cope",
+    "primary_narrative": "culture/meme",
+    "secondary_narratives": [],
+    "origin": "Cope is themed on the internet 'cope' meme (copium/Wojak-style coping), run by the @copecoping account with TikTok and Instagram presence.",
+    "origin_date": "",
+    "trigger_event": "Launched on pump.fun in late August 2025; no specific trigger event found.",
+    "parent_mint": null,
+    "key_accounts": [
+      "@copecoping"
+    ],
+    "sources": [
+      "https://coinranking.com/coin/TiMtaFtUIah7+cope-cope/about",
+      "https://api.dexscreener.com/latest/dex/tokens/DMwbVy48dWVKGe9z1pcVnwF3HLMLrqWdDLfbvx8RchhK",
+      "https://coinmarketcap.com/currencies/copecoping/"
+    ],
+    "confidence": 0.5,
+    "notes": "Origin of the 'cope' meme is long-standing and not dated here. Little coin-specific history found; reading is from name and an aggregator summary."
+  },
+  {
+    "mint": "8TnbbiNsrpbF63jt56RyRj7EQfrZd45dpa2U92Wkpump",
+    "ticker": "TRUMP2",
+    "primary_narrative": "derivative",
+    "secondary_narratives": [
+      "political"
+    ],
+    "origin": "Trump 2 is a sequel-style coin riffing on the official Trump meme coin, with the 'FIGHT FIGHT FIGHT' slogan in its description.",
+    "origin_date": "",
+    "trigger_event": "Appears timed to early 2026 speculation about a second Trump coin, but no direct trigger could be confirmed.",
+    "parent_mint": "J4xDP3RaiAq2eX6b84ReNnWMPScDmmB7a6raWEjBpump",
+    "key_accounts": [
+      "@Polymarket",
+      "@realDonaldTrump"
+    ],
+    "sources": [
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/8TnbbiNsrpbF63jt56RyRj7EQfrZd45dpa2U92Wkpump/info",
+      "https://x.com/Polymarket/status/2022363583628136954",
+      "https://truthsocial.com/@realDonaldTrump/posts/116087827602935657"
+    ],
+    "confidence": 0.3,
+    "notes": "Coin's linked socials are a Polymarket post (2026-02-13) about odds Trump launches a coin this year and a Truth Social post about a Japan trade deal; these look like attention hooks, not proof of the coin's origin. Parent mint is the official TRUMP mint listed in the same issue (assumed from the 'X 2.0' naming). Guide rule: 'X 2.0' = derivative, but it could instead be read as a second coin on a political subject (not a derivative); guide does not settle whether an unofficial 'Trump 2' of the official coin counts."
+  },
+  {
+    "mint": "2nP9yKQNSGQy851iyawDvBkzkK2R2aqKArQCKc2gpump",
+    "ticker": "PsyopAnime",
+    "primary_narrative": "AI",
+    "secondary_narratives": [
+      "culture/meme",
+      "utility"
+    ],
+    "origin": "PsyopAnime is an AI-driven anime studio and collective that makes short anime films about news and internet culture; the coin is tied to its X community and TikTok.",
+    "origin_date": "",
+    "trigger_event": "Launched on pump.fun on 2026-01-10; the community claimed ownership on 2026-01-13 and the artist took over the token.",
+    "parent_mint": null,
+    "key_accounts": [
+      "@psyopanimeofficial (TikTok)",
+      "PsyopAnime X community"
+    ],
+    "sources": [
+      "https://www.psyopanime.ai/",
+      "https://pump.fun/coin/2nP9yKQNSGQy851iyawDvBkzkK2R2aqKArQCKc2gpump",
+      "https://www.kucoin.com/news/trends/SOL/6965ccdc73fe15000740fcad",
+      "https://coinmarketcap.com/currencies/psyopanime/"
+    ],
+    "confidence": 0.6,
+    "notes": "Launch/takeover dates come from search summaries of aggregator pages; origin_date left empty as the studio's start date was not found. Guide rule 2/3 (AI product) picks AI primary; anime would be culture/meme."
+  },
+  {
+    "mint": "8ULCkCTUa3XXrNXaDVzPcja2tdJtRdxRr8T4eZjVKqk",
+    "ticker": "GOME",
+    "primary_narrative": "culture/meme",
+    "secondary_narratives": [
+      "gaming"
+    ],
+    "origin": "Coin named 'GAME OF MEMES' with a website (gome.lol) and an X account; the name reads as a Game of Thrones-style pun on memes. No source explains the specific meme or event behind it.",
+    "origin_date": "",
+    "trigger_event": "Unknown. No identifiable trigger event found.",
+    "parent_mint": null,
+    "key_accounts": [
+      "@gomeonsol_"
+    ],
+    "sources": [
+      "https://solscan.io/token/8ULCkCTUa3XXrNXaDVzPcja2tdJtRdxRr8T4eZjVKqk",
+      "https://gome.lol/",
+      "https://dexscreener.com/solana/5hk9rf7oztmhitagmpp1mw2nll1nxxmhpemeouazvybm"
+    ],
+    "confidence": 0.4,
+    "notes": "Name and socials come from on-chain metadata and DexScreener. Could not find any article or post describing the origin. 'Game of Memes' pun on Game of Thrones is my inference from the name, not sourced. Subject could also be read as gaming; guide does not settle a pun on a TV franchise."
+  },
+  {
+    "mint": "J29GYaKUtJrpEhcJctnriAQjWxT8YsnCtqZRGAaupump",
+    "ticker": "CUBAN",
+    "primary_narrative": "celebrity",
+    "secondary_narratives": [],
+    "origin": "Fan/parody coin named 'Mark Cuban Coin', referencing the businessman and Shark Tank investor Mark Cuban. Searches found several unrelated pump.fun coins with this name and no evidence any is endorsed by him.",
+    "origin_date": "",
+    "trigger_event": "Unknown for this mint. Cuban publicly discussed a possible memecoin in January 2025 per secondary coverage, but no link to this mint was found.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://solscan.io/token/J29GYaKUtJrpEhcJctnriAQjWxT8YsnCtqZRGAaupump",
+      "https://meme-insider.com/en/article/cuban-token-solana-meme-coin-guide",
+      "https://web3.bitget.com/en/academy/how-to-buy-mark-cuban-coin-and-what-is-the-token"
+    ],
+    "confidence": 0.7,
+    "notes": "Metadata description is empty. Many same-name tokens exist; coverage found is generic and was not tied to this exact mint. Cuban is a businessman/celebrity not a politician, so celebrity fits."
+  },
+  {
+    "mint": "9VePDawkbWviwJbZF4ns4q8hyzoy9VJdQGX3cdoUpump",
+    "ticker": "charlielon",
+    "primary_narrative": "celebrity",
+    "secondary_narratives": [
+      "news event",
+      "political"
+    ],
+    "origin": "Memorial-style coin 'For Charlie' (description 'just for charlie'), most likely about conservative activist Charlie Kirk, who was shot and killed on 2025-09-10 at Utah Valley University. Several Kirk-themed coins launched in the following days.",
+    "origin_date": "2025-09-10",
+    "trigger_event": "Killing of Charlie Kirk on 2025-09-10 and the wave of tribute memecoins afterward.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://solscan.io/token/9VePDawkbWviwJbZF4ns4q8hyzoy9VJdQGX3cdoUpump",
+      "https://cryptopotato.com/300k-made-from-charlie-token-after-charlie-kirk-shooting/",
+      "https://coinmarketcap.com/academy/article/memecoins-surge-following-charliekirk-assassination",
+      "https://web3.okx.com/token/solana/9VePDawkbWviwJbZF4ns4q8hyzoy9VJdQGX3cdoUpump"
+    ],
+    "confidence": 0.55,
+    "notes": "Link to Kirk is inferred from name/description/timing of similar coins; this mint's own socials were not found. Ticker 'charlielon' unexplained. Sensitive: tied to a real person's death (tragedy). Guide unsettled: Kirk is a political activist/media figure not an office holder, so celebrity vs political is close; death event itself could be news event."
+  },
+  {
+    "mint": "5LswPW5k4vZRoK2a1qgJa3huGwpAXT6BaZ3bM4L6pump",
+    "ticker": "MoltCoin",
+    "primary_narrative": "AI",
+    "secondary_narratives": [
+      "culture/meme"
+    ],
+    "origin": "Coin named 'MoltCoin' deployed via rapidlaunch.io. Likely riffs on the January 2026 Moltbook/Moltbot (OpenClaw) AI-agent hype, but the metadata states no such link.",
+    "origin_date": "",
+    "trigger_event": "Possibly the late January 2026 Moltbook AI-agent social network hype that sent a Base-chain MOLT token surging. Unverified for this mint.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://solscan.io/token/5LswPW5k4vZRoK2a1qgJa3huGwpAXT6BaZ3bM4L6pump",
+      "https://www.coindesk.com/news-analysis/2026/01/30/a-reddit-like-social-network-for-ai-agents-is-getting-weird-and-memecoin-traders-are-cashing-in",
+      "https://en.wikipedia.org/wiki/Moltbook"
+    ],
+    "confidence": 0.3,
+    "notes": "Only evidence is the name and the 'Deployed on rapidlaunch.io' description. No socials, no post found for this mint. The Moltbook link is a guess from name; the sourced MOLT token is on Base, not this mint, so not marked derivative."
+  },
+  {
+    "mint": "J4xDP3RaiAq2eX6b84ReNnWMPScDmmB7a6raWEjBpump",
+    "ticker": "TRUMP",
+    "primary_narrative": "political",
+    "secondary_narratives": [],
+    "origin": "Coin named 'Trumpcoin' with ticker TRUMP, referencing Donald Trump. No description or socials; it is not the official TRUMP token and no origin story was found.",
+    "origin_date": "",
+    "trigger_event": "Unknown. Likely launched to ride Trump-themed coin attention but nothing verifies this.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://solscan.io/token/J4xDP3RaiAq2eX6b84ReNnWMPScDmmB7a6raWEjBpump"
+    ],
+    "confidence": 0.55,
+    "notes": "Metadata has no description or image. Many coins use this name; could not identify launch context for this mint. Possibly a derivative of the official TRUMP coin but no parent confirmed so parent_mint null. Sources list only the on-chain token page."
+  },
+  {
+    "mint": "4cxFF2iHmgkhWqjjbvGvqrCwjSGLTQV1CEZJfgCyrRQw",
+    "ticker": "SAPE",
+    "primary_narrative": "animal",
+    "secondary_narratives": [
+      "culture/meme"
+    ],
+    "origin": "Coin named 'Sad Ape' with description 'The most memeable ape on the internet'. No known real-world origin found.",
+    "origin_date": "",
+    "trigger_event": "Unknown.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://solscan.io/token/4cxFF2iHmgkhWqjjbvGvqrCwjSGLTQV1CEZJfgCyrRQw",
+      "https://www.solflare.com/prices/sad-ape/4cxFF2iHmgkhWqjjbvGvqrCwjSGLTQV1CEZJfgCyrRQw/",
+      "https://pump.fun/coin/4cxFF2iHmgkhWqjjbvGvqrCwjSGLTQV1CEZJfgCyrRQw"
+    ],
+    "confidence": 0.5,
+    "notes": "Only the description and listings found; no accounts, no trigger. Labelled from name and description. Image not inspected."
+  },
+  {
+    "mint": "AGdGTQa8iRnSx4fQJehWo4Xwbh1bzTazs55R6Jwupump",
+    "ticker": "114514",
+    "primary_narrative": "culture/meme",
+    "secondary_narratives": [],
+    "origin": "Japanese internet meme number 114514, a pun reading of 'ii yo, koi yo' from the character nicknamed Yaju Senpai in a 2001 adult video; it spread on 2ch and Nico Nico Douga and became a global in-joke number. The coin description cites this Japanese internet culture origin.",
+    "origin_date": "",
+    "trigger_event": "Unknown. Coin launched on pump.fun in December 2025 (chain data); no specific trigger found.",
+    "parent_mint": null,
+    "key_accounts": [
+      "@114514coin"
+    ],
+    "sources": [
+      "https://solscan.io/token/AGdGTQa8iRnSx4fQJehWo4Xwbh1bzTazs55R6Jwupump",
+      "https://hourai-gensou.com/inmu/origin-114514/",
+      "https://inmuking.jp/en/articles/inmu/",
+      "https://dic.pixiv.net/a/114514",
+      "https://114514.meme/"
+    ],
+    "confidence": 0.85,
+    "notes": "Sensitive: the meme originates from a gay pornographic video and is also tied to a hate/mockery context in places; flag for review. origin_date left empty: sources give the 2001 release year only, not a day."
+  },
+  {
+    "mint": "Eg2ymQ2aQqjMcibnmTt8erC6Tvk9PVpJZCxvVPJz2agu",
+    "ticker": "PUMPCADE",
+    "primary_narrative": "gaming",
+    "secondary_narratives": [
+      "utility"
+    ],
+    "origin": "Token for Pumpcade (cade.market), a project whose coin description says 'Play arcade games with others in a Pump Fun livechat and win'; the project later pivoted to livestream prediction markets and received pre-seed funding led by pump.fun.",
+    "origin_date": "",
+    "trigger_event": "Unknown beyond project launch; pump.fun pre-seed funding announced 2026-04-02 came after the coin launched.",
+    "parent_mint": null,
+    "key_accounts": [
+      "@cademarket"
+    ],
+    "sources": [
+      "https://solscan.io/token/Eg2ymQ2aQqjMcibnmTt8erC6Tvk9PVpJZCxvVPJz2agu",
+      "https://docs.cade.market/",
+      "https://www.theblock.co/news/deals/2026-04-02-pump-fun-pre-seed-funding-round-livestream-prediction-markets-pumpcade-396213",
+      "https://www.xt.com/en/blog/post/pumpcade-pumpcade-how-a-small-team-is-turning-meme-attention-into-live-prediction-markets",
+      "https://dexscreener.com/solana/fkfrk3wdagxokysr1fpggcdeegkv1b1yynx9ykvpg3jg"
+    ],
+    "confidence": 0.7,
+    "notes": "Labelled gaming+utility per tie-break 2 (claims a game product) from launch description. Later prediction-market focus would be utility alone, but labels follow launch state. Guide does not say how to treat a pivot."
+  },
+  {
+    "mint": "4ND23zzt6vCD295frwBkCx8aH77SNM9KbE4s47sqpump",
+    "ticker": "USA₮",
+    "primary_narrative": "tech",
+    "secondary_narratives": [
+      "news event"
+    ],
+    "origin": "Coin named 'United States Authorized Tether' using the USA₮ ticker, imitating Tether's planned US-regulated stablecoin USA₮ (USAT), which Tether unveiled on 2025-09-12 and launched on 2026-01-27. It is not the official token.",
+    "origin_date": "2025-09-12",
+    "trigger_event": "Tether's USA₮ announcement on 2025-09-12 (launch followed 2026-01-27).",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://solscan.io/token/4ND23zzt6vCD295frwBkCx8aH77SNM9KbE4s47sqpump",
+      "https://www.coindesk.com/business/2025/09/12/tether-unveils-usat-stablecoin-for-u-s-market-names-bo-hines-to-lead-new-division",
+      "https://tether.io/news/tether-announces-the-launch-of-usat-the-federally-regulated-dollar-backed-stablecoin-made-in-america/",
+      "https://www.anchorage.com/press-room/anchorage-digital-tether-introduce-usat"
+    ],
+    "confidence": 0.4,
+    "notes": "Launch date of this mint not established; if it launched before 2025-09-12 the trigger would be wrong. Several same-name Solana tokens exist with different mints. Guide unsettled: a copycat of another company's real product (not a coin-native token) fits tech, utility, news event, or other equally; chose tech from crypto-infrastructure theme. Impersonation/scam risk."
+  },
+  {
+    "mint": "FDbi6DxcntExKWBaDzwc6EjmRJk61iTfq89ffooNpump",
+    "ticker": "DEATH",
+    "primary_narrative": "political",
+    "secondary_narratives": [
+      "news event"
+    ],
+    "origin": "Coin named 'DEATH PENALTY' with description 'JUSTICE WILL BE SERVED!!'. It refers to capital punishment; no specific case could be identified.",
+    "origin_date": "",
+    "trigger_event": "Unknown. Possibly tied to a specific high-profile case but nothing found.",
+    "parent_mint": null,
+    "key_accounts": [],
+    "sources": [
+      "https://solscan.io/token/FDbi6DxcntExKWBaDzwc6EjmRJk61iTfq89ffooNpump"
+    ],
+    "confidence": 0.25,
+    "notes": "Searches for the description found nothing about this coin. Label from name/description only: death penalty as policy fits political; news-event secondary is speculative. Could be sensitive (violence/justice-for-victim theme); flag for review. Sources list only on-chain token page."
+  }
+]
