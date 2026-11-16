@@ -8,12 +8,21 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "classify": "tsx scripts/classify.ts"
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@types/pg": "^8.23.1",
+    "pg": "^8.23.1",
     "tsx": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "1.8.0",
+    "@memecoinipedia/db": "workspace:*",
+    "kysely": "^0.29.9",
+    "zod": "^4.6.7"
   }
 }
