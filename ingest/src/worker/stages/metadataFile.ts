@@ -54,7 +54,18 @@ const clip = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n -
 const errorText = (err: unknown): string =>
   clip(err instanceof Error ? err.message : String(err), 300);
 
+/** Gateway answers that say "too many requests at once" rather than anything about the file. */
+const OVERLOAD_RESULTS: readonly string[] = ['rate_limited', 'timeout'];
+
 export function createMetadataFileStage(deps: MetadataFileStageDeps): Stage {
+  /**
+   * Coins already charged an attempt in this process for an overloaded-gateway failure. Such a
+   * failure (every gateway rate-limited or timed out, and at least one rate-limited: a 429 is a
+   * gateway saying "too many at once", while a timeout alone can be a hanging host of the coin's
+   * own) says the setting is too hot, not that the coin is bad: it is charged once, and later ones in the same run are given back. A bad setting
+   * then costs each coin one attempt of its three, not all of them, and the next run retries it.
+   */
+  const charged = new Set<number>();
   return {
     name: 'metadata_file',
     version: METADATA_FILE_STAGE_VERSION,
@@ -77,7 +88,13 @@ export function createMetadataFileStage(deps: MetadataFileStageDeps): Stage {
       );
       if (result.outcome === 'unreachable') {
         const why = result.attempts.map((a) => `${a.gateway} ${a.result}`).join(', ');
-        return failed(`metadata_unreachable: ${clip(why, 300)}`, true);
+        const overloaded =
+          result.attempts.length > 0 &&
+          result.attempts.every((a) => OVERLOAD_RESULTS.includes(a.result)) &&
+          result.attempts.some((a) => a.result === 'rate_limited');
+        const refund = overloaded && charged.has(coin.id);
+        if (overloaded) charged.add(coin.id);
+        return failed(`metadata_unreachable: ${clip(why, 300)}`, true, refund);
       }
 
       const issues: NewIssue[] = [];
