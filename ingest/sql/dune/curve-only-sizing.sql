@@ -53,7 +53,9 @@ priced AS (
     count(p.hour) AS hours,
     max(p.price) * 1e9 AS peak_max_usd,
     -- Hours at or above $100,000.
-    count_if(p.price * 1e9 >= 100000) AS hours_hi
+    count_if(p.price * 1e9 >= 100000) AS hours_hi,
+    -- Hours at or above $50,000.
+    count_if(p.price * 1e9 >= 50000) AS hours_50k
   FROM dex_solana.price_hour p
   INNER JOIN nograd k ON k.mint = p.contract_address
   WHERE p.block_month >= DATE '2024-01-01'
@@ -81,7 +83,16 @@ SELECT
   count_if(d.peak_max_usd >= 1000000) AS max_1m_plus,
   -- Of the plain-maximum group: exactly one hour at or above $100,000, and two or more.
   count_if(d.peak_max_usd >= 100000 AND d.hours_hi = 1) AS max100k_one_hour,
-  count_if(d.peak_max_usd >= 100000 AND d.hours_hi >= 2) AS max100k_two_plus_hours
+  count_if(d.peak_max_usd >= 100000 AND d.hours_hi >= 2) AS max100k_two_plus_hours,
+  -- Plain maximum from the line up to but not including $1,000,000 (at $1,000,000 or more the
+  -- price rows are bad rows, so that group is left out).
+  count_if(d.peak_max_usd >= 30000 AND d.peak_max_usd < 1000000) AS max_30k_to_1m,
+  count_if(d.peak_max_usd >= 50000 AND d.peak_max_usd < 1000000) AS max_50k_to_1m,
+  count_if(d.peak_max_usd >= 80000 AND d.peak_max_usd < 1000000) AS max_80k_to_1m,
+  count_if(d.peak_max_usd >= 100000 AND d.peak_max_usd < 1000000) AS max_100k_to_1m,
+  -- The same under $1,000,000, with at least two hours at or above the line.
+  count_if(d.hours_50k >= 2 AND d.peak_max_usd < 1000000) AS two_hours_50k_to_1m,
+  count_if(d.hours_hi >= 2 AND d.peak_max_usd < 1000000) AS two_hours_100k_to_1m
 FROM nograd k
 LEFT JOIN priced d ON d.mint = k.mint
 GROUP BY 1
