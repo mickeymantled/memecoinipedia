@@ -150,6 +150,59 @@ describeDb('a coin with a curve and no graduation', () => {
   );
 });
 
+describeDb('a stray pool beside the curve of a never-graduated coin', () => {
+  const stray = (tag: string): SimPool => ({
+    address: 'C'.repeat(43) + tag,
+    exchange: 'PumpSwap',
+    protocol: 'PumpAmm',
+    createdAt: LAUNCH + 3_600,
+    liquidity: 30_000,
+    minutes: dense(LAUNCH + 3_600, 120, () => mcap(8_000), 30_000),
+  });
+
+  it('is an ordinary other pool; the curve stays primary and is fetched for its whole life', async () => {
+    const coin = curveCoin('7');
+    coin.pools.push(stray('7'));
+    const id = await addCoin(coin, { rough_ath_market_cap_usd: 180_000 });
+    const sim = simProvider(coin);
+    const deps = depsFor(sim.fetch);
+    const r = await fetchCandlesForCoin(deps, { id, address: coin.mint });
+    expect(r.ok).toBe(true);
+    expect(r.summary.pools.map((p) => p.role).sort()).toEqual(['curve', 'other']);
+    expect(r.summary.issues).toEqual([]);
+    const pools = await t.db.selectFrom('pools').selectAll().where('coin_id', '=', id).execute();
+    expect(pools.filter((p) => p.is_graduation_pool)).toHaveLength(0);
+    expect(r.summary.path).not.toBe('screened_out');
+    await computeMetricsForCoin(deps, { id });
+    const row = await t.db
+      .selectFrom('coins')
+      .selectAll()
+      .where('id', '=', id)
+      .executeTakeFirstOrThrow();
+    expect(Number(row.ath_market_cap_usd)).toBeGreaterThan(100_000);
+    const curveId = pools.find((p) => p.is_primary)!.id;
+    expect(row.ath_pool_id).toBe(curveId);
+  });
+
+  it('a graduate with the same pools keeps its graduation pool, as before', async () => {
+    const coin = curveCoin('8');
+    coin.pools.push(stray('8'));
+    coin.migratedAt = LAUNCH + 3_600;
+    const id = await addCoin(coin);
+    const r = await fetchCandlesForCoin(depsFor(simProvider(coin).fetch), {
+      id,
+      address: coin.mint,
+    });
+    expect(r.summary.pools.map((p) => p.role).sort()).toEqual(['curve', 'graduation']);
+    const row = await t.db
+      .selectFrom('coins')
+      .select('graduated_at')
+      .where('id', '=', id)
+      .executeTakeFirstOrThrow();
+    expect(row.graduated_at).toEqual(new Date((LAUNCH + 3_600) * 1000));
+  });
+});
+
 describeDb('the mayhem flag from the launch record', () => {
   it('sets true on the launchpad name "Pump Mayhem", whatever its case', async () => {
     const coin = curveCoin('2', 180_000, 'PUMP MAYHEM');
