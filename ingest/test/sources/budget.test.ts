@@ -83,4 +83,20 @@ describe('UnitBudget', () => {
     expect(() => b.reserve('a', 1)).toThrow(BudgetExceededError);
     expect(() => b.reserve('b', 5)).not.toThrow();
   });
+
+  it('adjusts the total from a later figure and moves replaced estimates out of the estimated part', () => {
+    const b = new UnitBudget({ ceilingUnits: 100 });
+    b.record('a', 10, false);
+    b.record('a', 30, true);
+    b.adjust('a', 5, 30); // the 30 estimated credits were really 35
+    expect(b.summary('a')).toMatchObject({
+      requests: 2,
+      units: 45,
+      estimatedUnits: 0,
+      estimatedRequests: 1,
+      remaining: 55,
+    });
+    b.adjust('a', -15); // a negative correction lowers the total
+    expect(b.summary('a').units).toBe(30);
+  });
 });

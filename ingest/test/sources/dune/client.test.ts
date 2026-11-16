@@ -456,15 +456,15 @@ describe('downloadCsv', () => {
       bytes: Buffer.byteLength(body),
       nextOffset: 1000,
       estimated: true,
-      credits: 1.6,
-      reservedCredits: 1.6,
+      credits: 1.53,
+      reservedCredits: 1.53,
     });
     expect(fs.readFileSync(out, 'utf8')).toBe(body);
     expect(get.requests[0]!.url).toBe(
       `https://api.dune.com/api/v1/execution/${ID}/results/csv?limit=1000&offset=0`,
     );
     expect(get.requests[0]!.headers['x-dune-api-key']).toBe(KEY);
-    expect(dune(budget)).toMatchObject({ units: 1.6, estimatedUnits: 1.6, reservedUnits: 0 });
+    expect(dune(budget)).toMatchObject({ units: 1.53, estimatedUnits: 1.53, reservedUnits: 0 });
   });
 
   it('appends a later page and drops its header row; no next offset means the last page', async () => {
@@ -507,17 +507,17 @@ describe('downloadCsv', () => {
       limit: 1000,
       measureCredits: async () => null,
     });
-    expect(r2).toMatchObject({ credits: 1.6, estimated: true });
+    expect(r2).toMatchObject({ credits: 1.53, estimated: true });
     const r3 = await client.downloadCsv(ID, tmpFile(), {
       limit: 1000,
       measureCredits: async () => {
         throw new Error('usage failed');
       },
     });
-    expect(r3).toMatchObject({ credits: 1.6, estimated: true });
+    expect(r3).toMatchObject({ credits: 1.53, estimated: true });
     expect(dune(budget)).toMatchObject({
-      units: 1.9 + 1.6 + 1.6,
-      estimatedUnits: 3.2,
+      units: 1.9 + 1.53 + 1.53,
+      estimatedUnits: 1.53 + 1.53,
       reservedUnits: 0,
     });
   });
@@ -530,9 +530,9 @@ describe('downloadCsv', () => {
         limit: 1000,
         measureCredits: async () => measured,
       });
-      expect(r).toMatchObject({ credits: 1.6, estimated: true });
+      expect(r).toMatchObject({ credits: 1.53, estimated: true });
     }
-    expect(dune(budget)).toMatchObject({ units: 3.2, estimatedUnits: 3.2 });
+    expect(dune(budget)).toMatchObject({ units: 1.53 * 2, estimatedUnits: 1.53 * 2 });
   });
 
   it('believes a measured cost of zero for a page with no rows', async () => {
@@ -573,8 +573,8 @@ describe('downloadCsv', () => {
   });
 
   it('is refused, with no request, when the page estimate does not fit the budget', async () => {
-    const { client, get } = setup({ budget: new UnitBudget({ ceilingUnits: 50 }) });
-    // A full page of 32,000 rows is estimated at 51.2 credits.
+    const { client, get } = setup({ budget: new UnitBudget({ ceilingUnits: 49 }) });
+    // A full page of 32,000 rows is estimated at 49.1 credits (the known rate).
     await expect(client.downloadCsv(ID, tmpFile())).rejects.toBeInstanceOf(BudgetExceededError);
     expect(get.requests).toHaveLength(0);
   });
@@ -605,7 +605,7 @@ describe('downloadCsv', () => {
     expect(fs.existsSync(out)).toBe(false);
     expect(get.pulled[0]).toBeLessThan(50); // it stopped reading instead of draining the body
     // Dune bills a page when the request is made.
-    expect(dune(budget)).toMatchObject({ units: 1.6, estimatedUnits: 1.6, reservedUnits: 0 });
+    expect(dune(budget)).toMatchObject({ units: 1.53, estimatedUnits: 1.53, reservedUnits: 0 });
   });
 
   it('cuts a failed later page back to its size before the page', async () => {
@@ -706,8 +706,8 @@ describe('dry run', () => {
     const plan = client.plan();
     expect(plan.calls.map((c) => c.kind)).toEqual(['usage', 'execute', 'export']);
     expect(plan.calls[1]).toMatchObject({ credits: 40 });
-    expect(plan.calls[2]).toMatchObject({ credits: 1.6 });
-    expect(plan.totalCredits).toBe(41.6);
+    expect(plan.calls[2]).toMatchObject({ credits: 1.53 });
+    expect(plan.totalCredits).toBe(41.53);
   });
 
   it('writes no file', async () => {

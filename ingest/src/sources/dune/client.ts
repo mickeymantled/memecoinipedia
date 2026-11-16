@@ -53,8 +53,19 @@ export const DUNE_PROVIDER = 'dune';
 export const DUNE_BASE_URL = 'https://api.dune.com/api';
 /** Dune caps a CSV page at this many rows, whatever `limit` says. */
 export const DUNE_MAX_PAGE_ROWS = 32_000;
-/** Credits per 1,000 rows downloaded, as seen live for this result's shape. A guess to refine. */
-export const DEFAULT_DOWNLOAD_CREDITS_PER_1000_ROWS = 1.6;
+/**
+ * Credits Dune bills per row of a CSV page: the known rate. Measured live on 2026-11-15 on the
+ * candidate list: a 32,000-row page cost 49.1 credits and a 7,000-row page cost 10.0 (1.53 and
+ * 1.43 per 1,000 rows). The rate of the larger page is used, which is the higher of the two, so an
+ * estimate errs high rather than low.
+ */
+export const DUNE_CREDITS_PER_ROW = 49.1 / 32_000;
+/** Credits per 1,000 rows downloaded: `DUNE_CREDITS_PER_ROW` times 1,000. */
+export const DEFAULT_DOWNLOAD_CREDITS_PER_1000_ROWS = DUNE_CREDITS_PER_ROW * 1000;
+/** What a page of `rows` rows is recorded at, to two decimals. */
+export function estimatePageCredits(rows: number, rate: number = DUNE_CREDITS_PER_ROW): number {
+  return Math.round(rows * rate * 100) / 100;
+}
 /** Default cap on one page's bytes. */
 export const DEFAULT_MAX_PAGE_BYTES = 64 * 1024 * 1024;
 export type DunePerformance = 'small' | 'medium' | 'large';
@@ -238,7 +249,7 @@ export interface DuneClientOptions {
   limiter?: RateLimiter;
   budget?: UnitBudget;
   dryRun?: boolean;
-  /** Credits per 1,000 rows downloaded, for the estimate. Default 1.6. */
+  /** Credits per 1,000 rows downloaded, for the estimate. Default: the known rate, 1.534. */
   downloadCreditsPer1000Rows?: number;
   /** Milliseconds, monotonic. Default `performance.now()`. */
   now?: () => number;
@@ -496,8 +507,7 @@ export class DuneClient {
     ) {
       throw new RangeError('filters contains characters that are not accepted');
     }
-    const estimate = (rows: number) =>
-      Math.round((rows / 1000) * this.creditsPer1000Rows * 100) / 100;
+    const estimate = (rows: number) => estimatePageCredits(rows, this.creditsPer1000Rows / 1000);
     const reserved = estimate(limit);
 
     if (this.dryRun) {

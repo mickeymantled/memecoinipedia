@@ -118,6 +118,17 @@ export class UnitBudget {
     }
   }
 
+  /**
+   * Corrects the recorded total by `deltaUnits` (negative lowers it), from a figure the provider
+   * reports later, and takes `estimatedUnitsReplaced` out of the estimated part: those estimates
+   * are now measured. Request counts are left alone.
+   */
+  adjust(provider: string, deltaUnits: number, estimatedUnitsReplaced = 0): void {
+    const c = this.get(provider);
+    c.units += deltaUnits;
+    c.estimatedUnits = Math.max(0, c.estimatedUnits - estimatedUnitsReplaced);
+  }
+
   summary(provider: string): ProviderSummary {
     const c = this.get(provider);
     return {
