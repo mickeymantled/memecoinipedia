@@ -13,10 +13,14 @@ import {
   main,
   parseRunnerArgs,
   partFile,
+  reconcileMargin,
   runDiscovery,
+  settleUsage,
   sizeAndSample,
   stateFile,
   UsageError,
+  USAGE_SETTLE_INTERVAL_MS,
+  USAGE_SETTLE_LIMIT_MS,
   type RunnerArgs,
 } from '../../scripts/dune-discovery.js';
 import { GRADUATE_COLUMNS } from '../../src/discovery/index.js';
@@ -72,6 +76,10 @@ interface WorldOptions {
   statusFixture?: string;
   csvReply?: (offset: number) => { status: number; body: string } | null;
   usageBroken?: boolean;
+  /** The `credits_used` the usage endpoint reports on read number `read` (1-based), given the true figure. */
+  usageAt?: (ctx: { used: number; read: number }) => number;
+  /** Credits some other job spends when the page at `offset` is served (the usage figure rises, our page does not cost it). */
+  otherSpend?: (offset: number) => number;
 }
 
 interface World {
@@ -83,6 +91,8 @@ interface World {
   logs: string[];
   log: (l: string) => void;
   used: () => number;
+  clock: ReturnType<typeof fakeClock>;
+  usageReads: () => number;
 }
 
 function world(over: Partial<RunnerArgs> = {}, opts: WorldOptions = {}): World {
@@ -105,6 +115,7 @@ function world(over: Partial<RunnerArgs> = {}, opts: WorldOptions = {}): World {
   };
   const rows = opts.rows ?? 250;
   let used = 1000;
+  let usageReads = 0;
   const posts: string[] = [];
   const csvOffsets: number[] = [];
   const post: FetchLike = async (url) => {
@@ -123,12 +134,13 @@ function world(over: Partial<RunnerArgs> = {}, opts: WorldOptions = {}): World {
       if (opts.usageBroken) {
         status = 500;
       } else {
+        usageReads++;
         reply = JSON.stringify({
           billing_periods: [
             {
               start_date: '2026-11-01',
               end_date: '2026-12-01',
-              credits_used: used,
+              credits_used: opts.usageAt ? opts.usageAt({ used, read: usageReads }) : used,
               credits_included: 4000,
             },
           ],
@@ -151,7 +163,7 @@ function world(over: Partial<RunnerArgs> = {}, opts: WorldOptions = {}): World {
     const custom = opts.csvReply?.(offset);
     if (custom) return custom;
     const n = Math.max(0, Math.min(limit, rows - offset));
-    used += opts.pageCost ?? 0.5;
+    used += (opts.pageCost ?? 0.5) + (opts.otherSpend?.(offset) ?? 0);
     const body =
       HEADER + '\n' + Array.from({ length: n }, (_, i) => csvRow(offset + i) + '\n').join('');
     const more = offset + n < rows;
@@ -187,10 +199,13 @@ function world(over: Partial<RunnerArgs> = {}, opts: WorldOptions = {}): World {
     logs,
     log: (l) => logs.push(l),
     used: () => used,
+    clock,
+    usageReads: () => usageReads,
   };
 }
 
-const run = (w: World, client = w.client()) => runDiscovery({ args: w.args, client, log: w.log });
+const run = (w: World, client = w.client()) =>
+  runDiscovery({ args: w.args, client, log: w.log, sleep: w.clock.sleep, now: w.clock.now });
 const readOut = (w: World, name: string) => fs.readFileSync(path.join(w.args.out, name), 'utf8');
 const exists = (w: World, name: string) => fs.existsSync(path.join(w.args.out, name));
 const expectedCsv = (n: number) =>
@@ -289,7 +304,8 @@ describe('without --confirm', () => {
     expect(w.posts).toHaveLength(0);
     const text = out.join('\n');
     expect(text).toContain('Nothing was sent to Dune');
-    expect(text).toContain('1.6 credits per 1,000 rows');
+    expect(text).toContain('1.534 credits per 1,000 rows');
+    expect(text).toContain("Dune's usage figure is read until it settles");
     expect(text).toContain('Execution: run the SQL once');
     expect(text).not.toContain(KEY);
     expect(fs.existsSync(w.args.out)).toBe(false); // nothing written
@@ -346,22 +362,30 @@ describe('runDiscovery', () => {
     expect(readOut(w, 'discovery.csv')).toBe(expectedCsv(250)); // one header row only
     expect(exists(w, 'discovery.csv.part')).toBe(false);
     expect(exists(w, 'discovery.csv.part.state.json')).toBe(false);
-    // The ledger holds the execution cost and the measured page costs (the usage difference).
-    expect(s.totalCredits).toBeCloseTo(0.35 + 3 * 0.5, 5);
+    // Each page is recorded at its rows times the known rate, marked estimated (0.15, 0.15, 0.08);
+    // the execution adds 0.35. The run then reads usage, which agrees, and the ledger takes it.
     expect(
       w.logs.some((l) =>
-        /^page 1: offset 0, rows 100, bytes \d+, credits 0\.5 \(measured\)/.test(l),
+        /^page 1: offset 0, rows 100, bytes \d+, credits 0\.15 \(estimated\), running total 0\.5$/.test(
+          l,
+        ),
       ),
     ).toBe(true);
+    expect(s.reconciliation).toMatchObject({ outcome: 'replaced', recorded: 0.73, reads: 2 });
+    expect(s.totalCredits).toBeCloseTo(0.35 + 3 * 0.5, 5);
     expect(w.logs.some((l) => /^page 3: offset 200, rows 50,/.test(l))).toBe(true);
     expect(
       w.logs.some((l) => l.startsWith('Credits used this billing period before the run: 1000')),
     ).toBe(true);
     expect(
       w.logs.some((l) =>
-        l.includes('Usage endpoint: 1.85 credits used during the run. Ledger: 1.85.'),
+        l.startsWith(
+          "Reconciled with Dune's usage figure (settled after 2 reads): this run used 1.85 credits; the 0.73 recorded were replaced by it.",
+        ),
       ),
     ).toBe(true);
+    // The wait is on the fake clock: one interval, no real time.
+    expect(w.clock.sleeps.filter((ms) => ms === USAGE_SETTLE_INTERVAL_MS)).toHaveLength(1);
   });
 
   it('sends the page size and tier, and the columns and filter when given', async () => {
@@ -391,59 +415,63 @@ describe('runDiscovery', () => {
     await run(w, client);
     expect(states).toMatchObject([
       { executionId: EXEC, nextOffset: 0, rows: 0, pages: 0 },
-      { executionId: EXEC, nextOffset: 100, rows: 100, pages: 1, lastPageCredits: 0.5 },
+      { executionId: EXEC, nextOffset: 100, rows: 100, pages: 1 },
       { executionId: EXEC, nextOffset: 200, rows: 200, pages: 2 },
     ]);
   });
 
-  it('stops before a page when the credits left are below the previous page cost, and resumes without paying twice', async () => {
-    const w = world({ maxCredits: 100, pageRows: 50 }, { rows: 250, pageCost: 30 });
+  it('stops before a page when the credits left are below the estimate for it, and resumes without paying twice', async () => {
+    // A 100-row page is estimated at 0.15. The execution costs 0.35 and each page really costs 0.15.
+    const w = world({ maxCredits: 1.5, pageRows: 100 }, { rows: 2000, pageCost: 0.15 });
     const first = await run(w);
-    // 100 - 0.35 - 3 x 30 leaves 9.65, below the 30 the last page cost.
+    // 1.5 - 0.35 - 7 x 0.15 leaves 0.1, below the 0.15 the next page is estimated at.
     expect(first.status).toBe('stopped_budget');
     expect(first.message).toMatch(
-      /Stopped before offset 150: 9\.65 credits left of the ceiling, below 30/,
+      /Stopped before offset 700: 0\.1 credits left of the ceiling, below 0\.15 \(the estimate for the next page of 100 rows\)/,
     );
-    expect(w.csvOffsets).toEqual([0, 50, 100]);
+    expect(w.csvOffsets).toEqual([0, 100, 200, 300, 400, 500, 600]);
     expect(JSON.parse(readOut(w, 'discovery.csv.part.state.json'))).toMatchObject({
-      nextOffset: 150,
-      rows: 150,
+      nextOffset: 700,
+      rows: 700,
     });
+    expect(first.reconciliation.outcome).toBe('replaced');
     expect(exists(w, 'discovery.csv')).toBe(false);
 
     // A second run with more budget continues from the next page: no new execution, no repeated page.
     w.args.maxCredits = 1000;
     const second = await run(w);
-    expect(second).toMatchObject({ status: 'complete', pages: 5, rows: 250 });
+    expect(second).toMatchObject({ status: 'complete', pages: 20, rows: 2000 });
     expect(w.executes()).toBe(1);
-    expect(w.csvOffsets).toEqual([0, 50, 100, 150, 200]);
-    expect(readOut(w, 'discovery.csv')).toBe(expectedCsv(250));
+    expect(w.csvOffsets).toHaveLength(20);
+    expect(readOut(w, 'discovery.csv')).toBe(expectedCsv(2000));
     expect(exists(w, 'discovery.csv.part.state.json')).toBe(false);
   });
 
   it('counts credits from earlier runs: a download stopped by the ceiling stops again on resume with the same ceiling', async () => {
-    const w = world({ maxCredits: 100, pageRows: 50 }, { rows: 250, pageCost: 30 });
+    const w = world({ maxCredits: 1.5, pageRows: 100 }, { rows: 2000, pageCost: 0.15 });
     const first = await run(w);
     expect(first.status).toBe('stopped_budget');
     expect(first.message).toContain('whole download');
-    expect(w.csvOffsets).toEqual([0, 50, 100]);
+    expect(w.csvOffsets).toHaveLength(7);
     expect(JSON.parse(readOut(w, 'discovery.csv.part.state.json')).creditsSpent).toBeCloseTo(
-      0.35 + 90,
+      0.35 + 7 * 0.15,
       5,
     );
 
     // A new process, the same ceiling: the earlier spending is loaded before anything is requested.
     const second = await run(w);
     expect(second.status).toBe('stopped_budget');
-    expect(second.message).toMatch(/Stopped before offset 150: 9\.65 credits left of the ceiling/);
-    expect(w.csvOffsets).toEqual([0, 50, 100]); // no page was requested
+    expect(second.message).toMatch(/Stopped before offset 700: 0\.1 credits left of the ceiling/);
+    expect(w.csvOffsets).toHaveLength(7); // no page was requested
     expect(w.executes()).toBe(1);
-    expect(second.totalCredits).toBeCloseTo(90.35, 5);
+    expect(second.totalCredits).toBeCloseTo(1.4, 5);
+    expect(second.reconciliation.outcome).toBe('not_needed'); // nothing was spent this time
     expect(w.logs.some((l) => l.startsWith('Earlier runs of this download recorded'))).toBe(true);
   });
 
-  it('records the estimate for every page when usage does not move, and the stop rule still works', async () => {
-    // 32,000 rows a page estimate 51.2 credits each; a ceiling of 160 allows three pages (the execution adds 0.35, from the status fixture).
+  it('records every page at the known rate, marked estimated, and the stop rule uses the next page estimate', async () => {
+    // 32,000 rows a page are estimated at 49.1 credits each. The usage figure does not move (the
+    // fake charges nothing), so the settled difference is far below the estimates and they stay.
     const w = world(
       { maxCredits: 160, pageRows: 32_000 },
       { rows: 200_000, pageCost: 0, execCost: 0 },
@@ -451,10 +479,37 @@ describe('runDiscovery', () => {
     const s = await run(w);
     expect(s.status).toBe('stopped_budget');
     expect(w.csvOffsets).toEqual([0, 32_000, 64_000]);
-    expect(w.logs.filter((l) => /^page \d+:.*credits 51\.2 \(estimated\)/.test(l))).toHaveLength(3);
+    expect(w.logs.filter((l) => /^page \d+:.*credits 49\.1 \(estimated\)/.test(l))).toHaveLength(3);
     expect(w.logs.some((l) => l.includes('(measured)'))).toBe(false);
-    expect(s.totalCredits).toBeCloseTo(153.95, 5);
-    expect(s.message).toMatch(/Stopped before offset 96000: 6\.05 credits left of the ceiling/);
+    // 0.35 for the execution (from the status fixture) and 3 x 49.1.
+    expect(s.message).toMatch(
+      /Stopped before offset 96000: 12\.35 credits left of the ceiling, below 49\.1 \(the estimate for the next page of 32000 rows\)/,
+    );
+    expect(s.reconciliation.outcome).toBe('below_estimate');
+    expect(s.totalCredits).toBeCloseTo(147.65, 5);
+  });
+
+  it('does not start a first page its estimate does not fit under the ceiling', async () => {
+    const w = world({ maxCredits: 49, pageRows: 32_000 }, { rows: 40_000 });
+    const s = await run(w);
+    expect(s.status).toBe('stopped_budget');
+    expect(s.message).toMatch(/below 49\.1 \(the estimate for the next page of 32000 rows\)/);
+    expect(w.csvOffsets).toEqual([]);
+  });
+
+  it('estimates a small result as a small page: 35 rows fit under a ceiling of 10', async () => {
+    const w = world({ maxCredits: 10, pageRows: 32_000 }, { rows: 35 });
+    const sizes: number[] = [];
+    const client = w.client();
+    const orig = client.downloadCsv.bind(client);
+    client.downloadCsv = (id, p, o) => {
+      sizes.push(o?.limit ?? -1);
+      return orig(id, p, o);
+    };
+    const s = await run(w, client);
+    expect(s).toMatchObject({ status: 'complete', pages: 1, rows: 35 });
+    expect(sizes).toEqual([35]);
+    expect(w.logs.some((l) => /credits 0\.05 \(estimated\)/.test(l))).toBe(true);
   });
 
   it('keeps a page file consistent when the file before it has no trailing newline', async () => {
@@ -471,7 +526,6 @@ describe('runDiscovery', () => {
         partBytes: Buffer.byteLength(page1),
         rows: 100,
         pages: 1,
-        lastPageCredits: 0.5,
         columns: null,
         filter: null,
         creditsSpent: 0.85,
@@ -480,14 +534,6 @@ describe('runDiscovery', () => {
     const s = await run(w);
     expect(s).toMatchObject({ status: 'complete', rows: 250 });
     expect(readOut(w, 'discovery.csv')).toBe(expectedCsv(250));
-  });
-
-  it('needs 60 credits left before the first page', async () => {
-    const w = world({ maxCredits: 50 });
-    const s = await run(w);
-    expect(s.status).toBe('stopped_budget');
-    expect(s.message).toMatch(/below 60 \(the first-page headroom\)/);
-    expect(w.csvOffsets).toEqual([]);
   });
 
   it('after a crash in the middle of a page, drops the partial page and does not repeat saved ones', async () => {
@@ -503,7 +549,6 @@ describe('runDiscovery', () => {
         partBytes: Buffer.byteLength(firstPage),
         rows: 100,
         pages: 1,
-        lastPageCredits: 0.5,
         columns: null,
         filter: null,
       }),
@@ -611,7 +656,9 @@ describe('runDiscovery', () => {
     const s = await run(w);
     expect(s.status).toBe('complete');
     expect(w.logs.some((l) => l.includes('(estimated)'))).toBe(true);
-    expect(w.logs.some((l) => l.startsWith('Usage endpoint'))).toBe(false);
+    expect(s.reconciliation).toMatchObject({ outcome: 'unavailable', usageDifference: null });
+    expect(w.logs.some((l) => l.includes('Usage figure not read before the run'))).toBe(true);
+    expect(s.totalCredits).toBeCloseTo(0.35 + 0.38, 5); // the estimates stay
   });
 
   it('does nothing when discovery.csv already exists', async () => {
@@ -628,6 +675,160 @@ describe('runDiscovery', () => {
     const w = world({}, { statusFixture: fixtureText('dune', 'status-failed') });
     const s = await run(w);
     expect(w.logs.join('\n') + (s.message ?? '')).not.toContain(KEY);
+  });
+});
+
+describe('reconciliation with the usage figure', () => {
+  // Pages: 100 + 100 + 50 rows, recorded at 0.15 + 0.15 + 0.08. The execution is 0.35.
+  const ESTIMATED = 0.73;
+
+  it('records the true total when the usage figure lags by two pages and then catches up', async () => {
+    // Each page really costs 0.2, so the true total is 0.35 + 0.6 = 0.95 (the figure starts at 1000).
+    // After the download the figure is read: first two pages behind, then one behind, then true, then true.
+    const w = world(
+      {},
+      {
+        pageCost: 0.2,
+        usageAt: ({ used, read }) => {
+          // Read 1 is the start of the run. Reads 2 to 5 are the end-of-run reads.
+          if (read === 2) return used - 0.4; // two pages behind
+          if (read === 3) return used - 0.2; // one behind
+          return used;
+        },
+      },
+    );
+    const s = await run(w);
+    expect(s.status).toBe('complete');
+    expect(s.reconciliation).toMatchObject({
+      outcome: 'replaced',
+      recorded: ESTIMATED,
+      usageDifference: 0.95,
+      reads: 4,
+    });
+    // The true total, not a multiple of it, and not the estimates added to the lagging reads.
+    expect(s.totalCredits).toBeCloseTo(0.95, 5);
+    expect(w.usageReads()).toBe(5); // one before the run, four after: none per page
+    expect(w.clock.sleeps.filter((ms) => ms === USAGE_SETTLE_INTERVAL_MS)).toHaveLength(3);
+    expect(w.logs.filter((l) => l.includes('(measured)'))).toHaveLength(0);
+  });
+
+  it("does not add another job's spending to the pages, and says so", async () => {
+    // Another job spends 100 credits while page 2 is served.
+    const w = world({}, { otherSpend: (offset) => (offset === 100 ? 100 : 0) });
+    const s = await run(w);
+    expect(s.status).toBe('complete');
+    // The page ledger keeps its estimates. Usage rose by 0.35 + 1.5 + 100 = 101.85.
+    expect(s.reconciliation).toMatchObject({
+      outcome: 'other_spending',
+      recorded: ESTIMATED,
+      usageDifference: 101.85,
+    });
+    expect(s.totalCredits).toBeCloseTo(ESTIMATED, 5);
+    const pageLines = w.logs.filter((l) => l.startsWith('page '));
+    expect(pageLines[0]).toContain('credits 0.15 (estimated)');
+    expect(pageLines[1]).toContain('credits 0.15 (estimated)'); // not inflated by the other job
+    const line = w.logs.find((l) => l.startsWith('Usage rose by'));
+    expect(line).toContain('spending by something else, or a figure that has not settled');
+    expect(line).toContain('it is not added to the ledger');
+  });
+
+  it('keeps the estimates and says so when the figure has not settled by the limit', async () => {
+    // The figure rises by 1 on every read: no two reads in a row agree.
+    const w = world({}, { usageAt: ({ used, read }) => used + read });
+    const s = await run(w);
+    expect(s.status).toBe('complete');
+    expect(s.reconciliation.outcome).toBe('unsettled');
+    expect(s.reconciliation.reads).toBe(11); // one at once, then one after each of ten intervals
+    expect(w.clock.sleeps.filter((ms) => ms === USAGE_SETTLE_INTERVAL_MS)).toHaveLength(10);
+    expect(s.totalCredits).toBeCloseTo(ESTIMATED, 5);
+    expect(w.logs.some((l) => l.includes('had not settled after 300 seconds'))).toBe(true);
+  });
+
+  it('reconciles when the run stops on the ceiling too, and the resumed run starts from the real figure', async () => {
+    // Pages really cost 0.3 (the estimate is 0.15): after 3 pages the true total is 0.35 + 0.9.
+    const w = world({ maxCredits: 1.0, pageRows: 100 }, { rows: 2000, pageCost: 0.3 });
+    const s = await run(w);
+    expect(s.status).toBe('stopped_budget');
+    expect(s.pages).toBe(4); // 1.0 - 0.35 = 0.65 left, four 0.15 estimates fit (0.05 left)
+    expect(s.reconciliation).toMatchObject({ outcome: 'replaced', usageDifference: 1.55 });
+    expect(s.totalCredits).toBeCloseTo(1.55, 5);
+    expect(JSON.parse(readOut(w, 'discovery.csv.part.state.json')).creditsSpent).toBeCloseTo(
+      1.55,
+      5,
+    );
+  });
+
+  it('reconciles after a failed download too', async () => {
+    const w = world(
+      {},
+      {
+        csvReply: (offset) =>
+          offset === 100 ? { status: 402, body: fixtureText('dune', 'results-csv-402') } : null,
+      },
+    );
+    const s = await run(w);
+    expect(s.status).toBe('failed');
+    expect(s.reconciliation.outcome).toBe('replaced');
+  });
+
+  it('does nothing when the run spent nothing', async () => {
+    const w = world();
+    fs.rmSync(w.args.sql);
+    const s = await run(w);
+    expect(s.reconciliation.outcome).toBe('not_needed');
+    expect(w.usageReads()).toBe(0);
+    expect(w.clock.sleeps).toHaveLength(0);
+  });
+
+  it('has a margin that is the larger of 5 credits and a tenth of the recorded total', () => {
+    expect(reconcileMargin(0.73)).toBe(5);
+    expect(reconcileMargin(249)).toBeCloseTo(24.9, 5);
+  });
+});
+
+describe('settleUsage', () => {
+  const clock = () => {
+    let t = 0;
+    return {
+      now: () => t,
+      sleep: async (ms: number) => {
+        t += ms;
+      },
+    };
+  };
+
+  it('returns at once on two equal reads', async () => {
+    const c = clock();
+    const reads = [5, 5];
+    const r = await settleUsage(async () => reads.shift() ?? null, c.sleep, c.now, 1000, 10_000);
+    expect(r).toEqual({ value: 5, settled: true, reads: 2 });
+    expect(c.now()).toBe(1000);
+  });
+
+  it('gives up when waiting once more would pass the limit', async () => {
+    const c = clock();
+    let n = 0;
+    const r = await settleUsage(async () => ++n, c.sleep, c.now, 1000, 3500);
+    expect(r).toEqual({ value: 4, settled: false, reads: 4 }); // reads at 0, 1000, 2000, 3000
+    expect(c.now()).toBe(3000);
+  });
+
+  it('reports no value when the first read fails, and the last good value when a later one fails', async () => {
+    const c = clock();
+    expect(await settleUsage(async () => null, c.sleep, c.now)).toEqual({
+      value: null,
+      settled: false,
+      reads: 1,
+    });
+    const seq = [7, null];
+    expect(
+      await settleUsage(async () => seq.shift() ?? null, c.sleep, c.now, 1000, 10_000),
+    ).toEqual({ value: 7, settled: false, reads: 2 });
+  });
+
+  it('uses the documented defaults: reads 30 seconds apart, giving up after five minutes', () => {
+    expect(USAGE_SETTLE_INTERVAL_MS).toBe(30_000);
+    expect(USAGE_SETTLE_LIMIT_MS).toBe(300_000);
   });
 });
 

@@ -25,6 +25,12 @@
  * offset, so a stopped run continues from the next page and never pays for a page twice. Dune bills
  * a page when the request is made, so a page is never requested without being saved.
  *
+ * Money. A page is recorded at its rows times the known rate (`DUNE_CREDITS_PER_ROW`), marked
+ * estimated, and nothing is added to it later. Dune's usage figure lags, so it is not read page by
+ * page. It is read once the download has ended or the run has stopped: the run waits until two
+ * reads in a row agree (or `USAGE_SETTLE_LIMIT_MS` passes) and then replaces the estimates with the
+ * difference since the run began. See `reconcileUsage` for the cases where it does not.
+ *
  * If `discovery.csv` exists, Dune is skipped (no key, no `--confirm`, no `--max-credits` needed) and the
  * script goes straight to the sizing table and `sample.csv`. `--max-credits` is for the whole download:
  * credits recorded by earlier runs of it (kept in the state file) count against it.
@@ -44,11 +50,13 @@ import {
 } from '../src/discovery/index.js';
 import { BudgetExceededError, UnitBudget } from '../src/sources/budget.js';
 import {
+  DUNE_CREDITS_PER_ROW,
   DUNE_MAX_PAGE_ROWS,
   DUNE_PROVIDER,
   DuneClient,
   duneApiKeyFromEnv,
   duneErrorMessage,
+  estimatePageCredits,
   renderSql,
   templatePlaceholders,
   type DunePerformance,
@@ -57,10 +65,31 @@ import {
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '..', '..');
 
-/** Credits assumed for a page before one has been measured. */
-export const FIRST_PAGE_HEADROOM = 60;
-/** Dune's CSV pages cost about this many credits per 1,000 rows of this shape (seen live). */
-export const CREDITS_PER_1000_ROWS = 1.6;
+/** The known rate per 1,000 rows (see `DUNE_CREDITS_PER_ROW`: 49.1 credits for a 32,000-row page). */
+export const CREDITS_PER_1000_ROWS = DUNE_CREDITS_PER_ROW * 1000;
+
+/**
+ * How long between two reads of the usage figure while waiting for it to settle. Dune's figure
+ * lagged by about two 32,000-row pages in the run that found this (each page takes tens of
+ * seconds to download), so two reads that agree must be further apart than a lag of that size.
+ * Reads are free, so a long interval costs time, not credits.
+ */
+export const USAGE_SETTLE_INTERVAL_MS = 30_000;
+/**
+ * The longest the run waits for the figure to settle, in all. Ten intervals. If the figure has
+ * not settled by then the estimates stay and the ledger says so; the run does not wait longer.
+ */
+export const USAGE_SETTLE_LIMIT_MS = 300_000;
+/**
+ * How far above the recorded total the settled usage difference may be and still be taken as
+ * this run's own spending: the larger of `RECONCILE_MARGIN_MIN` credits and
+ * `RECONCILE_MARGIN_FRACTION` of the recorded total. The known rate is itself measured: the two
+ * pages measured differ by 7% in credits per row, and the execution's cost is read from Dune
+ * rounded, so the estimates can be several percent low without anyone else spending. A larger
+ * gap is another job's spending or a figure that has not settled.
+ */
+export const RECONCILE_MARGIN_MIN = 5;
+export const RECONCILE_MARGIN_FRACTION = 0.1;
 
 export class UsageError extends Error {
   constructor(message: string) {
@@ -172,8 +201,6 @@ export interface RunState {
   partBytes: number;
   rows: number;
   pages: number;
-  /** Credits recorded for the last page, for the stop rule. Null before the first page. */
-  lastPageCredits: number | null;
   columns: string[] | null;
   filter: string | null;
   /** Credits recorded for this download so far, across runs. Loaded into the budget on resume. */
@@ -195,7 +222,6 @@ function readState(file: string): RunState | null {
         partBytes: s.partBytes as number,
         rows: typeof s.rows === 'number' ? s.rows : 0,
         pages: typeof s.pages === 'number' ? s.pages : 0,
-        lastPageCredits: typeof s.lastPageCredits === 'number' ? s.lastPageCredits : null,
         columns: Array.isArray(s.columns) ? (s.columns as string[]) : null,
         filter: typeof s.filter === 'string' ? s.filter : null,
         creditsSpent: typeof s.creditsSpent === 'number' && s.creditsSpent > 0 ? s.creditsSpent : 0,
@@ -251,10 +277,11 @@ export function buildPlan(args: RunnerArgs): Plan {
           : 'Execution: run the SQL once. Its cost is unknown until it has run (Dune bills by compute).',
       `Download: ${args.pageRows} rows a page, into ${partFile(args.out)}, renamed when the last page is in.`,
       'The number of rows is not known before the run. A download costs about ' +
-        `${CREDITS_PER_1000_ROWS} credits per 1,000 rows, so 350,000 rows would be about ` +
+        `${CREDITS_PER_1000_ROWS.toFixed(3)} credits per 1,000 rows, so 350,000 rows would be about ` +
         `${Math.round(350 * CREDITS_PER_1000_ROWS)} credits.`,
       `Credit ceiling: ${args.maxCredits === null ? 'not set (required with --confirm)' : args.maxCredits}, for the whole download (credits recorded by earlier runs of it count too). ` +
-        `A page is not requested when the credits left are below the last page's cost (or ${FIRST_PAGE_HEADROOM} for the first).`,
+        `A page is not requested when the credits left are below the estimate for it (its rows times ${CREDITS_PER_1000_ROWS.toFixed(3)} credits per 1,000 rows). ` +
+        "When the download ends or the run stops, Dune's usage figure is read until it settles and replaces the estimates.",
     );
     if (sqlExists) {
       try {
@@ -273,34 +300,242 @@ export function buildPlan(args: RunnerArgs): Plan {
 
 export type RunStatus = 'complete' | 'stopped_budget' | 'failed';
 
+/**
+ * How the ledger ended up after the usage figure was read at the end of the run.
+ * - `replaced`: the settled difference was within the margin of the recorded total; the recorded
+ *   figures were replaced by it.
+ * - `other_spending`: the settled difference was above the recorded total by more than the margin.
+ *   The estimates stay; the gap is spending by something else, or a figure that has not settled.
+ * - `below_estimate`: the settled difference is below the recorded total by more than the margin.
+ *   The estimates stay: a figure that far under is more likely one that has not caught up than a
+ *   run that cost less, and a ledger that is too low is the unsafe direction for a ceiling.
+ * - `unsettled`: two reads in a row never agreed before the time limit. The estimates stay.
+ * - `unavailable`: the usage figure could not be read (before the run or after it). Estimates stay.
+ * - `not_needed`: the run spent nothing, so there was nothing to reconcile.
+ */
+export type ReconciliationOutcome =
+  'replaced' | 'other_spending' | 'below_estimate' | 'unsettled' | 'unavailable' | 'not_needed';
+
+export interface Reconciliation {
+  outcome: ReconciliationOutcome;
+  /** Credits this run recorded before the reconciliation (the execution and the page estimates). */
+  recorded: number;
+  /** Usage figure at the end minus usage figure before the run, or null when not known. */
+  usageDifference: number | null;
+  /** Number of usage reads taken while waiting. */
+  reads: number;
+  /** The line that is logged. */
+  message: string;
+}
+
 export interface RunSummary {
   status: RunStatus;
   pages: number;
   rows: number;
-  /** Credits recorded in the budget by this run. */
+  /** Credits in the budget when the run ended, after the reconciliation. */
   totalCredits: number;
   message: string | null;
+  reconciliation: Reconciliation;
 }
 
 export interface RunOptions {
   args: RunnerArgs;
   client: DuneClient;
   log?: (line: string) => void;
+  /** Waits. Default a real timer. Tests pass a fake clock's. */
+  sleep?: (ms: number) => Promise<void>;
+  /** Milliseconds, monotonic. Default `performance.now()`. */
+  now?: () => number;
+}
+
+const round3 = (n: number): number => Math.round(n * 1000) / 1000;
+
+/** Two usage reads agree when they differ by less than the figure's own rounding. */
+const agree = (a: number, b: number): boolean => Math.abs(a - b) < 0.0005;
+
+/** How far above the recorded total a settled difference may be and still count as this run's own. */
+export function reconcileMargin(recorded: number): number {
+  return Math.max(RECONCILE_MARGIN_MIN, RECONCILE_MARGIN_FRACTION * recorded);
+}
+
+/**
+ * Reads the usage figure with `read` until two reads in a row agree, or until waiting another
+ * interval would pass `limitMs`. The first read is at once. Returns the last figure read and
+ * whether it settled. A read that fails ends the wait as unsettled (value null when no read
+ * worked at all).
+ */
+export async function settleUsage(
+  read: () => Promise<number | null>,
+  sleep: (ms: number) => Promise<void>,
+  now: () => number,
+  intervalMs: number = USAGE_SETTLE_INTERVAL_MS,
+  limitMs: number = USAGE_SETTLE_LIMIT_MS,
+): Promise<{ value: number | null; settled: boolean; reads: number }> {
+  let last = await read();
+  let reads = 1;
+  if (last === null) return { value: null, settled: false, reads };
+  const started = now();
+  for (;;) {
+    if (now() - started + intervalMs > limitMs) return { value: last, settled: false, reads };
+    await sleep(intervalMs);
+    const next = await read();
+    reads++;
+    if (next === null) return { value: last, settled: false, reads };
+    if (agree(last, next)) return { value: next, settled: true, reads };
+    last = next;
+  }
 }
 
 /**
  * Executes (or reuses an execution), waits, and downloads the pages. `client.budget` is the
  * budget: its ceiling is `--max-credits`. Never throws for a Dune or budget problem: it stops and
  * says why in the summary.
+ *
+ * A page is recorded at its rows times the known rate, marked estimated, and never changed by a
+ * usage reading taken page by page. When the download ends, or the run stops for any reason after
+ * spending something, the usage figure is read until it settles (`settleUsage`) and compared with
+ * what this run recorded:
+ * - no more than the margin above it, and not more than the margin below it: the recorded figures
+ *   are replaced by the difference;
+ * - more than the margin below it: the estimates stay (the figure may not have caught up);
+ * - more than the margin above it: the ledger keeps the estimates, and the final line says the
+ *   difference is spending by something else or a figure that has not settled. It is not
+ *   spread over the pages;
+ * - never settled, or unreadable: the estimates stay, and the line says so.
  */
 export async function runDiscovery(opts: RunOptions): Promise<RunSummary> {
   const { args, client } = opts;
   const log = opts.log ?? ((l: string) => console.log(l));
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const now = opts.now ?? (() => performance.now());
+  const budget = client.budget;
+  const total = () => budget.summary(DUNE_PROVIDER).units;
+
+  // Usage is free. It is read once before anything is spent, and again, settled, at the end.
+  const usedNow = async (): Promise<number | null> => {
+    try {
+      return (await client.usage())?.current?.creditsUsed ?? null;
+    } catch {
+      return null;
+    }
+  };
+  let usageStart: number | null = null;
+  /** The budget just before this run spent anything (earlier runs' credits already loaded). */
+  let baseline: { units: number; estimatedUnits: number; requests: number } | null = null;
+
+  const summary = await runBody(opts, log, usedNow, (start) => {
+    usageStart = start;
+    const b = budget.summary(DUNE_PROVIDER);
+    baseline = { units: b.units, estimatedUnits: b.estimatedUnits, requests: b.requests };
+  });
+
+  async function reconcile(): Promise<Reconciliation> {
+    const b = baseline as { units: number; estimatedUnits: number; requests: number } | null;
+    const at = budget.summary(DUNE_PROVIDER);
+    const recorded = b === null ? 0 : round3(at.units - b.units);
+    const result = (
+      outcome: ReconciliationOutcome,
+      usageDifference: number | null,
+      reads: number,
+      message: string,
+    ): Reconciliation => ({ outcome, recorded, usageDifference, reads, message });
+    if (b === null || at.requests === b.requests) {
+      return result(
+        'not_needed',
+        null,
+        0,
+        'Nothing was spent by this run, so there is nothing to reconcile.',
+      );
+    }
+    if (usageStart === null) {
+      return result(
+        'unavailable',
+        null,
+        0,
+        `Usage figure not read before the run, so the ledger cannot be checked: ${recorded} credits recorded, estimated.`,
+      );
+    }
+    const settled = await settleUsage(usedNow, sleep, now);
+    if (settled.value === null) {
+      return result(
+        'unavailable',
+        null,
+        settled.reads,
+        `Usage figure not readable after the run: ${recorded} credits recorded, estimated.`,
+      );
+    }
+    const difference = round3(settled.value - usageStart);
+    if (!settled.settled) {
+      return result(
+        'unsettled',
+        difference,
+        settled.reads,
+        `Usage figure had not settled after ${USAGE_SETTLE_LIMIT_MS / 1000} seconds (${settled.reads} reads; ` +
+          `it rose by ${difference} during the run). The estimates stay: ${recorded} credits recorded.`,
+      );
+    }
+    const margin = reconcileMargin(recorded);
+    if (difference > recorded + margin) {
+      return result(
+        'other_spending',
+        difference,
+        settled.reads,
+        `Usage rose by ${difference} credits during the run, ${round3(difference - recorded)} more than the ${recorded} recorded here ` +
+          `(margin ${round3(margin)}). The pages stay at their estimates. The difference is spending by something else, ` +
+          `or a figure that has not settled; it is not added to the ledger.`,
+      );
+    }
+    if (difference < recorded - margin) {
+      return result(
+        'below_estimate',
+        difference,
+        settled.reads,
+        `Usage rose by only ${difference} credits during the run, ${round3(recorded - difference)} fewer than the ${recorded} recorded here ` +
+          `(margin ${round3(margin)}). The figure may not have caught up, so the estimates stay.`,
+      );
+    }
+    budget.adjust(
+      DUNE_PROVIDER,
+      difference - recorded,
+      round3(at.estimatedUnits - b.estimatedUnits),
+    );
+    return result(
+      'replaced',
+      difference,
+      settled.reads,
+      `Reconciled with Dune's usage figure (settled after ${settled.reads} reads): this run used ${difference} credits; ` +
+        `the ${recorded} recorded were replaced by it.`,
+    );
+  }
+
+  const reconciliation = await reconcile();
+  log(reconciliation.message);
+  if (reconciliation.outcome === 'replaced' && fs.existsSync(stateFile(args.out))) {
+    // A stopped run resumes with what it really spent.
+    try {
+      const st = readState(stateFile(args.out));
+      if (st) writeState(stateFile(args.out), { ...st, creditsSpent: total() });
+    } catch {
+      // The state file is left as it is.
+    }
+  }
+  return { ...summary, totalCredits: total(), reconciliation };
+}
+
+type BodySummary = Omit<RunSummary, 'reconciliation'>;
+
+async function runBody(
+  opts: RunOptions,
+  log: (line: string) => void,
+  usedNow: () => Promise<number | null>,
+  began: (usageStart: number | null) => void,
+): Promise<BodySummary> {
+  const { args, client } = opts;
   const budget = client.budget;
   const total = () => budget.summary(DUNE_PROVIDER).units;
   let pages = 0;
   let rows = 0;
-  const done = (status: RunStatus, message: string | null): RunSummary => ({
+  const done = (status: RunStatus, message: string | null): BodySummary => ({
     status,
     pages,
     rows,
@@ -355,18 +590,12 @@ export async function runDiscovery(opts: RunOptions): Promise<RunSummary> {
     );
   }
 
-  // Usage is free; it is read before and after to compare with the ledger.
-  const usedNow = async (): Promise<number | null> => {
-    try {
-      return (await client.usage())?.current?.creditsUsed ?? null;
-    } catch {
-      return null;
-    }
-  };
   const usageStart = await usedNow();
+  began(usageStart);
   if (usageStart !== null) log(`Credits used this billing period before the run: ${usageStart}`);
 
   let executionId = args.executionId ?? state?.executionId ?? null;
+  let resultRows: number | null | undefined;
   try {
     if (executionId === null) {
       const started = await client.executeSql(sql, {
@@ -381,7 +610,6 @@ export async function runDiscovery(opts: RunOptions): Promise<RunSummary> {
         partBytes: 0,
         rows: 0,
         pages: 0,
-        lastPageCredits: null,
         columns: args.columns,
         filter: args.filter,
         creditsSpent: total(),
@@ -405,6 +633,7 @@ export async function runDiscovery(opts: RunOptions): Promise<RunSummary> {
             : waited.outcome;
       return done('failed', `The execution ${why}`);
     }
+    resultRows = waited.rowCount;
     // The execution's cost is now in the ledger: save it, so a resumed run counts it.
     writeState(stateFile(args.out), {
       executionId,
@@ -412,7 +641,6 @@ export async function runDiscovery(opts: RunOptions): Promise<RunSummary> {
       partBytes: state?.partBytes ?? 0,
       rows: state?.rows ?? 0,
       pages: state?.pages ?? 0,
-      lastPageCredits: state?.lastPageCredits ?? null,
       columns: args.columns,
       filter: args.filter,
       creditsSpent: total(),
@@ -428,7 +656,6 @@ export async function runDiscovery(opts: RunOptions): Promise<RunSummary> {
   // Download, page by page.
   const part = partFile(args.out);
   let offset = state?.nextOffset ?? 0;
-  let lastCost = state?.lastPageCredits ?? null;
   rows = state?.rows ?? 0;
   pages = state?.pages ?? 0;
   if (offset === 0) fs.rmSync(part, { force: true });
@@ -443,32 +670,30 @@ export async function runDiscovery(opts: RunOptions): Promise<RunSummary> {
     fs.truncateSync(part, state?.partBytes ?? 0); // drop anything a crashed page left behind
   }
   for (;;) {
-    const need = lastCost ?? FIRST_PAGE_HEADROOM;
+    // The page asks for as many rows as are left when the result size is known, so a small
+    // result is estimated as a small page, not as a full one.
+    const pageLimit =
+      resultRows != null && resultRows > offset
+        ? Math.min(args.pageRows, resultRows - offset)
+        : args.pageRows;
+    const need = estimatePageCredits(pageLimit);
     if (remaining() < need) {
       return done(
         'stopped_budget',
         `Stopped before offset ${offset}: ${Math.round(remaining() * 100) / 100} credits left of the ceiling, below ${need} ` +
-          `(${lastCost === null ? 'the first-page headroom' : 'the cost of the previous page'}). The ceiling covers the whole download, earlier runs included; run again with a higher --max-credits to continue from here.`,
+          `(the estimate for the next page of ${pageLimit} rows). The ceiling covers the whole download, earlier runs included; run again with a higher --max-credits to continue from here.`,
       );
     }
     try {
-      const before = await usedNow();
       const page = await client.downloadCsv(executionId, part, {
-        limit: args.pageRows,
+        limit: pageLimit,
         offset,
         ...(args.columns ? { columns: args.columns } : {}),
         ...(args.filter !== null ? { filters: args.filter } : {}),
-        measureCredits: async () => {
-          const after = await usedNow();
-          return before !== null && after !== null
-            ? Math.round((after - before) * 1000) / 1000
-            : null;
-        },
       });
       if (page.status !== 'downloaded') return done('failed', 'client is in dry-run mode');
       pages++;
       rows += page.rows;
-      lastCost = page.credits;
       log(
         `page ${pages}: offset ${offset}, rows ${page.rows}, bytes ${page.bytes}, credits ${page.credits} ` +
           `(${page.estimated ? 'estimated' : 'measured'}), running total ${total()}`,
@@ -485,7 +710,6 @@ export async function runDiscovery(opts: RunOptions): Promise<RunSummary> {
         partBytes: fs.statSync(part).size,
         rows,
         pages,
-        lastPageCredits: lastCost,
         columns: args.columns,
         filter: args.filter,
         creditsSpent: total(),
@@ -496,13 +720,6 @@ export async function runDiscovery(opts: RunOptions): Promise<RunSummary> {
       }
       return done('failed', `Download stopped before offset ${offset}: ${duneErrorMessage(err)}`);
     }
-  }
-  const usageEnd = await usedNow();
-  if (usageStart !== null && usageEnd !== null) {
-    log(
-      `Usage endpoint: ${Math.round((usageEnd - usageStart) * 1000) / 1000} credits used during the run. ` +
-        `Ledger: ${Math.round((total() - carried) * 1000) / 1000}.`,
-    );
   }
   return done('complete', null);
 }
