@@ -216,7 +216,7 @@ describeDb('the pool list in a top-up', () => {
     expect(queue.size).toBe(0);
   }, 300_000);
 
-  it("hands out at most the day's share of the ceiling, and the rest are due the next day", async () => {
+  it("hands out at most the day's share of the ceiling, and counts them in the day's counter", async () => {
     fx = await liveFixture({ ceilingUnits: 400 });
     const f = fx;
     expect(topUpListsPerDay(400)).toBe(10);
@@ -241,7 +241,9 @@ describeDb('the pool list in a top-up', () => {
     // No stored time and no pool: the last finished candles (two months ago) say the list is old.
     const pass = await topUpOnce(deps);
     expect(pass).toEqual({ status: 'ran', queued: 12, lists: 10 });
-    // A second day's pass on the same counter has nothing left: the 2 left out wait for tomorrow.
+    expect(f.deps.poolLists!.size).toBe(10);
+    // The day's counter holds the 10 handed out, so the day's share is used up; the other 2 get no
+    // mark today. (The counter is per UTC day: tomorrow's key starts empty.)
     const counter = await f.db
       .selectFrom('live_state')
       .select('value')

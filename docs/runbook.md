@@ -118,7 +118,23 @@ selected coins are therefore due, and the daily share spreads those reads over t
 follow (a coin left out is due again the next day). The dry run prints the list requests it
 expects ("Pool lists" line). A top-up never moves the graduation role: when the list names another
 graduation pool than the stored one it records the data issue `graduation_pool_differs` (stored
-and listed pool, source) and leaves the role; a pool-list refresh of that coin settles it. Only
+and listed pool, source) and leaves the role. The rule `late-graduation-pool` selects such a coin
+(a stored graduation pool created more than the distance from the graduation, or no graduation
+pool on a coin whose candles are done), because the top-up has closed the old
+`graduation_pool_late` or `graduation_pool_not_found` issue that would have excluded it. To settle
+them, stop the live process (a refresh takes the pipeline lock), look first, then run:
+
+```
+pnpm -C ingest exec tsx --env-file=../.env scripts/backfill.ts select --rule late-graduation-pool | wc -l
+pnpm -C ingest exec tsx --env-file=../.env scripts/backfill.ts run --refresh-pools --rule late-graduation-pool
+pnpm -C ingest exec tsx --env-file=../.env scripts/backfill.ts run --refresh-pools --rule late-graduation-pool --max-codex-units N --confirm
+```
+
+(the second prints the estimate, the third spends: one list request a coin, so N is about 5 times the count). The refresh moves or
+sets the role and closes `graduation_pool_differs`. The rule also picks coins that were never
+read under the current distance, so the count can be higher than the open issues. No command shows
+open data issues by kind; count them with
+`psql "$DATABASE_URL" -c "select kind, count(*) from data_issues where resolved_at is null and kind = 'graduation_pool_differs' group by kind"`. Only
 a coin on the full path (highest daily high of $1,000,000 or more, or a Dune peak far above it)
 has the bars of pools other than its graduation pool fetched, as in a refresh: for a coin on the
 light path the new pool is stored and its bars wait.

@@ -180,7 +180,8 @@ export async function fetchCandlesForCoin(
       launchedAt ??= launch.createdAt;
       graduatedAt ??= launch.migratedAt;
       await fillCoinTimes(launch);
-      if (limits.staged && launch.migratedPoolAddress !== null && !refresh) {
+      // A top-up of a coin with no stored pool is a first fetch, shortcut included; a refresh lists.
+      if (limits.staged && launch.migratedPoolAddress !== null && (!refresh || topUp)) {
         summary.launchInfoNamedPool = true;
         await upsertPoolUnlessOwned({
           chain,
@@ -410,6 +411,8 @@ export async function fetchCandlesForCoin(
    * nothing usable stops the coin; later it just leaves the pools as they are.
    */
   async function lookupPools(launch: LaunchInfo, stage0: boolean): Promise<void> {
+    // Only a top-up of a coin that holds pools leaves the roles alone; at stage 0 it is a first fetch.
+    const keepRole = topUp && !stage0;
     summary.lookupRequests += 1;
     const listing = await codex.getPools(coin.address, meter);
     listed = true;
@@ -459,7 +462,7 @@ export async function fetchCandlesForCoin(
     if (selection.curve) await put(selection.curve.address, selection.curve, 'curve', 'unknown');
     if (selection.graduation) {
       const held = stored.find((p) => p.isGraduationPool);
-      if (topUp && (held === undefined || held.address !== selection.graduation.address)) {
+      if (keepRole && (held === undefined || held.address !== selection.graduation.address)) {
         // A top-up never moves (or sets) the graduation role: the coin's metrics and its ATH pool
         // rest on it. Recorded for a refresh to settle; the listed pool is not stored.
         issue('graduation_pool_differs', {

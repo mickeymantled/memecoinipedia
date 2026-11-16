@@ -26,6 +26,7 @@ import {
   WATCH_FRESH_UNDER_SECONDS,
   WATCH_MID_UNDER_SECONDS,
   dayKey,
+  topUpListsPerDay,
 } from './constants.js';
 import type { Cursor } from './discover.js';
 import type { RefreshState } from './refresh.js';
@@ -57,6 +58,9 @@ export interface LiveStatus {
     refreshUnknown: number;
     /** Listed coins reopened for new bars by the top-up. */
     topUp: number;
+    /** Of those, coins handed a pool-list read today, and the most a day allows (null: the ceiling is not known). */
+    topUpLists: number;
+    topUpListsMax: number | null;
     fetched: number;
     listed: number;
     codexUnits: number;
@@ -85,6 +89,7 @@ interface DayCounters {
   refreshed?: number;
   refresh_unknown?: number;
   topup?: number;
+  topup_lists?: number;
 }
 
 export async function collectLiveStatus(
@@ -135,6 +140,11 @@ export async function collectLiveStatus(
       refreshed: counters.refreshed ?? 0,
       refreshUnknown: counters.refresh_unknown ?? 0,
       topUp: counters.topup ?? 0,
+      topUpLists: counters.topup_lists ?? 0,
+      topUpListsMax:
+        settings?.maxCodexUnitsPerDay !== undefined
+          ? topUpListsPerDay(settings.maxCodexUnitsPerDay)
+          : null,
       fetched: fetched.fetched,
       listed: fetched.listed,
       codexUnits: codex.units,
@@ -201,7 +211,8 @@ export function formatLiveStatus(s: LiveStatus): string {
   );
   lines.push(
     `  refresh: ${s.refresh ? `${s.refresh.done ? 'done' : 'in progress'}, ${n(s.refresh.requests)} requests, ${n(s.refresh.coins)} coins, ${n(s.refresh.changed)} changed status` : 'not started'}; ` +
-      `${n(t.refreshed)} listed coins refreshed, ${n(t.refreshUnknown)} unknown to Jupiter; top-up reopened ${n(t.topUp)} coins.`,
+      `${n(t.refreshed)} listed coins refreshed, ${n(t.refreshUnknown)} unknown to Jupiter; top-up reopened ${n(t.topUp)} coins, ${n(t.topUpLists)} of them handed a pool-list read` +
+      `${t.topUpListsMax !== null ? ` (at most ${n(t.topUpListsMax)} a day)` : ''}.`,
   );
   lines.push(
     `  Codex.io ${n(t.codexUnits)} units in ${n(t.codexRequests)} requests` +
