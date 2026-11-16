@@ -8,7 +8,13 @@ import type { Kysely } from 'kysely';
 import type { Database } from '@memecoinipedia/db';
 import { BudgetExceededError } from '../sources/budget.js';
 import type { Logger } from './log.js';
-import type { Stage, StageCoin, StageRegistry, StageResult } from './stage.js';
+import {
+  coinQualifies,
+  type Stage,
+  type StageCoin,
+  type StageRegistry,
+  type StageResult,
+} from './stage.js';
 
 export type ExecuteOutcome =
   | { kind: 'done' | 'skipped'; coinId: number; stage: StageName }
@@ -22,6 +28,8 @@ export type ExecuteOutcome =
   | { kind: 'retry'; coinId: number; stage: StageName; reason: string }
   /** Failed for good: not retryable, or out of attempts. The stage row is `failed`. */
   | { kind: 'failed'; coinId: number; stage: StageName; reason: string }
+  /** The coin is outside the stage's rule (`onlyIf`): nothing was claimed and nothing changed. */
+  | { kind: 'ineligible'; coinId: number; stage: StageName }
   /** The claim was taken over while this ran; the result was thrown away. */
   | { kind: 'lost'; coinId: number; stage: StageName }
   | { kind: 'no_coin'; coinId: number; stage: StageName };
@@ -86,6 +94,18 @@ export async function executeStage(
   if (!stage) throw new Error(`Stage "${stageName}" is not registered`);
   const base = { coinId, stage: stageName };
   if (stage.admit && !stage.admit()) return { kind: 'held', ...base };
+
+  // A coin outside the stage's rule is left alone: no stage row is made, no attempt is used.
+  if (stage.onlyIf) {
+    const row = await opts.db
+      .selectFrom('coins')
+      .select('ath_market_cap_usd')
+      .where('id', '=', coinId)
+      .executeTakeFirst();
+    if (row && !coinQualifies(stage.onlyIf, row.ath_market_cap_usd)) {
+      return { kind: 'ineligible', ...base };
+    }
+  }
 
   const claim = await claimStage(opts.db, {
     coinId,

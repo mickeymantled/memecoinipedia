@@ -52,10 +52,12 @@ async function main() {
   await createDatabase(adminUrl, name);
   const url = urlForDatabase(adminUrl, name);
   const captured: { sql: string; params: readonly unknown[] }[] = [];
-  const db = createDb(url, (event) => {
-    if (event.level === 'query') {
-      captured.push({ sql: event.query.sql, params: event.query.parameters });
-    }
+  const db = createDb(url, {
+    log: (event) => {
+      if (event.level === 'query') {
+        captured.push({ sql: event.query.sql, params: event.query.parameters });
+      }
+    },
   });
   try {
     await migrate(url);

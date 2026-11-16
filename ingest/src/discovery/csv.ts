@@ -12,6 +12,7 @@
  * columns may be empty, or absent from the header (a download with `columns=` leaves some out).
  * Header order does not matter.
  *
+ * Dune writes an empty value as the literal text `<nil>`; it is read exactly like an empty field.
  * Dune writes whole numbers in exponent form (`1.71051111e+09`). They are exact: numbers are
  * parsed as numbers, and a whole number is required where one is expected.
  *
@@ -198,7 +199,11 @@ const NUMBER = /^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$/;
 
 class FieldError extends Error {}
 
-const blank = (v: string): boolean => v.trim() === '';
+/** Dune writes an empty value as the literal text `<nil>`; it counts as blank. */
+const blank = (v: string): boolean => {
+  const t = v.trim();
+  return t === '' || t === '<nil>';
+};
 
 function number(name: string, v: string): number {
   const t = v.trim();

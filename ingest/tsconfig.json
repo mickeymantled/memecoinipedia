@@ -1,4 +1,10 @@
 {
   "extends": "../tsconfig.base.json",
-  "include": ["src", "test"]
+  "include": [
+    "src",
+    "test",
+    "scripts/backfill.ts",
+    "scripts/backfill-status.ts",
+    "scripts/bench-backfill.ts"
+  ]
 }

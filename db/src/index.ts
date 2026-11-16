@@ -1,4 +1,4 @@
-export { createDb } from './client.js';
+export { createDb, createReadOnlyDb } from './client.js';
 export { migrate, DEFAULT_MIGRATIONS_DIR } from './migrate.js';
 export type { MigrateOptions, MigrateResult } from './migrate.js';
 export { putBars, getBars, chunkSpan, chunkStartOf, CHUNK_BARS } from './candles.js';
@@ -31,5 +31,6 @@ export { seed } from './seed.js';
 export * from './stages.js';
 export * from './runs.js';
 export * from './discovery.js';
+export * from './backfill.js';
 export { databaseShape } from './types.js';
 export type * from './types.js';
