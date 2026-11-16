@@ -73,7 +73,7 @@ export async function fetchCandlesForCoin(
 ): Promise<FetchCandlesResult> {
   const { db, codex } = deps;
   const chain = coin.chain ?? 'solana';
-  const asOf = Math.floor(deps.clock().getTime() / 1000);
+  let asOf = Math.floor(deps.clock().getTime() / 1000);
   const limits = { ...DEFAULT_PLAN_LIMITS, ...stripUndefined(options.limits) };
   const maxSecondaryPools = options.maxSecondaryPools ?? DEFAULT_MAX_SECONDARY_POOLS;
   // What this coin's own calls cost; the client's running total is shared with other coins.
@@ -91,6 +91,7 @@ export async function fetchCandlesForCoin(
     skippedOtherPools: 0,
     otherQuotePools: null,
     poolsTakenOver: 0,
+    poolsAdded: 0,
     launchInfoNamedPool: null,
     graduationPoolUnverified: false,
     barsFetched: emptyCounts(),
@@ -143,7 +144,30 @@ export async function fetchCandlesForCoin(
     // A pool from the list carries its creation time; one named by launch info alone does not.
     listed = stored.some((p) => p.createdAtChain !== null);
 
-    if (stored.length === 0 || coin.refreshPools === true) {
+    if (stored.length > 0 && coin.refreshPools === true) {
+      // A refresh: list the pools again under the current rules and store the ones not held. The
+      // coin's own record stands in for launch info (the stored graduation pool is the named one,
+      // the stored graduation time the migration), so the refresh costs one list request. The
+      // clock is the end of what the coin already holds, so nothing held is asked for again.
+      if (launchedAt === null) {
+        const launch = await launchInfo();
+        launchedAt = launch.createdAt;
+        graduatedAt ??= launch.migratedAt;
+        await fillCoinTimes(launch);
+      }
+      const held = new Set(stored.map((p) => p.id));
+      await lookupPools(await launchInfoFromStore(), false);
+      stored = await getCoinPools(db, coin.id);
+      summary.poolsAdded = stored.filter((p) => !held.has(p.id)).length;
+      let heldUntil = 0;
+      for (const p of stored) {
+        for (const c of await getCoverage(db, p.id, 86400)) heldUntil = Math.max(heldUntil, c.to);
+      }
+      if (heldUntil > 0) {
+        asOf = Math.min(asOf, heldUntil);
+        summary.asOf = asOf;
+      }
+    } else if (stored.length === 0 || coin.refreshPools === true) {
       // Stage 0: launch info, and the pool list only when launch info names no migrated pool.
       const launch = await launchInfo();
       launchedAt ??= launch.createdAt;

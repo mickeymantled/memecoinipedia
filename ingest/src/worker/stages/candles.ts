@@ -25,7 +25,7 @@ import { replaceCoinIssues } from '@memecoinipedia/db';
 import { fetchCandlesForCoin, METRICS_VERSION } from '../../candles/index.js';
 import type { CandleFetchSummary } from '../../candles/index.js';
 import { FLAT_UNITS, RATE_LIMIT_MESSAGE, type CodexClient } from '../../sources/codex/index.js';
-import { failed, done, type Stage, type StageResult } from '../stage.js';
+import { failed, done, doneAndReopen, type Stage, type StageResult } from '../stage.js';
 
 export const CANDLES_STAGE_VERSION = 1;
 /** A large coin makes about 40 requests one after another. */
@@ -61,6 +61,8 @@ export interface CandlesDetail extends Record<string, unknown> {
   otherQuotePools: number | null;
   /** Pools moved to this coin from a coin that held them as ordinary other pools. No addresses. */
   poolsTakenOver: number;
+  /** Pools a refresh added to the coin's list. Their bars are fetched, and metrics reopen. */
+  poolsAdded: number;
   hourlyCapHit: boolean;
   /**
    * The `METRICS_VERSION` the fetch's peak refinement ran under. The metrics stage reopens a coin
@@ -84,6 +86,7 @@ export function candlesDetail(summary: CandleFetchSummary): CandlesDetail {
     launchInfoNamedPool: summary.launchInfoNamedPool,
     otherQuotePools: summary.otherQuotePools,
     poolsTakenOver: summary.poolsTakenOver,
+    poolsAdded: summary.poolsAdded,
     hourlyCapHit: summary.hourlyCapHit,
     metricsVersion: METRICS_VERSION,
   };
@@ -92,6 +95,11 @@ export function candlesDetail(summary: CandleFetchSummary): CandlesDetail {
 export interface CandlesStageDeps {
   /** The run's one client, with the run's budget. */
   codex: CodexClient;
+  /**
+   * True for coins whose pool list is to be listed again (a refresh run). The candles stage of such
+   * a coin is first put back to pending by the run. Absent: no coin is refreshed.
+   */
+  refreshPools?: (coinId: number) => boolean;
   /** Test seam. */
   fetchCandles?: typeof fetchCandlesForCoin;
 }
@@ -134,7 +142,12 @@ export function createCandlesStage(deps: CandlesStageDeps): CandlesStage {
     async run(ctx, coin): Promise<StageResult> {
       const result = await fetchCandles(
         { db: ctx.db, codex: deps.codex, clock: ctx.now },
-        { id: coin.id, address: coin.address, chain: coin.chain },
+        {
+          id: coin.id,
+          address: coin.address,
+          chain: coin.chain,
+          ...(deps.refreshPools?.(coin.id) ? { refreshPools: true } : {}),
+        },
       );
       // The issues this run found replace the stage's own open ones (only the kinds it examined).
       const { issueRecords, issueKindsChecked } = result.summary;
@@ -145,7 +158,11 @@ export function createCandlesStage(deps: CandlesStageDeps): CandlesStage {
         CANDLES_ISSUE_KINDS.filter((k) => owned.has(k)),
         issueRecords,
       );
-      if (result.ok) return done(candlesDetail(result.summary));
+      if (result.ok) {
+        const detail = candlesDetail(result.summary);
+        // Pools were added or moved in: the coin's metrics were computed without them.
+        return result.summary.poolsAdded > 0 ? doneAndReopen(detail, ['metrics']) : done(detail);
+      }
       if (result.reason === 'budget_exhausted') {
         stop(result.message);
         // The run's ceiling, not this coin's fault: retry in a later run, and do not count the attempt.

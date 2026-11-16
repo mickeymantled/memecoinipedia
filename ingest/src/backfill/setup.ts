@@ -138,6 +138,8 @@ export interface BackfillRegistryOptions {
    * process closes it while the day's unit ceiling is reached). Absent: the stage as it is.
    */
   candlesAdmit?: () => boolean;
+  /** Coins whose candles stage lists the pools again (a refresh run). */
+  refreshPools?: (coinId: number) => boolean;
 }
 
 /** The stage `metadata` (or `metadata_file`) as the backfill runs it: after `metrics`, for listed coins only. */
@@ -158,7 +160,10 @@ export function buildBackfillRegistry(o: BackfillRegistryOptions): {
   let candles: CandlesStage | null = null;
   if (o.stages.includes('candles')) {
     if (!o.clients.codex) throw new Error('The candles stage needs a Codex.io client');
-    candles = createCandlesStage({ codex: o.clients.codex });
+    candles = createCandlesStage({
+      codex: o.clients.codex,
+      ...(o.refreshPools ? { refreshPools: o.refreshPools } : {}),
+    });
     const own = candles;
     const extra = o.candlesAdmit;
     // The stage object keeps its getters (`stopped`): the registered one is a view of it.
