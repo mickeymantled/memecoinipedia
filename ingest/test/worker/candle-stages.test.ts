@@ -428,6 +428,7 @@ describeDb('candles and metrics stages in the run', () => {
       expect(Object.keys(r.detail as object).sort()).toEqual([
         'barRequests',
         'escalated',
+        'graduationMoved',
         'hourlyCapHit',
         'launchInfoNamedPool',
         'lookupRequests',

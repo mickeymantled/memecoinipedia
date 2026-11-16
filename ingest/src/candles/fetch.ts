@@ -6,6 +6,8 @@ import {
   getCoverage,
   loadMetricInput,
   putBars,
+  moveGraduationPool,
+  PoolClaimedByTwoCoinsError,
   PoolOwnedByOtherCoinError,
   takeOverPool,
   refreshPoolBarStats,
@@ -92,6 +94,7 @@ export async function fetchCandlesForCoin(
     otherQuotePools: null,
     poolsTakenOver: 0,
     poolsAdded: 0,
+    graduationMoved: false,
     launchInfoNamedPool: null,
     graduationPoolUnverified: false,
     barsFetched: emptyCounts(),
@@ -409,15 +412,19 @@ export async function fetchCandlesForCoin(
     const selection = selectPools({
       pools: listing,
       migratedPoolAddress: launch.migratedPoolAddress,
-      migratedAt: launch.migratedAt,
-      migrated: launch.migrated,
+      // The migration time: Codex.io's, else the coin's stored graduation time.
+      migratedAt: launch.migratedAt ?? graduatedAt,
+      // A coin with a stored graduation time graduated, whatever launch info says.
+      migrated: launch.migrated === true || graduatedAt !== null ? true : launch.migrated,
       minSecondaryPoolLiquidityUsd: limits.minSecondaryPoolLiquidityUsd,
       maxSecondaryPools,
+      maxGraduationPoolDelaySeconds: limits.maxGraduationPoolDelaySeconds,
     });
     if (!selection.curve && !selection.graduation && selection.others.length === 0) {
       if (!stage0) return;
       const young = launch.migratedAt !== null && asOf - launch.migratedAt < YOUNG_COIN_SEC;
       checked('graduation_pool_not_found');
+      checked('graduation_pool_late');
       for (const i of selection.issues) issue(i.kind, i.detail);
       throw new Stop({
         reason: 'no_pools',
@@ -445,7 +452,12 @@ export async function fetchCandlesForCoin(
       });
     if (selection.curve) await put(selection.curve.address, selection.curve, 'curve', 'unknown');
     if (selection.graduation) {
-      await put(selection.graduation.address, selection.graduation.pool, 'graduation', 'unknown');
+      const held = stored.find((p) => p.isGraduationPool);
+      if (held !== undefined && held.address !== selection.graduation.address) {
+        await moveGraduationRole(selection.graduation);
+      } else {
+        await put(selection.graduation.address, selection.graduation.pool, 'graduation', 'unknown');
+      }
     }
     // Other pools are stored now so a later run needs no second list; only the full path fetches them.
     for (const p of selection.others) await put(p.address, p, 'other', 'unknown');
@@ -454,7 +466,45 @@ export async function fetchCandlesForCoin(
     summary.otherQuotePools = selection.otherQuotePools + clashed.size;
     summary.graduationPoolUnverified = selection.graduation?.unverified ?? false;
     checked('graduation_pool_not_found');
+    checked('graduation_pool_late');
     for (const i of selection.issues) issue(i.kind, i.detail);
+  }
+
+  /**
+   * The pool list says another pool than the stored one is the graduation pool: move the role in
+   * one transaction (`moveGraduationPool`: the pool is stored if it was not, taken over from a coin
+   * holding it as an ordinary other pool, the old one stays stored as an other pool, metrics go
+   * back to pending). Two coins holding the pool as their own fail the coin.
+   */
+  async function moveGraduationRole(
+    pick: NonNullable<ReturnType<typeof selectPools>['graduation']>,
+  ): Promise<void> {
+    try {
+      const r = await moveGraduationPool(
+        db,
+        {
+          chain,
+          address: pick.address,
+          coinId: coin.id,
+          dex: pick.pool?.exchange ?? pick.pool?.protocol ?? 'unknown',
+          isPrimary: true,
+          isGraduationPool: true,
+          quoteToken: pick.pool?.quoteToken ?? null,
+          createdAtChain: pick.pool?.createdAt ?? null,
+          sourcePairId: pairIdFor(pick.address),
+        },
+        deps.clock(),
+      );
+      if (r.moved) summary.graduationMoved = true;
+      if (r.previousOwnerCoinId !== null) summary.poolsTakenOver += 1;
+    } catch (err) {
+      if (!(err instanceof PoolClaimedByTwoCoinsError)) throw err;
+      throw new Stop({
+        reason: 'pool_claimed_by_two_coins',
+        retry: false,
+        message: err.message,
+      });
+    }
   }
 
   /** Sets launch and graduation time on the coin when they are empty. Never overwrites. */

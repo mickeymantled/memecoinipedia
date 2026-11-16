@@ -67,7 +67,7 @@ import {
   OUTSTANDING_PER_SLOT,
 } from './defaults.js';
 import { Feeder } from './feeder.js';
-import { readCoinIds } from './refresh.js';
+import { resolveRefreshCoins, type RefreshSelection } from './refresh.js';
 import {
   BACKFILL_STAGES,
   buildBackfillRegistry,
@@ -114,10 +114,11 @@ export interface BackfillOptions {
    * Refresh the pool list of these coins (ids) instead of fetching new ones: each coin whose
    * candles are done is put back to pending and its candles stage lists the pools again, stores
    * the ones not held and fetches their bars (`refreshPools` of `fetchCandlesForCoin`); metrics go
-   * back to pending for a coin that gained a pool. The selection is exactly these coins. Needs the
-   * candles stage.
+   * back to pending for a coin that gained a pool or moved the graduation role. The selection is
+   * exactly these coins: given as ids, as a file, or by a rule that picks them from the database
+   * (`selectCoinsByRule`; `maxGraduationPoolDelaySeconds` is its distance). Needs the candles stage.
    */
-  refreshPools?: { coinIds: readonly number[] } | { coinsFile: string };
+  refreshPools?: RefreshSelection;
   confirm: boolean;
   env: IngestEnv;
   log: Logger;
@@ -391,10 +392,7 @@ export async function runBackfill(opts: BackfillOptions): Promise<BackfillReport
   try {
     let refresh: { coinIds: readonly number[] } | undefined;
     if (opts.refreshPools) {
-      refresh =
-        'coinIds' in opts.refreshPools
-          ? opts.refreshPools
-          : { coinIds: await readCoinIds(db, opts.refreshPools.coinsFile) };
+      refresh = { coinIds: await resolveRefreshCoins(db, opts.refreshPools) };
       if (refresh.coinIds.length === 0) throw new Error('--refresh-pools: no coins selected');
     }
     const selectionSpec: SelectionSpec = refresh
