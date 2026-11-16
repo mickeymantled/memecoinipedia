@@ -21,14 +21,10 @@ export interface PoolInfo {
 /**
  * The quote tokens an "other" pool (not the bonding curve, not the graduation pool) may have to
  * be stored and fetched: wrapped SOL, USDC and USDT, by mint address. Matching the address and
- * not the symbol, so a token that merely calls itself "SOL" does not pass.
+ * not the symbol, so a token that merely calls itself "SOL" does not pass. The constant lives in
+ * /db (the metric loader applies the same rule there) and is re-exported from here.
  */
-export const OTHER_POOL_QUOTE = {
-  SOL: 'So11111111111111111111111111111111111111112',
-  USDC: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-  USDT: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
-} as const;
-export const OTHER_POOL_QUOTE_MINTS: readonly string[] = Object.values(OTHER_POOL_QUOTE);
+export { OTHER_POOL_QUOTE, OTHER_POOL_QUOTE_MINTS } from '@memecoinipedia/db';
 
 export interface PoolsResult {
   pools: PoolInfo[];

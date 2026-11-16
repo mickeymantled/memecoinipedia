@@ -5,6 +5,7 @@ import {
   EXHAUSTIVE_PLAN_LIMITS,
   computeMetricsForCoin,
   fetchCandlesForCoin,
+  METRICS_VERSION,
   type CandleDeps,
 } from '../../src/candles/index.js';
 import { UnitBudget } from '../../src/sources/budget.js';
@@ -176,7 +177,7 @@ describeDb('the staged fetch on simulated trading', () => {
     expect(row.ath_wick_pool_id).toBeNull();
     expect(row.ath_liquidity_usd).toBeNull();
     expect(row.ath_hour_volume_usd).toBeNull();
-    expect(row.metrics_version).toBe(4);
+    expect(row.metrics_version).toBe(METRICS_VERSION);
     expect(row.metrics_as_of).toEqual(new Date(NOW * 1000));
     expect(row.metrics_computed_at).toEqual(new Date(NOW * 1000));
     // The coin traded on its first day and the line (volume, liquidity) was met within the last 7 days.

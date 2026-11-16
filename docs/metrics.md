@@ -12,6 +12,7 @@ The thresholds are starting values. Task A6 tunes them against the 500-coin samp
 - `pools`: every pool we hold bars for. Each pool has:
   - `address`, `dex`
   - `isPrimary`: true for the pump.fun bonding curve and for the pool the coin graduated into. False for every other pool.
+- **Which pools are in the input.** The loader that builds the input from stored pools (not the metric library) applies this rule, in addition to the liquidity rule in section 3, rule 5. The bonding curve and the graduation pool (`isPrimary` true) always go in, whatever their quote token. Any other pool (`isPrimary` false) goes in only when its quote token is SOL, USDC or USDT: the stored `quote_token` equals one of the three mint addresses (wrapped SOL `So11111111111111111111111111111111111111112`, USDC `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v`, USDT `Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB`) or one of the symbols `SOL`, `USDC`, `USDT` (exact, case-sensitive, after trimming white space). A side pool with no quote token recorded is left out. The reason: a pool quoted in another memecoin prices the coin as the product of two thin prices, and a few thousand dollars of trading can set a nine-figure ATH. A left-out pool is only left out of the input: the pool and its bars stay stored, and play no part in the ATH, the wick, the level series, the coverage flag or the status. Every path that builds an input from stored pools (the metrics stage, and the fetcher's peak refinement) goes through the same loader, so they always see the same pools. The loader reports how many side pools it left out; the metrics stage records it as `sidePoolsLeftOut` in its detail when above zero.
   - `bars1m`, `bars1h`, `bars1d`: bars at 1-minute, 1-hour and 1-day resolution. Any of them may be empty.
 - A bar has:
   - `t`: start of its bucket, unix seconds, UTC. A multiple of 60, 3,600 or 86,400.
@@ -154,7 +155,7 @@ This is a price pattern, not proof of intent. Graduated pump.fun pools cannot ha
 | `rugPattern` | boolean |
 | `flags` | list of flag names, each at most once, sorted alphabetically |
 
-Flags: `ath_before_launch`, `bad_bar`, `duplicate_bar`, `implausible_market_cap`, `no_candles` (set by the metrics stage for a coin with no stored bar at all; every metric is then null), `no_qualifying_window`, `peak_outside_minute_coverage`, `screened_out` (set by the fetcher, not by the metric library).
+Flags: `ath_before_launch`, `bad_bar`, `duplicate_bar`, `implausible_market_cap`, `no_candles` (set by the metrics stage for a coin with no bar in any pool that counts, section 1: a coin whose only bars sit on left-out side pools gets it too; every metric is then null), `no_qualifying_window`, `peak_outside_minute_coverage`, `screened_out` (set by the fetcher, not by the metric library).
 
 The exact TypeScript shapes are in `/ingest/src/metrics/types.ts`.
 
@@ -182,3 +183,4 @@ What these rules cost in accuracy: time above a threshold is measured to the min
 - A busier window that is not strict hides a strict one in the same minute. One large trade on a side pool can outweigh the main pool's three-minute volume, and that minute then yields a point that cannot raise the level or set the ATH. The error is on the cautious side: it can understate, never overstate. Preferring strict windows was considered and rejected, because it would let a marginal side pool set the price whenever the main pool traded heavily among a few wallets. A6 counts how often this happens at the peak.
 - The first two or three windows of a coin are noisy, because one early bad bar sits in every one of them.
 - A coin under the listing line can keep `peak_outside_minute_coverage` for good: the fetcher does not fetch periods whose high is under $90,000, so the flag stays on it.
+- A side pool counts on its quote token as stored. `pools.quote_token` holds the symbol when Codex.io gave one, else the address. Rows stored before the fetcher matched by address can therefore pass on the symbol alone: a token that merely calls itself `USDC` would be counted on such a row. New fetches match by mint address and never store such a pool, so the gap closes as coins are refetched. It is not worth a second source of truth now.

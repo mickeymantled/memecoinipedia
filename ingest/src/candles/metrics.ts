@@ -10,12 +10,12 @@ import { DEFAULT_PLAN_LIMITS } from './plan.js';
 import type { CandleDeps } from './types.js';
 
 /** Stored in `coins.metrics_version`. Raise it when docs/metrics.md or the status rule changes. */
-export const METRICS_VERSION = 4;
+export const METRICS_VERSION = 5;
 
 /** The flag the fetcher sets on a coin it screened out. It is not one of the metric library's flags. */
 export const SCREENED_OUT_FLAG = 'screened_out';
 
-/** The flag set on a coin that has no stored bar at all (its metrics stage still ends `done`). */
+/** The flag set on a coin that has no bar in any pool that counts (its metrics stage still ends `done`). */
 export const NO_CANDLES_FLAG = 'no_candles';
 
 /** The library's result, with the fetcher's and the stage's own flags allowed. */
@@ -35,7 +35,9 @@ export type ComputeMetricsResult =
       barCount: number;
       /** The coin has no 1-minute bars and no daily high reaching the screen line: stored as screened out. */
       screenedOut: boolean;
-      /** The coin has no stored bar at all: stored with a null ATH and the `no_candles` flag. */
+      /** Side pools left out of the input because their quote token is not SOL, USDC or USDT. */
+      sidePoolsLeftOut: number;
+      /** The coin has no bar in any pool that counts (docs/metrics.md section 1): stored with a null ATH and the `no_candles` flag. */
       noCandles: boolean;
     }
   | {
@@ -87,7 +89,7 @@ export function screenedOutResult(
 }
 
 /**
- * The result for a coin with no stored bar at all (screened out before any bar was stored, say):
+ * The result for a coin with no bar in any pool that counts (screened out before any bar was stored, or bars only on left-out side pools):
  * every metric null, no rug, and the flag `no_candles`. The coin's metrics are final: there is
  * nothing to compute and fetching candles again is the candle stage's business, not a retry here.
  */
@@ -147,6 +149,7 @@ export async function computeMetricsForCoin(
     status: out.status,
     metricsVersion: METRICS_VERSION,
     barCount: out.barCount,
+    sidePoolsLeftOut: out.sidePoolsLeftOut,
     screenedOut,
     noCandles: out.barCount === 0,
   };
