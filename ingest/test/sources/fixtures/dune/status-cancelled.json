@@ -1,0 +1,8 @@
+{
+  "execution_id": "01HKZJ2683PHF9Q9PHHQ8FW4Q1",
+  "query_id": 0,
+  "state": "QUERY_STATE_CANCELLED",
+  "is_execution_finished": true,
+  "cancelled_at": "2026-11-15T10:04:00Z",
+  "execution_cost_credits": 5.8
+}

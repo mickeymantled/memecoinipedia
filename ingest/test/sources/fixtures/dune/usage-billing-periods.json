@@ -1,0 +1,14 @@
+{
+  "private_queries": 100,
+  "private_dashboards": 100,
+  "bytes_used": 1000,
+  "bytes_allowed": 10101,
+  "billing_periods": [
+    {
+      "start_date": "2026-11-01",
+      "end_date": "2026-12-01",
+      "credits_used": 100.1,
+      "credits_included": 4000
+    }
+  ]
+}
