@@ -1,6 +1,6 @@
 # Dune queries: discovering pump.fun graduates
 
-These queries were run on Dune on 2026-11-15, and the figures below are what that run measured. Every table and column named here was confirmed live on that date. The results of the sizing query and of the sample query are in `results/`. They hold public chain data only.
+These queries were run on Dune on 2026-11-15, and the figures below are what that run measured. Every table and column named here was confirmed live on that date. The results of the sizing query, of the sample queries and, for issue #44 (section 8, run on 2026-11-16), of the three never-graduated queries are in `results/`. They hold public chain data only.
 
 The design changed after the first draft of this pull request. The first draft scanned `dex_solana.trades` for 1-minute buckets. That did not finish in a useful time (section 6). The queries now take the peak from Dune's hourly price table, `dex_solana.price_hour`, and use pump.fun's decoded event tables for creation and graduation.
 
@@ -14,6 +14,9 @@ Plan: Dune Analyst, medium tier (the small tier is refused on this plan). None o
 | `sizing.sql` | One row per launch month (35 rows): graduates, graduates with no hourly price, graduates reaching $30k, $50k, $80k, $100k, $125k, $250k, $1M, $10M and $100M by the 99.9th percentile of the hourly price (`p30k` to `p100m`), the same at $30k and $100k by the plain maximum (`max30k`, `max100k`), and for coins at $100k or more the median, p90, p99 and maximum of hours with a price (`hours_p50` to `hours_max`), plus the sum of hours for coins at $30k or more (`hours_sum_30k`). | 35 rows | 7.2 | 38 s |
 | `sample.sql` | The Phase A sample: the 20 probe coins from `probes/coins.json`, plus a draw by quota from each launch half-year and peak cell, ordered by the SHA-256 of the mint (no random function). Quotas per half-year: 5 for $30k to $50k, 10 for $50k to $100k, 30 for $100k to $1M, 20 for $1M to $10M, 15 for $10M and above. Cells are cut on the 99.9th percentile peak. Columns: `mint`, `half_year`, `cell`, `probe`, `cell_size`, `created_at`, `creator`, `graduated_at`, `hours`, `peak_max_usd`, `peak_p999_usd`, `peak_at`. | 500 rows | 7.4 | 101 s |
 | `below-floor-sample.sql` | The below-floor sample (issue #40): graduates with an hourly peak (99.9th percentile) under $30,000 in cells `0-10k`, `10k-20k` and `20k-30k` by six launch half-years (7, 7 and 6 coins per half-year, 120 in all), plus coins with no hourly price (cell `no-price`, 30 in all, all of them launched in 2026-H2: see the note after this table). Same source tables, peak and fixed order as `sample.sql`; the columns are the sample's. `cell_size` is the number of coins in that cell and half-year. Result: `results/below-floor-2026-11-15.csv`, 150 rows (times converted to ISO text outside the query, as for the sample). | 150 rows, 36 KB | 4.6 (the run that wrote the file, download included). A first run with a quota of 5 `no-price` coins per half-year cost 5.1 and was discarded, see below | under 100 s each (not timed closely) |
+| `curve-only-sizing.sql` | Issue #44, run on 2026-11-16. One row per launch month (35 rows) for coins with a creation record and no graduation by the same rule: `never_graduated`, `with_price`, `max100k` and `p100k` (plain maximum and 99.9th percentile of the hourly price at $100,000 or more; `p100k` is computed by the nearest-rank identity from hour counts, not with `approx_percentile`), `max_100k_to_125k`, `max_above_125k`, `max_1m_plus`, `max100k_one_hour`, `max100k_two_plus_hours`, and, leaving out a plain maximum of $1,000,000 or more, `max_30k_to_1m`, `max_50k_to_1m`, `max_80k_to_1m`, `max_100k_to_1m`, `two_hours_50k_to_1m`, `two_hours_100k_to_1m`. Result: `results/curve-only-sizing-2026-11-16.csv`. | 35 rows | 5.76 (the first version, without the last six columns, cost 5.54) | about 1 minute |
+| `curve-only-sample.sql` | Issue #44. A sample by quota (5 coins a cell, the method of `sample.sql`) of never-graduated coins with a plain maximum of $100,000 or more, by launch half-year, size (`band` under $125,000, `mid` under $1,000,000, `high`) and hours at or above $100,000 (`one`, `two_plus`), with the hourly low, the number of coins sharing the peak hour, the creation event's `quote_mint`, `is_mayhem_mode` and `token_program`, and whether the mint has an AMM pool or a migration record. Result: `results/curve-only-sample-2026-11-16.csv`. | 168 rows | 5.27 | about 1 minute |
+| `missed-graduations.sql` | Issue #44. One row per launch month (35 rows): never-graduated coins and how many have an AMM pool, a migration record, or either; graduates by our rule and how many have either. No price table. Result: `results/missed-graduations-2026-11-16.csv`. | 35 rows | 1.63 | about 1 minute |
 | `schema_probe.sql` | Metadata and coverage statements, each run on its own. | small | about 0.02 to 0.03 for each metadata statement | seconds |
 
 **Below-floor sample, measured on 2026-11-15.** The first run of `below-floor-sample.sql` drew 5 `no-price` coins per half-year and returned only 5 of them (125 rows): graduates without an hourly price exist only for coins launched in 2026-H2 (1,876 of them; `sizing-2026-11-15.csv` shows none before 2026-07 and all but 3 in September to November). The quota was raised to 30 for the cell so that the sample holds 30 such coins, and the query was run again (150 rows). Some of the `0-10k` coins of the early half-years launched in 2024 but graduated in 2026: their `graduated_at` is years after `created_at`. Cells `0-10k` of 2024-H1 and 2024-H2 hold 18 coins each, so 7 of 18 are sampled there.
@@ -133,7 +136,7 @@ What it shows:
 ## 5. Known inaccuracies and gaps
 
 - The hourly peak is a price from an hourly table, not a trade. It understates short spikes and includes bad prints (section 4). The real all-time high comes from our own metric library and the candles.
-- Coins that never graduated are not in the list. In the weeks when SOL was above about $243 a coin could pass $100k on the curve without graduating. This is not covered yet.
+- Coins that never graduated are not in the list. Section 8 sizes them (issue #44): most of the apparent count is bad rows in the price table, and a real group exists that is not the one first expected.
 - The list is as of the run time. About 1,100 coins graduate a day in late 2026.
 - 1,846 graduates have no hourly price, so they have no peak.
 - Before June 2024 graduation comes from the withdraw call, not from an event. Before May 2024 creation comes partly from the create call.
@@ -156,3 +159,49 @@ Order:
 1. `sizing.sql` and `sample.sql` need no download of the full list. Their results are already in `results/sizing-2026-11-15.csv` and `results/sample-2026-11-15.csv`.
 2. When the backfill starts, run `discovery.sql` once with a floor on the peak (`WHERE peak_max_usd >= 30000` is the safe cut) and download it in pages of up to 32,000 rows. Budget the download credits first (section 1).
 3. Re-run `schema_probe.sql` statements 2 to 6 if a table seems to have changed.
+4. For the never-graduated queries (section 8), the runner downloads the result and then exits with code 1 and `Header is missing columns`, because it tries to size the candidate list from a file of another shape. The saved file is complete. Use one `--out` directory for each query: the download is always named `discovery.csv`, and the candidate list's directory must not be reused.
+
+## 8. Coins that never graduated (issue #44)
+
+Run on 2026-11-16 (medium tier, about a minute each). Costs: `curve-only-sizing.sql` 5.54 credits for the first version and 5.76 with six more columns, `missed-graduations.sql` 1.63, `curve-only-sample.sql` 5.27: 18.19 credits in all against the issue's 40. Each download was recorded at the known rate (0.05 for 35 rows, 0.26 for 168) and did not show in Dune's usage figure. A coin counts as never graduated when it has a creation record and no graduation by the rule of `sizing.sql`. The price filters are the same. "Plain maximum" is the highest hourly price times one billion. The 99.9th percentile (`p100k`) is computed from the number of hours at or above the line: the nearest-rank 99.9th percentile of n prices is at or above a line exactly when more than floor(n / 1000) of them are, so it agrees with `sizing.sql`'s measure up to the approximation inside `approx_percentile`.
+
+### Count
+
+24,776,959 coins were created and had not graduated by the run; 23,162,015 of them have at least one hourly price. 48,406 reach $100,000 by the plain maximum (48,390 by the 99.9th percentile). Of the 48,406: 1,219 are from $100,000 to under $125,000 (the band), 47,187 are $125,000 or more, and 42,348 are $1,000,000 or more. 38,974 have exactly one hour at or above $100,000 and 9,432 have two or more. The counts by month are in `results/curve-only-sizing-2026-11-16.csv`.
+
+Leaving out a plain maximum of $1,000,000 or more (counts at or above the line, and up to $1,000,000):
+
+| Line | All months | Launched from 2025-11 | Launched before 2025-11 |
+|---|---|---|---|
+| $30,000 | 56,004 | 14,713 | 41,291 |
+| $50,000 | 15,722 | 8,273 | 7,449 |
+| $80,000 | 7,307 | 5,357 | 1,950 |
+| $100,000 | 6,058 | 4,344 | 1,714 |
+| two or more hours at $50,000 | 7,827 | 4,457 | 3,370 |
+| two or more hours at $100,000 | 2,366 | 2,243 | 123 |
+
+Of the 1,714 launched before 2025-11 at $100,000, 1,163 are from 2025-09. The band holds 1,219 coins, 335 of them launched before 2025-11 and 287 of those in 2025-09.
+
+### What the three results show
+
+1. **The graduation rule misses nothing that the records can show.** `missed-graduations-2026-11-16.csv`: no never-graduated coin has a migration record (`with_migration` is 0 in every month). In every month from 2025-04 on, nearly every graduate by our rule has an AMM pool or a migration record: `graduates_with_either` equals `graduates` in all but five months (2026-03, 2026-07, 2026-08, 2026-09 and 2026-10), where it is 1 to 3 short (7 coins in all of 348,168). The pool and migration tables do not reach back before about 2025-03 (2,782 of 6,769 graduates of 2025-03 have either, 353 of 23,516 of 2025-01), so earlier months cannot be checked this way. 3,827 never-graduated coins have an AMM pool opened beside the curve, 1,813 of them launched in 2025-03 and 2025-04.
+2. **The $1,000,000 group is bad rows in the price table.** In the sample, the 60 `high` coins peak at $1.4 million to $121 billion against hourly lows of $0.14 to $116 million, and up to 1,328 coins share one peak hour. The same holds for `2025-H2 / mid / one` and `2025-H2 / band / one` (coins sharing a peak hour: 309 and 542 in the first, 309 and 189 in the second, against hourly lows of $5,700 to $9,800) and `2026-H2 / mid / one` (peaks of $356,000 to $361,000 against lows of $2,400 to $8,900, with 24 to 91 coins sharing a peak hour, the flag false on all five).
+3. **The classic-curve group the issue expected is about 50 coins in three years**: the band before 2025-11 without 2025-09 is 48 coins. A standard curve tops out at about $121,000 at SOL's highest price, and the band holds those.
+4. **A real group exists from late 2025: never-graduated coins priced above the classic curve's top over several hours, which a standard curve cannot do.** In the sample, `2026-H1 / mid / one` holds peaks of $127,000 to $197,000 against hourly lows of $6,100 to $46,000, only 1 to 3 coins sharing a peak hour, and `is_mayhem_mode = true` on 4 of 5 (the fifth has no flag); in the sample's non-`high` cells of 2026-H1 and 2026-H2, 29 of 40 rows have the flag set to true. From the sizing: 4,344 coins launched from 2025-11 have a plain maximum from $100,000 to under $1,000,000, and 2,243 of them have two or more hours at $100,000 or more (8,273 reach $50,000). Five were checked against a second source: public hourly candles of the pump.fun curve pool on GeckoTerminal, read on 2026-11-16 (highest hourly high times one billion):
+
+| Mint | Dune peak (USD) | Second source (USD) |
+|---|---|---|
+| `2stvYh1YZ8NaeM3Uw258Q6ZaQKyAYKZAGx3g4aQ1pump` | 209,739 | 215,863 |
+| `B2wAP7ZX77gLW6xNfYahdqu1bFi5Fm1ZvgnYuc38pump` | 142,207 | 142,367 |
+| `3fDGfx9uwN3cuEDaqwGrgtLzMa7C4ai76DAVv2vZpump` | 117,860 | 172,477 (highest hourly close 117,606) |
+| `GHdQCghEHDfYtDgnjAwFtayL9D5FrFTKtaJUWrQEpump` | 176,225 | 178,042 |
+| `7UiZQYZ2PhZgnsWHo4FUGKu6aZPwt43sx1x8MSY9pump` | 120,977 | 115,808 |
+
+   For all five the second source's fully diluted value is exactly two billion times its price. What was observed: prices above the classic curve's top on the curve pool itself, and a supply of two billion at the second source. Why the curve allows this was not established.
+5. **`is_mayhem_mode` is empty for coins launched before the flag was filled** (in the sample, 116 of 168 rows have no flag, including the December 2025 coins), so the launch month, not the flag, is the cut. The CSV writes an empty value as `<nil>`.
+
+### Recommendation (lead, 2026-11-16)
+
+> **Recommendation (lead, 2026-11-16): include them, as a second candidate list, once the pipeline can take a coin with no graduation (#102).** Rule: never graduated, plain hourly maximum under $1,000,000, and $50,000 or more if launched from 2025-11-01 (8,273 coins), $80,000 or more if launched before (1,950 coins, about 1,180 of them one bad hour in 2025-09 that the candles will throw out). About 10,200 coins. At the backfill's 16.1 units a coin that is about 165,000 Codex.io units: about $23 at the overage price, nothing extra inside a new plan month. Expected to add roughly 4,000 to 5,000 listed coins, about 3% on top of the 147,910 listed today. The 42,348 coins at $1,000,000 or more are left out as bad rows.
+
+This section does not list the coins or change the pipeline: the candidate list for them and the change to the pipeline are issue #102.
