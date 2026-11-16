@@ -25,6 +25,15 @@ Tests and the measurement script create `mcp_test_<random>` databases through
 name does not match `^mcp_test_[a-z0-9_]+$` (`assertTestDatabaseName` in `src/testing.ts`). Without the
 variable the database tests are skipped with a visible warning; with `CI` set and no variable, the run fails.
 
+### Clock check
+
+`db/test-support/clock-check.sh [days] [time-zone] [package...]` runs the four suites with the JavaScript
+clock moved forward by `days` and under `time-zone`, for example `db/test-support/clock-check.sh 400
+Pacific/Kiritimati`. It is off by default and not part of `pnpm test`. Only `new Date()` and `Date.now()`
+move; Postgres `now()` does not, so a failure where a test compares a database `now()` with the moved clock
+may be an artefact of the method (see `db/test-support/shifted-clock.ts`). Run a timed-out file once alone
+before counting it.
+
 ## Migrations
 
 Plain SQL in `migrations/`, named `0001_name.sql`, forward-only. `src/migrate.ts` keeps
