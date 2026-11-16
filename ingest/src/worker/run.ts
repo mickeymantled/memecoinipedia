@@ -22,7 +22,7 @@ import { METRICS_VERSION } from '../candles/index.js';
 import { UnitBudget } from '../sources/budget.js';
 import { CODEX_PROVIDER, CodexClient } from '../sources/codex/index.js';
 import { HeliusClient } from '../sources/helius/client.js';
-import { JupiterClient } from '../sources/jupiter/client.js';
+import { JupiterClient, jupiterPauseUsage } from '../sources/jupiter/client.js';
 import { MetadataFetcher, type MetadataResult } from '../sources/metadata/fetch.js';
 import { RateLimiter } from '../sources/ratelimit.js';
 import { HELIUS_PROVIDER } from '../sources/helius/costs.js';
@@ -37,6 +37,7 @@ import {
   METADATA_STAGE_VERSION,
   createMetadataLoaders,
   createMetadataStage,
+  type MetadataStage,
   type HeliusAssets,
   type JupiterPrices,
 } from './stages/metadata.js';
@@ -133,6 +134,8 @@ export interface IngestReport {
   summary: RunSummary | null;
   /** Set when the Codex.io unit ceiling ended the candles stage before every coin was done. */
   ceilingStop?: CeilingStop;
+  /** Set when Jupiter's rate limit stopped the metadata stage: the message. The coins stay pending. */
+  jupiterStop?: string;
 }
 
 export function createLiveClients(
@@ -175,6 +178,7 @@ export function createLiveClients(
       return {
         [HELIUS_PROVIDER]: { requests: h.requests, units: h.units },
         jupiter: { requests: jupiter.requestCount(), units: 0 },
+        ...jupiterPauseUsage(jupiter),
         ...(c ? { [CODEX_PROVIDER]: { requests: c.requests, units: c.units } } : {}),
       };
     },
@@ -187,7 +191,7 @@ export function buildRegistry(
   meter: UsageMeter,
   addresses: readonly string[],
   maxAttempts: number = DEFAULT_MAX_ATTEMPTS,
-): { registry: StageRegistry; candles: CandlesStage | null } {
+): { registry: StageRegistry; candles: CandlesStage | null; metadata: MetadataStage } {
   const { assets, prices } = createMetadataLoaders({
     db,
     helius: clients.helius,
@@ -195,9 +199,8 @@ export function buildRegistry(
     addresses,
     maxAttempts,
   });
-  const registry = new StageRegistry()
-    .register(discoveredStage)
-    .register(createMetadataStage({ assets, prices }));
+  const metadata = createMetadataStage({ assets, prices });
+  const registry = new StageRegistry().register(discoveredStage).register(metadata);
   registry.register(
     createMetadataFileStage({ fetchMetadata: clients.fetchMetadata, usage: meter }),
   );
@@ -205,7 +208,7 @@ export function buildRegistry(
   const candles = clients.codex ? createCandlesStage({ codex: clients.codex }) : null;
   if (candles) registry.register(candles);
   registry.register(metricsStage);
-  return { registry, candles };
+  return { registry, candles, metadata };
 }
 
 function validateStages(stages: readonly StageName[]): void {
@@ -310,6 +313,7 @@ export async function runIngest(opts: IngestOptions): Promise<IngestReport> {
     );
     let worker: PipelineWorker | undefined;
     let ceilingStop: CeilingStop | undefined;
+    let jupiterStop: string | undefined;
     try {
       if (opts.retryFailed) {
         const n = await requeueFailed(db, stages, { addresses, now: now() });
@@ -319,7 +323,13 @@ export async function runIngest(opts: IngestOptions): Promise<IngestReport> {
         const seeded = await discoverCoins(db, sample.coins, { now: now(), runId });
         opts.log.info('seeded', { ...seeded });
       }
-      const { registry, candles } = buildRegistry(db, clients, meter, addresses, maxAttempts);
+      const { registry, candles, metadata } = buildRegistry(
+        db,
+        clients,
+        meter,
+        addresses,
+        maxAttempts,
+      );
       worker = new PipelineWorker({
         connectionString,
         db,
@@ -340,6 +350,7 @@ export async function runIngest(opts: IngestOptions): Promise<IngestReport> {
       opts.log.info('queued', queued);
       await worker.waitUntilIdle({ addresses, ...(opts.signal ? { signal: opts.signal } : {}) });
       if (opts.signal?.aborted) status = 'stopped';
+      if (metadata.stopped) jupiterStop = metadata.stopReason ?? 'Jupiter kept answering HTTP 429.';
       if (candles?.stopped && clients.codex) {
         const left = await worker.coinsToDo('candles', addresses);
         ceilingStop = {
@@ -364,6 +375,11 @@ export async function runIngest(opts: IngestOptions): Promise<IngestReport> {
     const summary = await buildSummary(db, addresses, stages, plan.estimate, meter.snapshot());
     opts.out(formatSummary(summary, stages));
     if (ceilingStop) opts.out(formatCeilingStop(ceilingStop));
+    if (jupiterStop) {
+      opts.out(
+        `STOPPED: ${jupiterStop} The coins of the batch are left to be retried by the next run: shown as failed with the reason jupiter_rate_limited, no attempt spent. Run again later to continue.`,
+      );
+    }
     return {
       plan,
       ranWork: true,
@@ -371,6 +387,7 @@ export async function runIngest(opts: IngestOptions): Promise<IngestReport> {
       status,
       summary,
       ...(ceilingStop ? { ceilingStop } : {}),
+      ...(jupiterStop ? { jupiterStop } : {}),
     };
   } finally {
     if (ownsDb && db) await db.destroy();

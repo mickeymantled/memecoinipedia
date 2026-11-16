@@ -29,6 +29,7 @@ import {
   STATE_REFRESH,
   dayKey,
 } from './constants.js';
+import { JupiterRateLimitedError } from '../sources/jupiter/client.js';
 import type { LiveDeps } from './deps.js';
 import { safeText } from './util.js';
 import { marketCapOf } from './watch.js';
@@ -53,7 +54,7 @@ export interface RefreshState {
 }
 
 export interface RefreshPass {
-  status: 'idle' | 'progress' | 'done' | 'yielded' | 'failed';
+  status: 'idle' | 'progress' | 'done' | 'yielded' | 'paused' | 'failed';
   requests: number;
   coins: number;
   unknown: number;
@@ -103,6 +104,11 @@ export async function refreshOnce(
       pass.status = 'yielded';
       return pass;
     }
+    // Jupiter asked every request of the process to wait: end the pass, the next one goes on.
+    if ((deps.jupiter.pausedForMs?.() ?? 0) > 0) {
+      pass.status = 'paused';
+      return pass;
+    }
     const page = await listListedCoins(deps.db, {
       listedUsd: REFRESH_LISTED_USD,
       afterId: state.afterId,
@@ -122,8 +128,14 @@ export async function refreshOnce(
       pass.requests++;
       tokens = await deps.jupiter.getTokens(page.map((c) => c.address));
     } catch (err) {
-      pass.status = 'failed';
       pass.error = safeText(err);
+      if (err instanceof JupiterRateLimitedError) {
+        // Not a failure of the pass or of any coin: Jupiter said wait, and kept saying it.
+        pass.status = 'paused';
+        deps.log.warn(`refresh: ${pass.error}; the next pass goes on from the same place`);
+        return pass;
+      }
+      pass.status = 'failed';
       deps.log.warn(`refresh: price request failed: ${pass.error}; tried again next pass`);
       return pass;
     }

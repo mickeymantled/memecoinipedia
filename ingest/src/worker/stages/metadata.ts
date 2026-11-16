@@ -34,7 +34,7 @@ import {
 import { sql, type Kysely } from 'kysely';
 import { BudgetExceededError } from '../../sources/budget.js';
 import type { AssetInfo } from '../../sources/helius/client.js';
-import type { JupiterToken } from '../../sources/jupiter/client.js';
+import { JupiterRateLimitedError, type JupiterToken } from '../../sources/jupiter/client.js';
 import { cleanText } from '../../sources/metadata/parse.js';
 import { PrefetchLoader } from '../batch.js';
 import { done, failed, type Stage, type StageContext, type StageCoin } from '../stage.js';
@@ -60,14 +60,47 @@ export interface PriceLookup {
 export interface MetadataStageDeps {
   assets: AssetLookup;
   prices: PriceLookup;
+  /**
+   * How long the stage takes no new coin after Jupiter kept answering 429, in milliseconds.
+   * Absent: until the process ends (a backfill run stops on it).
+   */
+  stopHoldMs?: number;
+  /** Milliseconds, for `stopHoldMs`. Default `Date.now`. */
+  now?: () => number;
+}
+
+/** The metadata stage, with the stop that Jupiter's rate limit can put on it (like the candles stage's ceiling stop). */
+export interface MetadataStage extends Stage {
+  /** True while Jupiter's 429s have stopped the stage. */
+  readonly stopped: boolean;
+  /** Why it stopped, for the run summary; null when it has not. */
+  readonly stopReason: string | null;
 }
 
 const clip = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 const errorText = (err: unknown): string =>
   clip(err instanceof Error ? err.message : String(err), 300);
 
-export function createMetadataStage(deps: MetadataStageDeps): Stage {
+export function createMetadataStage(deps: MetadataStageDeps): MetadataStage {
+  const clock = deps.now ?? Date.now;
+  let stopReason: string | null = null;
+  let stoppedAt = 0;
+  const isStopped = (): boolean => {
+    if (stopReason === null) return false;
+    if (deps.stopHoldMs !== undefined && clock() - stoppedAt >= deps.stopHoldMs) {
+      stopReason = null;
+      return false;
+    }
+    return true;
+  };
   return {
+    get stopped() {
+      return isStopped();
+    },
+    get stopReason() {
+      return isStopped() ? stopReason : null;
+    },
+    admit: () => !isStopped(),
     name: 'metadata',
     version: METADATA_STAGE_VERSION,
     async run(ctx: StageContext, coin: StageCoin) {
@@ -141,6 +174,14 @@ export function createMetadataStage(deps: MetadataStageDeps): Stage {
         price = await deps.prices.get(coin.address);
       } catch (err) {
         if (err instanceof BudgetExceededError) throw err;
+        if (err instanceof JupiterRateLimitedError) {
+          // The run's doing, not this coin's: stop taking coins, put this one back, keep its attempt.
+          if (!isStopped()) {
+            stopReason = err.message;
+            stoppedAt = clock();
+          }
+          return failed(`jupiter_rate_limited: ${errorText(err)}`, true, true);
+        }
         return failed(`price_error: ${errorText(err)}`, true);
       }
       if (price.invalid) {

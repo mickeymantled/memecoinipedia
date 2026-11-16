@@ -156,6 +156,8 @@ export interface BackfillReport {
   status: 'dry_run' | 'nothing_to_do' | 'done' | 'stopped' | 'failed';
   runId: number | null;
   ceilingStop: boolean;
+  /** Why the run stopped on Jupiter's rate limit, or null. */
+  jupiterStop: string | null;
   /** Coins read from the selection, over all passes. */
   scanned: number;
   seconds: number;
@@ -442,7 +444,7 @@ export async function runBackfill(opts: BackfillOptions): Promise<BackfillReport
       maxCodexUnits,
     });
     opts.out(planText);
-    const base = { plan, ceilingStop: false, scanned: 0 };
+    const base = { plan, ceilingStop: false, jupiterStop: null, scanned: 0 };
     if (!opts.confirm) {
       return { ...base, status: 'dry_run', runId: null, seconds: (Date.now() - started) / 1000 };
     }
@@ -524,6 +526,7 @@ export async function runBackfill(opts: BackfillOptions): Promise<BackfillReport
     let status: 'done' | 'stopped' | 'failed' = 'done';
     let worker: PipelineWorker | undefined;
     let candlesStopped = false;
+    let jupiterStop: string | null = null;
     const flush = async () => {
       syncUsage();
       await meter.flush(db, runId, now());
@@ -539,7 +542,7 @@ export async function runBackfill(opts: BackfillOptions): Promise<BackfillReport
         const k = await reopenStagesForCoins(db, refresh.coinIds, ['candles'], now());
         opts.log.info(`refresh: ${k} candles stages put back to pending`);
       }
-      const { registry, candles } = buildBackfillRegistry({
+      const { registry, candles, metadata } = buildBackfillRegistry({
         ...(refreshSet ? { refreshPools: (id: number) => refreshSet.has(id) } : {}),
         db,
         clients,
@@ -620,6 +623,10 @@ export async function runBackfill(opts: BackfillOptions): Promise<BackfillReport
           candlesStopped = true;
           break;
         }
+        if (metadata?.stopped) {
+          jupiterStop = metadata.stopReason;
+          break;
+        }
         // What is left? A coin whose stage failed and can be retried, or whose stage is `running`
         // for a process that is gone (it becomes claimable when the stage's timeout passes).
         const t = now();
@@ -677,7 +684,9 @@ export async function runBackfill(opts: BackfillOptions): Promise<BackfillReport
         ? 'Stopped on request: nothing in flight was left running. Run the same command again to continue.'
         : candlesStopped
           ? 'Stopped at the Codex.io unit ceiling. Run again with a higher --max-codex-units to continue.'
-          : 'Backfill run finished.';
+          : jupiterStop !== null
+            ? `Stopped: ${jupiterStop} The coins of the batch are left to be retried by the next run: the status report shows them as failed with the reason jupiter_rate_limited, and no attempt was spent. Run the same command again later to continue.`
+            : 'Backfill run finished.';
     const left = (await stageBreakdown(db, plan.selection, breakdownStages(now())))
       .filter((b) => stages.includes(b.stage as BackfillStageName) && b.waiting > 0)
       .map((b) => `${n(b.waiting)} for ${b.stage}`);
@@ -686,7 +695,7 @@ export async function runBackfill(opts: BackfillOptions): Promise<BackfillReport
       `${headline}${leftover}\nRun ${runId}: read ${n(scanned)} coins from the selection in ${formatDuration(seconds / 60)}.\n\n` +
         formatStatus(await collectStatus(db, { now })),
     );
-    return { plan, status, runId, ceilingStop: candlesStopped, scanned, seconds };
+    return { plan, status, runId, ceilingStop: candlesStopped, jupiterStop, scanned, seconds };
   } finally {
     clearInterval(lockTimer);
     opts.signal?.removeEventListener('abort', onCallerAbort);

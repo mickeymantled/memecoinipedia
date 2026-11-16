@@ -33,6 +33,7 @@ import {
   createBackfillClients,
   type BackfillClients,
 } from '../backfill/setup.js';
+import { JUPITER_PAUSE_DEFAULT_MS } from '../sources/jupiter/client.js';
 import { startUsageReporting, syncUsageFrom } from '../shared/usageReport.js';
 import { CANDLES_TIMEOUT_SECONDS } from '../worker/stages/candles.js';
 import type { Logger } from '../worker/log.js';
@@ -193,6 +194,7 @@ export async function runLive(opts: LiveOptions): Promise<LiveReport> {
         maxAttempts,
         metadataCandidateIds: () => [...metadataRing],
         candlesAdmit: () => gate.admit(),
+        metadataStopHoldMs: JUPITER_PAUSE_DEFAULT_MS,
       });
       worker = new PipelineWorker({
         connectionString: databaseUrl,

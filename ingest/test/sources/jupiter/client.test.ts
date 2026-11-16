@@ -27,6 +27,8 @@ function client(
         now: clock.now,
         sleep: clock.sleep,
       }),
+      now: clock.now,
+      sleep: clock.sleep,
       http: { sleep: clock.sleep, random: () => 0.5, baseDelayMs: 10 },
       ...extra,
     }),

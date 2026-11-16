@@ -16,6 +16,7 @@ import {
 import type { Kysely } from 'kysely';
 import { LISTED_ATH_USD } from '../worker/stage.js';
 import { CODEX_PROVIDER } from '../sources/codex/index.js';
+import { JUPITER_PAUSE_PROVIDER } from '../sources/jupiter/client.js';
 import {
   STATE_DISCOVERY_CURSOR,
   STATE_LAST_DISCOVERY,
@@ -61,6 +62,9 @@ export interface LiveStatus {
     codexUnits: number;
     codexRequests: number;
     jupiterRequests: number;
+    /** Pauses after HTTP 429 (every Jupiter request waited), and the seconds spent paused. */
+    jupiterPauses: number;
+    jupiterSecondsPaused: number;
   };
   /** Where today's refresh is (null when it has not started today). */
   refresh: { done: boolean; requests: number; coins: number; changed: number } | null;
@@ -103,6 +107,7 @@ export async function collectLiveStatus(
   const fetched = await liveFetchedSince(db, dayStart, now, LISTED_ATH_USD);
   const codex = await usageTotalSince(db, CODEX_PROVIDER, dayStart, now);
   const jupiter = await usageTotalSince(db, 'jupiter', dayStart, now);
+  const paused = await usageTotalSince(db, JUPITER_PAUSE_PROVIDER, dayStart, now);
   return {
     now,
     cursorAt: cursor ? new Date(cursor.at * 1000) : null,
@@ -135,6 +140,8 @@ export async function collectLiveStatus(
       codexUnits: codex.units,
       codexRequests: codex.requests,
       jupiterRequests: jupiter.requests,
+      jupiterPauses: paused.requests,
+      jupiterSecondsPaused: paused.units,
     },
     refresh:
       refreshState && refreshState.day === dayKey(now)
@@ -199,7 +206,8 @@ export function formatLiveStatus(s: LiveStatus): string {
   lines.push(
     `  Codex.io ${n(t.codexUnits)} units in ${n(t.codexRequests)} requests` +
       `${s.maxCodexUnitsPerDay ? ` of ${n(s.maxCodexUnitsPerDay)} allowed (${Math.round((t.codexUnits / s.maxCodexUnitsPerDay) * 100)}%)` : ''}; ` +
-      `Jupiter ${n(t.jupiterRequests)} requests.`,
+      `Jupiter ${n(t.jupiterRequests)} requests` +
+      `${t.jupiterPauses > 0 ? `, paused ${n(t.jupiterPauses)} times after HTTP 429 for ${n(t.jupiterSecondsPaused)} s in all` : ''}.`,
   );
   lines.push(
     s.lastSweep ? `Last sweep: ${s.lastSweep.toISOString()}.` : 'Last sweep: none recorded.',
