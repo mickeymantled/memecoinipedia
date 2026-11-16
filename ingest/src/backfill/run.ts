@@ -14,17 +14,21 @@
  * the next run waits for that before it calls itself finished.
  */
 import {
+  acquirePipelineLock,
   countByRoughPeak,
   countCoinsNotDone,
   createDb,
   createRun,
   finishRun,
+  PIPELINE_LOCK_CHECK_SECONDS,
+  PipelineLockLostError,
   recordUsageSample,
   requeueFailed,
   resolveSelection,
   stageBreakdown,
   startRun,
   type Database,
+  type PipelineLock,
   type ResolvedSelection,
   type SelectionSpec,
   type StageBreakdown,
@@ -32,7 +36,6 @@ import {
 } from '@memecoinipedia/db';
 import { sql, type Kysely } from 'kysely';
 import { METRICS_VERSION } from '../candles/index.js';
-import { CODEX_PROVIDER } from '../sources/codex/index.js';
 import {
   DEFAULT_MAX_ATTEMPTS,
   PipelineWorker,
@@ -46,6 +49,7 @@ import { CANDLES_STAGE_VERSION, CANDLES_TIMEOUT_SECONDS } from '../worker/stages
 import { METADATA_STAGE_VERSION } from '../worker/stages/metadata.js';
 import { METADATA_FILE_STAGE_VERSION } from '../worker/stages/metadataFile.js';
 import { estimateMetadata } from '../worker/plan.js';
+import { startUsageReporting, syncUsageFrom } from '../shared/usageReport.js';
 import { UsageMeter } from '../worker/usage.js';
 import { CELL_EDGES, estimateBackfillUnits, type BackfillEstimate } from './cells.js';
 import {
@@ -109,6 +113,8 @@ export interface BackfillOptions {
   out: (text: string) => void;
   /** Aborting stops the run gracefully (see above). */
   signal?: AbortSignal;
+  /** Seconds between checks that the pipeline lock is still held. Default `PIPELINE_LOCK_CHECK_SECONDS`. */
+  lockCheckSeconds?: number;
   now?: () => Date;
   /** Test seams. */
   db?: Kysely<Database>;
@@ -325,6 +331,15 @@ export async function runBackfill(opts: BackfillOptions): Promise<BackfillReport
   const db = opts.db ?? (databaseUrl ? createDb(databaseUrl, { max: dbPool }) : null);
   if (!db) throw new Error('DATABASE_URL is not set');
 
+  // One pipeline process per database: a confirmed run holds this lock until it ends.
+  let lock: PipelineLock | null = null;
+  // Stopping, from the caller's signal or from a lost lock: both end the run gracefully.
+  const stopCtl = new AbortController();
+  const onCallerAbort = () => stopCtl.abort();
+  if (opts.signal?.aborted) stopCtl.abort();
+  opts.signal?.addEventListener('abort', onCallerAbort, { once: true });
+  let lockLost = false;
+  let lockTimer: NodeJS.Timeout | undefined;
   try {
     const plan = await planBackfill(db, opts.selection, stages, maxAttempts, now());
     const planText = formatBackfillPlan(plan, {
@@ -340,6 +355,31 @@ export async function runBackfill(opts: BackfillOptions): Promise<BackfillReport
     if (!opts.confirm) {
       return { ...base, status: 'dry_run', runId: null, seconds: (Date.now() - started) / 1000 };
     }
+    const connectionString = databaseUrl;
+    if (!connectionString) throw new Error('DATABASE_URL is not set');
+    lock = await acquirePipelineLock(connectionString, 'backfill', { now: now() });
+    // A lock whose connection dropped is gone, and a second process may start: stop taking new
+    // work (the feeder and the wait loops see the abort), let the jobs in flight finish, then fail.
+    const held = lock;
+    let checking = false;
+    lockTimer = setInterval(
+      () => {
+        if (checking || lockLost) return;
+        checking = true;
+        void held
+          .isHeld()
+          .then((ok) => {
+            if (ok) return;
+            lockLost = true;
+            opts.log.error('the pipeline lock was lost; taking no new work');
+            stopCtl.abort();
+          })
+          .finally(() => {
+            checking = false;
+          });
+      },
+      (opts.lockCheckSeconds ?? PIPELINE_LOCK_CHECK_SECONDS) * 1000,
+    );
     if (plan.nothingToDo) {
       return {
         ...base,
@@ -348,9 +388,6 @@ export async function runBackfill(opts: BackfillOptions): Promise<BackfillReport
         seconds: (Date.now() - started) / 1000,
       };
     }
-    const connectionString = databaseUrl;
-    if (!connectionString) throw new Error('DATABASE_URL is not set');
-
     const meter = new UsageMeter();
     const clients: SourceClients & Partial<BackfillClients> =
       opts.clients ??
@@ -365,14 +402,7 @@ export async function runBackfill(opts: BackfillOptions): Promise<BackfillReport
       });
     if (wantsCandles && !clients.codex)
       throw new Error('The candles stage needs a Codex.io client');
-    const syncUsage = () => {
-      const usage = { ...clients.readUsage?.() };
-      if (clients.codex && !usage[CODEX_PROVIDER]) {
-        const c = clients.codex.spend();
-        usage[CODEX_PROVIDER] = { requests: c.requests, units: c.units };
-      }
-      for (const [p, t] of Object.entries(usage)) meter.set(p, t.requests, t.units);
-    };
+    const syncUsage = () => syncUsageFrom(clients, meter);
 
     const runId = await createRun(db, {
       kind: BACKFILL_RUN_KIND,
@@ -406,27 +436,7 @@ export async function runBackfill(opts: BackfillOptions): Promise<BackfillReport
       syncUsage();
       await meter.flush(db, runId, now());
     };
-    let lastSample = 0;
-    const stopFlush = meter.startFlushing(
-      db,
-      runId,
-      now,
-      5000,
-      (err) => opts.log.warn(`usage flush failed: ${(err as Error).message}`),
-      () => {
-        syncUsage();
-        // History for the status view's "last hour": one sample every 30 seconds.
-        if (Date.now() - lastSample >= 30_000) {
-          lastSample = Date.now();
-          const at = now();
-          for (const [p, t] of Object.entries(meter.snapshot())) {
-            recordUsageSample(db, runId, { provider: p, ...t }, at).catch((e: Error) =>
-              opts.log.warn(`usage sample failed: ${e.message}`),
-            );
-          }
-        }
-      },
-    );
+    const stopFlush = startUsageReporting({ db, runId, meter, clients, now, log: opts.log });
     let scanned = 0;
     try {
       if (opts.retryFailed) {
@@ -480,9 +490,9 @@ export async function runBackfill(opts: BackfillOptions): Promise<BackfillReport
         gateStage: BACKFILL_STAGES.find((x) => stages.includes(x)),
         pageSize: opts.feedPage ?? FEED_PAGE,
         log: opts.log,
-        signal: opts.signal,
+        signal: stopCtl.signal,
       });
-      const aborted = () => opts.signal?.aborted === true;
+      const aborted = () => stopCtl.signal.aborted;
 
       /** Waits until nothing is queued or running here. */
       const waitIdle = async () => {
@@ -540,6 +550,7 @@ export async function runBackfill(opts: BackfillOptions): Promise<BackfillReport
           break;
         }
       }
+      if (lockLost) throw new PipelineLockLostError('backfill');
       if (aborted()) status = 'stopped';
     } catch (err) {
       status = 'failed';
@@ -580,6 +591,9 @@ export async function runBackfill(opts: BackfillOptions): Promise<BackfillReport
     );
     return { plan, status, runId, ceilingStop: candlesStopped, scanned, seconds };
   } finally {
+    clearInterval(lockTimer);
+    opts.signal?.removeEventListener('abort', onCallerAbort);
+    await lock?.release();
     if (ownsDb) await db.destroy();
   }
 }

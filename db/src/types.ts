@@ -69,6 +69,8 @@ export interface CoinsTable {
   current_refreshed_at: Ts | null;
   status: WithDefault<'unknown' | 'alive' | 'dead' | 'rugged'>;
   status_changed_at: Ts | null;
+  /** Market cap when the live watch last queued this coin's candle fetch (migration 0015). */
+  last_trigger_market_cap_usd: number | null;
 
   primary_narrative: string | null;
   secondary_narratives: WithDefault<string[]>;
@@ -208,6 +210,13 @@ export interface ProviderUsageSamplesTable {
   units: number;
 }
 
+/** Small named JSON values of the live process (migration 0015). */
+export interface LiveStateTable {
+  key: string;
+  value: Json;
+  updated_at: Ts;
+}
+
 export interface DataIssuesTable {
   id: Id;
   coin_id: number;
@@ -231,6 +240,7 @@ export interface Database {
   eval_labels: EvalLabelsTable;
   narrative_research: NarrativeResearchTable;
   data_issues: DataIssuesTable;
+  live_state: LiveStateTable;
 }
 
 /**
@@ -288,6 +298,7 @@ export const databaseShape: { [T in keyof Database]: Record<keyof Database[T], t
     current_refreshed_at: true,
     status: true,
     status_changed_at: true,
+    last_trigger_market_cap_usd: true,
     primary_narrative: true,
     secondary_narratives: true,
     narrative_confidence: true,
@@ -415,4 +426,5 @@ export const databaseShape: { [T in keyof Database]: Record<keyof Database[T], t
     resolved_at: true,
     resolution: true,
   },
+  live_state: { key: true, value: true, updated_at: true },
 };

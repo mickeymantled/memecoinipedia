@@ -28,8 +28,8 @@ import { DEFAULT_STAGE_TIMEOUT_SECONDS } from '../worker/execute.js';
 import { LISTED_ATH_USD } from '../worker/stage.js';
 import { CANDLES_STAGE_VERSION, CANDLES_TIMEOUT_SECONDS } from '../worker/stages/candles.js';
 import { METADATA_STAGE_VERSION } from '../worker/stages/metadata.js';
-import { METADATA_FILE_STAGE_VERSION } from '../worker/stages/metadataFile.js';
 import { queueName } from '../worker/worker.js';
+import { METADATA_FILE_STAGE_VERSION } from '../worker/stages/metadataFile.js';
 import { DEFAULT_MIN_ROUGH_PEAK_USD } from './defaults.js';
 
 export const BACKFILL_RUN_KIND = 'backfill';

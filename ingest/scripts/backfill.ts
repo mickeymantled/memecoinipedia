@@ -38,7 +38,7 @@ import {
 import { DEFAULT_MIN_ROUGH_PEAK_USD } from '../src/backfill/defaults.js';
 import { runBackfill } from '../src/backfill/run.js';
 import { formatSeedReport, seedFromCandidateFile } from '../src/backfill/seed.js';
-import { installStopSignals } from '../src/backfill/signals.js';
+import { installStopSignals } from '../src/shared/signals.js';
 import { consoleLogger, secretsFromEnv } from '../src/worker/log.js';
 
 function usage(message?: string): never {

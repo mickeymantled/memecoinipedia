@@ -39,5 +39,7 @@ export * from './stages.js';
 export * from './runs.js';
 export * from './discovery.js';
 export * from './backfill.js';
+export * from './live.js';
+export * from './pipelineLock.js';
 export { databaseShape } from './types.js';
 export type * from './types.js';
