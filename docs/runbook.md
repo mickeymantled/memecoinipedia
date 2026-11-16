@@ -334,6 +334,15 @@ A backup predates migrations applied after it; run `migrate` on the restored dat
   million Codex.io units. Whether and when to run it is a decision in `PLAN.md`, not an operator's.
   For anything else, name the stages (`--stages metrics`, `--stages metadata`,
   `--stages metadata_file`), as in the examples above.
+- **The curve-only list (issue #102) spends nothing until it is asked for.** Seeding it
+  (`backfill.ts seed --list curve-only`) writes the database and sends nothing. A selection leaves
+  its coins out unless `--source dune-curve-only` is given, so a plain `run` does not reach them;
+  the dry run says how many it left out. With the option the estimate is its own: 12 units a coin
+  (launch record, pool list, daily screen), about 20 if the screen passes; read it before
+  `--confirm`, and fetch a limited part first (`--limit N --order hash`, then the rest). Do not run
+  `mayhem-graduates.sql` on Dune, or `dune-discovery.ts --list curve-only --confirm`, without the
+  lead's go: both spend Dune credits (the second one already ran once, 23.31 credits).
+  `scripts/mayhem-load.ts` asks no provider.
 
 ## What has no command yet
 
