@@ -258,6 +258,10 @@ describeDb('the late-graduation-pool rule (issue 81)', () => {
       candles: 'done',
     });
     const bare = await coin('bare', { graduated: GRAD, candles: 'done' });
+    // A never-graduated curve (issue #102) has no graduation pool to be missing: never picked, with
+    // or without a stored curve.
+    await coin('neverGraduatedBare', { graduated: null, candles: 'done' });
+    await coin('neverGraduatedCurve', { graduated: null, candles: 'done' });
     await coin('notFetched', { graduated: GRAD, candles: 'pending' });
     await coin('neverStaged', { graduated: GRAD });
     await coin('otherChain', {
@@ -334,6 +338,11 @@ describeDb('the late-graduation-pool rule (issue 81)', () => {
     );
     // A not-found issue read under the current rule marks a coin with no graduation pool too.
     const bare = await upsertCoin(t.db, { chain: 'solana', address: 'h-bare' });
+    // Issue #102: a coin with no graduation pool is only missing one when it graduated, so this
+    // graduate says when (the test did not set a graduation time before).
+    await sql`update coins set graduated_at = to_timestamp(${GRAD}) where id = ${bare}`.execute(
+      t.db,
+    );
     await sql`insert into coin_stages (coin_id, stage, status) values (${bare}, 'candles', 'done')`.execute(
       t.db,
     );

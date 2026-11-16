@@ -29,7 +29,7 @@
  *   It refuses to run without --coins or --rule.
  *   --rule NAME picks the coins from the database instead of a file; the rule is
  *   late-graduation-pool: a graduation pool created more than 3,600 seconds after the coin's
- *   graduation time, or no graduation pool on a coin whose candles are done. It asks no provider.
+ *   graduation time, or no graduation pool on a graduate (a coin with a graduation time) whose candles are done. A coin with no graduation time is never picked. It asks no provider.
  *     tsx scripts/backfill.ts run --refresh-pools --rule late-graduation-pool [--confirm ...]
  *
  *   Print the coins a rule picks, one id a line, to a file for --coins (no provider call, no write;

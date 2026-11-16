@@ -268,7 +268,9 @@ export const DEFAULT_GRADUATION_POOL_DELAY_SEC = 3_600;
  *   2. has a graduation pool with no creation time (named by launch info, never listed) whose first
  *      stored bar starts more than a day after the graduation time, or that holds no bar on a coin
  *      whose candles are done, or
- *   3. has no graduation pool and its candles stage is done.
+ *   3. has a graduation time, no graduation pool and its candles stage is done. A coin with no
+ *      graduation time (a never-graduated curve, issue #102) is never picked by this branch: it
+ *      has no graduation pool to be missing.
  * A pool or a coin with no time is never late by (1).
  *
  * A coin with an open `graduation_pool_late` or `graduation_pool_not_found` issue whose detail
@@ -308,7 +310,8 @@ export async function selectCoinsByRule(
             )
         )
         or (
-          ${candlesDone}
+          c.graduated_at is not null
+          and ${candlesDone}
           and not exists (
             select 1 from pools p where p.coin_id = c.id and p.is_graduation_pool
           )
