@@ -11,6 +11,10 @@
  * It makes no gateway request and fetches no image: the metadata file is the `metadata_file`
  * stage (see metadataFile.ts). The image reference has no gateway host (see image.ts).
  *
+ * Social links from Jupiter's token answer are stored (cleaned like a file's links) only for coins
+ * whose file was not read (`socials_source` is not `metadata_file`), with source `jupiter`; `decideSocials`
+ * (socials.ts) is the one rule, shared with the file stage.
+ *
  * Description and image from Helius are written only while `metadata_file` is not done for the
  * coin. Once the file stage is done, its values (the file is the record of what the creator wrote
  * at launch) are never replaced by a re-run of this stage.
@@ -36,11 +40,13 @@ import { BudgetExceededError } from '../../sources/budget.js';
 import type { AssetInfo } from '../../sources/helius/client.js';
 import { JupiterRateLimitedError, type JupiterToken } from '../../sources/jupiter/client.js';
 import { cleanText } from '../../sources/metadata/parse.js';
+import { decideSocials } from './socials.js';
 import { PrefetchLoader } from '../batch.js';
 import { done, failed, type Stage, type StageContext, type StageCoin } from '../stage.js';
 import { imageReference } from './image.js';
 
-export const METADATA_STAGE_VERSION = 2;
+/** 3: Jupiter's social links are stored for coins whose metadata file is not done (issue #89). */
+export const METADATA_STAGE_VERSION = 3;
 
 /** Issue kinds this stage owns: it replaces them on every run. */
 export const METADATA_ISSUE_KINDS = [
@@ -209,6 +215,54 @@ export function createMetadataStage(deps: MetadataStageDeps): MetadataStage {
           .execute();
       }
       await replaceCoinIssues(ctx.db, coin.id, METADATA_ISSUE_KINDS, issues);
+
+      // 4. Social links from Jupiter, unless the coin's own file was read (the record of launch).
+      if (price.found && !price.invalid) {
+        const stored = await ctx.db
+          .selectFrom('coins')
+          .select('socials_source')
+          .where('id', '=', coin.id)
+          .executeTakeFirst();
+        const decision = decideSocials({
+          from: 'jupiter',
+          links: { website: price.website, twitter: price.twitter, telegram: price.telegram },
+          currentSource: stored?.socials_source ?? null,
+        });
+        if (decision) {
+          // The condition is part of the UPDATE, so a file stage finishing in between is not undone.
+          const res = await ctx.db
+            .updateTable('coins')
+            .set({
+              socials: JSON.stringify(decision.socials),
+              socials_source: decision.source,
+              updated_at: ctx.now(),
+            })
+            .where('id', '=', coin.id)
+            // The column is the guard: a file read in between has set `metadata_file`.
+            .where((eb) =>
+              eb.or([
+                eb('socials_source', 'is', null),
+                eb('socials_source', '<>', 'metadata_file'),
+              ]),
+            )
+            .executeTakeFirst();
+          if (Number(res.numUpdatedRows) === 1) {
+            await replaceCoinIssues(
+              ctx.db,
+              coin.id,
+              ['social_links_dropped'],
+              decision.dropped.length > 0
+                ? [
+                    {
+                      kind: 'social_links_dropped',
+                      detail: { links: decision.dropped, source: 'jupiter' },
+                    },
+                  ]
+                : [],
+            );
+          }
+        }
+      }
       return done();
     },
   };
@@ -277,6 +331,9 @@ const notFoundToken = (mint: string): JupiterToken => ({
   totalSupply: null,
   isVerified: null,
   updatedAt: null,
+  website: null,
+  twitter: null,
+  telegram: null,
   invalid: null,
 });
 

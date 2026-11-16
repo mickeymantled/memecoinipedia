@@ -220,6 +220,16 @@ Found against the live API while writing the Codex.io client (task A2a), with 14
 
 Jupiter documents 0.5 requests a second without a key and 1 with a free key. A metadata run sent about 1,250 requests at exactly that rate and met HTTP 429 after half an hour, so the client paces at 80% of the documented rate. A 429 pauses every Jupiter request of the process until `Retry-After` (capped at 5 minutes; 60 seconds when the header is absent), and the request that met it is sent again afterwards, in a fresh attempt of the HTTP helper (the pause is never waited inside one of the helper's attempts, which carry a 30-second timer; the helper's own five tries stay for 5xx and network errors). Five pauses in a row with no answer below HTTP 400 between them stop the run with one message: the request that met the 429 waits through the first four pauses, so up to 4 minutes by default and 20 minutes at the cap. The coins of the batch are left to be retried by the next run: the status report shows them as failed with the reason `jupiter_rate_limited`, and no attempt is spent. Pauses and the seconds paused are counted in the usage tally and shown by the status reports.
 
+### Social links: where they come from and whom to trust
+
+A coin has up to three links in `coins.socials` (`website`, `twitter`, `telegram`), and `coins.socials_source` says where they came from: `metadata_file` or `jupiter`.
+
+1. **The coin's own metadata file** (`metadata_file` stage, one gateway request a coin) is the record of what the creator published at launch. It is the most trusted source. `socials_source = metadata_file` means the file was read (outcome `ok`): the coin keeps the file's links, also when the file held none, and Jupiter never overwrites them. A file stage that ends done without reading the file (not found, invalid, too large, unsupported URI) learns nothing, so it changes neither the links nor the source.
+2. **Jupiter's token answer** (`metadata` stage, 100 coins a request, no extra request) carries the same three fields. It fills every coin whose source is not `metadata_file`, with source `jupiter`. Jupiter's links are what the token page shows now, and a token's owner can edit them after launch, so they say where the coin is today, not what it said at launch.
+3. **Order.** When a file is read for a coin that holds Jupiter's links, the file's links replace them and the source becomes `metadata_file`.
+
+Both sources go through the same link cleaning (a link is kept only as a full http(s) URL without credentials; anything else is dropped and recorded in the `social_links_dropped` issue, with its source). One function decides which links a coin ends up with, and both stages call it.
+
 ## 9. Sources
 
 - Dune Spellbook, Solana DEX trades model: https://github.com/duneanalytics/spellbook/tree/main/dbt_subprojects/solana/models/_sector/dex

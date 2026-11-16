@@ -31,9 +31,10 @@ import { cleanText } from '../../sources/metadata/parse.js';
 import { done, failed, skipped, type Stage, type StageContext, type StageCoin } from '../stage.js';
 import type { UsageMeter } from '../usage.js';
 import { imageReference } from './image.js';
+import { decideSocials } from './socials.js';
 
 export const METADATA_FILE_STAGE_VERSION = 1;
-export const SOCIAL_FIELDS = ['twitter', 'telegram', 'website'] as const;
+export { SOCIAL_FIELDS, droppedSocialLinks, type DroppedLink } from './socials.js';
 
 /** Issue kinds this stage owns: it replaces them on every run. */
 export const METADATA_FILE_ISSUE_KINDS = [
@@ -52,27 +53,6 @@ export interface MetadataFileStageDeps {
 const clip = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 const errorText = (err: unknown): string =>
   clip(err instanceof Error ? err.message : String(err), 300);
-
-export interface DroppedLink {
-  field: string;
-  value: string;
-}
-
-/** Social fields the JSON gave a value for that `normalizeSocialUrl` refused. */
-export function droppedSocialLinks(
-  raw: Record<string, unknown>,
-  kept: Record<(typeof SOCIAL_FIELDS)[number], string | null>,
-): DroppedLink[] {
-  const out: DroppedLink[] = [];
-  for (const field of SOCIAL_FIELDS) {
-    const v = raw[field];
-    const present = v !== undefined && v !== null && !(typeof v === 'string' && v.trim() === '');
-    if (present && kept[field] === null) {
-      out.push({ field, value: clip(typeof v === 'string' ? v : JSON.stringify(v), 200) });
-    }
-  }
-  return out;
-}
 
 export function createMetadataFileStage(deps: MetadataFileStageDeps): Stage {
   return {
@@ -115,21 +95,26 @@ export function createMetadataFileStage(deps: MetadataFileStageDeps): Stage {
             })),
           },
         });
+        // The file was not read: neither the links nor their source change.
       } else {
         const meta = result.metadata!;
         const raw = result.raw;
-        const socials: Record<string, string> = {};
-        for (const f of SOCIAL_FIELDS) {
-          const v = meta[f];
-          if (v !== null) socials[f] = v;
-        }
-        const dropped = droppedSocialLinks(raw ?? {}, meta);
-        if (dropped.length > 0)
-          issues.push({ kind: 'social_links_dropped', detail: { links: dropped } });
+        // The file was read: its links, also none, are the record of launch and replace Jupiter's.
+        const links = decideSocials({
+          from: 'metadata_file',
+          links: raw ?? {},
+          currentSource: null,
+        })!;
+        if (links.dropped.length > 0)
+          issues.push({
+            kind: 'social_links_dropped',
+            detail: { links: links.dropped, source: 'metadata_file' },
+          });
 
         const set: Record<string, unknown> = {
           updated_at: ctx.now(),
-          socials: JSON.stringify(socials),
+          socials: JSON.stringify(links.socials),
+          socials_source: links.source,
           metadata_raw: JSON.stringify(raw),
         };
         // The chain's name and symbol win; the file fills in only what the chain lacks.
