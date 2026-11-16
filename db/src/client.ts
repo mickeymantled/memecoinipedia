@@ -1,4 +1,4 @@
-import { Kysely, PostgresDialect } from 'kysely';
+import { Kysely, PostgresDialect, type KyselyConfig } from 'kysely';
 import pg from 'pg';
 import type { Database } from './types.js';
 
@@ -22,9 +22,13 @@ const types = {
   },
 };
 
-/** Creates a Kysely instance with its own pool. Call `db.destroy()` when done. */
-export function createDb(connectionString: string): Kysely<Database> {
+/**
+ * Creates a Kysely instance with its own pool. Call `db.destroy()` when done.
+ * `log` is Kysely's query log hook (used by the API's EXPLAIN tooling).
+ */
+export function createDb(connectionString: string, log?: KyselyConfig['log']): Kysely<Database> {
   return new Kysely<Database>({
+    log,
     dialect: new PostgresDialect({
       pool: new pg.Pool({ connectionString, types: types as pg.CustomTypesConfig }),
     }),

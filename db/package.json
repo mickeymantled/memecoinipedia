@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./testing": "./src/testing.ts"
+    "./testing": "./src/testing.ts",
+    "./synthetic": "./src/synthetic.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
