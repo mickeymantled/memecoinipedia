@@ -238,9 +238,9 @@ describeDb('metric rules v5: which side pools count', () => {
     expect(row.detail ?? {}).not.toHaveProperty('sidePoolsLeftOut');
   });
 
-  it('is version 6: a coin done at version 5 is recomputed, and a second pass does nothing', async () => {
-    expect(METRICS_VERSION).toBe(6);
-    expect(metricsStage.version).toBe(6);
+  it('is version 7: a coin done at version 6 is recomputed, and a second pass does nothing', async () => {
+    expect(METRICS_VERSION).toBe(7);
+    expect(metricsStage.version).toBe(7);
     await seedCoin(MEME);
     const opts: ExecuteOptions = {
       db,
@@ -251,25 +251,25 @@ describeDb('metric rules v5: which side pools count', () => {
       maxAttempts: 3,
     };
     expect((await executeStage(opts, 'metrics', coinId)).kind).toBe('done');
-    // Pretend the coin was finished under version 5.
-    await sql`update coin_stages set version = 5 where coin_id = ${coinId} and stage = 'metrics'`.execute(
+    // Pretend the coin was finished under version 6.
+    await sql`update coin_stages set version = 6 where coin_id = ${coinId} and stage = 'metrics'`.execute(
       db,
     );
-    await db.updateTable('coins').set({ metrics_version: 5 }).where('id', '=', coinId).execute();
+    await db.updateTable('coins').set({ metrics_version: 6 }).where('id', '=', coinId).execute();
     expect((await executeStage(opts, 'metrics', coinId)).kind).toBe('done');
     const after = await db
       .selectFrom('coins')
       .select('metrics_version')
       .where('id', '=', coinId)
       .executeTakeFirstOrThrow();
-    expect(after.metrics_version).toBe(6);
+    expect(after.metrics_version).toBe(7);
     const stage = await db
       .selectFrom('coin_stages')
       .selectAll()
       .where('coin_id', '=', coinId)
       .where('stage', '=', 'metrics')
       .executeTakeFirstOrThrow();
-    expect(stage.version).toBe(6);
+    expect(stage.version).toBe(7);
     expect((await executeStage(opts, 'metrics', coinId)).kind).toBe('final');
     expect(
       await db.selectFrom('coin_stages').selectAll().where('coin_id', '=', coinId).execute(),

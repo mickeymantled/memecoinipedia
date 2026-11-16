@@ -62,14 +62,18 @@ export function seededRandom(seed: number): () => number {
   };
 }
 
-/** A result as rules version 5 reported it: without `athNearVolumeUsd` and the flag `ath_thinly_traded`. */
+/**
+ * A result as rules version 5 reported it: without `athNearVolumeUsd` (version 6),
+ * `athBackedMarketCapUsd` (version 7) and the flag `ath_thinly_traded` (version 6).
+ */
 export function withoutVersion6Additions(
   result: MetricResult,
-): Omit<MetricResult, 'athNearVolumeUsd'> {
+): Omit<MetricResult, 'athNearVolumeUsd' | 'athBackedMarketCapUsd'> {
   const rest: Partial<MetricResult> = { ...result };
   delete rest.athNearVolumeUsd;
+  delete rest.athBackedMarketCapUsd;
   return {
-    ...(rest as Omit<MetricResult, 'athNearVolumeUsd'>),
+    ...(rest as Omit<MetricResult, 'athNearVolumeUsd' | 'athBackedMarketCapUsd'>),
     flags: result.flags.filter((f) => f !== 'ath_thinly_traded'),
   };
 }

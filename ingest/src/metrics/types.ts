@@ -61,7 +61,7 @@ export interface MetricParams {
   rugRecoveryFraction: number;
   /** A bar is near the ATH when its close is at least this share of the ATH price (section 6). */
   nearAthFraction: number;
-  /** `ath_thinly_traded` is raised below this share of the ATH market cap in near-ATH volume (section 6). */
+  /** the share of a market cap its near volume must reach: the flag `ath_thinly_traded` and the backed high (section 6). */
   minAthNearVolumeShare: number;
 }
 
@@ -78,7 +78,7 @@ export const DEFAULT_METRIC_PARAMS: MetricParams = {
   rugWithinSec: 1_800,
   rugRecoveryFraction: 0.5,
   nearAthFraction: 0.5,
-  minAthNearVolumeShare: 0.05,
+  minAthNearVolumeShare: 0.2,
 };
 
 export type MetricFlag =
@@ -105,6 +105,8 @@ export interface MetricResult {
   athHourVolumeUsd: number | null;
   /** USD traded in clean bars closing at or above `nearAthFraction` times the ATH price, all pools, or null. */
   athNearVolumeUsd: number | null;
+  /** The largest market cap, no larger than the ATH, that enough trading stood behind (section 6), or null. */
+  athBackedMarketCapUsd: number | null;
   /** Seconds at or above each threshold, in the order of `thresholdsUsd`. */
   secondsAbove: number[];
   /** 0 to 100, or null when there is no level series. */
@@ -136,5 +138,8 @@ export interface MetricFixture {
    * `athNearVolumeUsd` (version 6): they pin every version 5 output, and the test
    * leaves the version 6 additions out of the comparison for them.
    */
-  expected: Omit<MetricResult, 'athNearVolumeUsd'> & { athNearVolumeUsd?: number | null };
+  expected: Omit<MetricResult, 'athNearVolumeUsd' | 'athBackedMarketCapUsd'> & {
+    athNearVolumeUsd?: number | null;
+    athBackedMarketCapUsd?: number | null;
+  };
 }

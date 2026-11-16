@@ -12,7 +12,7 @@ const fixture = (name: string) => {
 describe('version 6 parameters', () => {
   it('has the documented defaults', () => {
     expect(DEFAULT_METRIC_PARAMS.nearAthFraction).toBe(0.5);
-    expect(DEFAULT_METRIC_PARAMS.minAthNearVolumeShare).toBe(0.05);
+    expect(DEFAULT_METRIC_PARAMS.minAthNearVolumeShare).toBe(0.2);
   });
 
   it('validates them like the others', () => {
