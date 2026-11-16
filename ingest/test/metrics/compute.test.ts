@@ -1,6 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_METRIC_PARAMS, computeCoinMetrics } from '../../src/metrics/index.js';
-import { DAY, M0, bar, input, minuteBars, pool } from './helpers.js';
+import {
+  DEFAULT_METRIC_PARAMS,
+  computeCoinMetrics as computeWithVersion6,
+  type MetricInput,
+  type MetricParams,
+} from '../../src/metrics/index.js';
+import { DAY, M0, bar, input, minuteBars, pool, withoutVersion6Additions } from './helpers.js';
+
+/**
+ * These worked examples are about the version 5 outputs, so the version 6 addition and its
+ * flag are left out here; they are tested in nearAth.test.ts and in the version 6 fixtures.
+ */
+const computeCoinMetrics = (i: MetricInput, p?: Partial<MetricParams>) =>
+  withoutVersion6Additions(computeWithVersion6(i, p));
 
 const SUPPLY = 1_000_000_000;
 

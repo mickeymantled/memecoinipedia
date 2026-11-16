@@ -43,6 +43,7 @@ export {
   noCandlesResult,
   NO_CANDLES_FLAG,
   METRICS_VERSION,
+  CANDLE_RULES_VERSION,
   SCREENED_OUT_FLAG,
   type ComputeMetricsResult,
   type StoredMetricResult,

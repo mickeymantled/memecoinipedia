@@ -8,10 +8,11 @@ import {
   type MetricFlag,
   type MetricResult,
 } from '../../../src/metrics/types.js';
-import { metricFixtures } from './index.js';
+import { allMetricFixtures as metricFixtures } from './index.js';
 
 const KNOWN_FLAGS: readonly MetricFlag[] = [
   'ath_before_launch',
+  'ath_thinly_traded',
   'bad_bar',
   'duplicate_bar',
   'implausible_market_cap',
@@ -29,6 +30,7 @@ const RESULT_FIELDS: readonly (keyof MetricResult)[] = [
   'athWickPoolAddress',
   'athLiquidityUsd',
   'athHourVolumeUsd',
+  'athNearVolumeUsd',
   'secondsAbove',
   'maxDrawdownPct',
   'rugPattern',
@@ -63,7 +65,11 @@ describe('metric fixtures are well formed', () => {
     });
 
     it('has every field of MetricResult and nothing else', () => {
-      expect(Object.keys(fixture.expected).sort()).toEqual([...RESULT_FIELDS].sort());
+      // Fixtures from before rules version 6 may leave out `athNearVolumeUsd`; the new ones list it.
+      const optional = 'athNearVolumeUsd';
+      const without = (keys: readonly string[]): string[] =>
+        keys.filter((k) => k !== optional).sort();
+      expect(without(Object.keys(fixture.expected))).toEqual(without(RESULT_FIELDS));
     });
 
     it('has one non-increasing secondsAbove entry per threshold', () => {

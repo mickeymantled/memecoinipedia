@@ -1,4 +1,5 @@
 import type { MetricFixture } from '../../../src/metrics/types.js';
+import { metricFixturesV6 } from './near-ath.js';
 import { athBeforeLaunch } from './ath-before-launch.js';
 import { badBarsDroppedFlagOrder } from './bad-bars-dropped-flag-order.js';
 import { badPrint50xUnderLimitWickOnly } from './bad-print-50x-under-limit-wick-only.js';
@@ -126,3 +127,8 @@ export const metricFixtures: MetricFixture[] = [
   unknownLiquidityCountsAsFunded,
   wickIgnoresWildHighAndThinMinutes,
 ];
+
+/** Every hand-worked fixture: the version 5 set, then the version 6 set (`near-ath.ts`). */
+export const allMetricFixtures: MetricFixture[] = [...metricFixtures, ...metricFixturesV6];
+
+export { metricFixturesV6 };

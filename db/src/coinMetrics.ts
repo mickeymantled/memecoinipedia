@@ -37,6 +37,7 @@ export interface MetricResultShape {
   athWickPoolAddress: string | null;
   athLiquidityUsd: number | null;
   athHourVolumeUsd: number | null;
+  athNearVolumeUsd: number | null;
   /** Seconds above 100k, 1M, 10M and 100M, in that order. */
   secondsAbove: number[];
   maxDrawdownPct: number | null;
@@ -264,6 +265,7 @@ export async function writeCoinMetrics(
       ath_wick_pool_id: poolId(result.athWickPoolAddress),
       ath_liquidity_usd: result.athLiquidityUsd,
       ath_hour_volume_usd: result.athHourVolumeUsd,
+      ath_near_volume_usd: result.athNearVolumeUsd,
       seconds_above_100k: above(0),
       seconds_above_1m: above(1),
       seconds_above_10m: above(2),
