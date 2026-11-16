@@ -13,6 +13,7 @@ const SUPPLY = 1_000_000_000;
 const pt = (t: number, price: number, strict = true, over: Partial<CoinPoint> = {}): CoinPoint => ({
   t,
   price,
+  high: over.high ?? price,
   strict,
   poolAddress: 'P',
   resolution: '1m',
@@ -135,6 +136,14 @@ describe('section 6: ATH and wick', () => {
     const hourly = (price: number, strict = true) =>
       pt(M0 + 3_600, price, strict, { resolution: '1h' });
     expect(peakOutsideMinuteCoverage([pt(M0, 1), hourly(2)], 1)).toBe(true);
+    // The flag reads the bar's high, not its close: a spike that collapsed inside the hour counts.
+    const spike = (high: number, over: Partial<CoinPoint> = {}) =>
+      pt(M0 + 3_600, 0.001, true, { resolution: '1h', high, ...over });
+    expect(peakOutsideMinuteCoverage([pt(M0, 1), spike(4)], 1)).toBe(true);
+    expect(peakOutsideMinuteCoverage([pt(M0, 1), spike(1)], 1)).toBe(false);
+    expect(peakOutsideMinuteCoverage([pt(M0, 1), spike(4, { strict: false })], 1)).toBe(false);
+    expect(peakOutsideMinuteCoverage([pt(M0, 1), spike(4, { resolution: '1d' })], 1)).toBe(true);
+    expect(peakOutsideMinuteCoverage([pt(M0, 1), spike(0.5, { resolution: '1d' })], 1)).toBe(false);
     expect(peakOutsideMinuteCoverage([pt(M0, 1), hourly(1)], 1)).toBe(false); // equal is not above
     expect(peakOutsideMinuteCoverage([pt(M0, 1), hourly(2, false)], 1)).toBe(false); // not strict
     expect(peakOutsideMinuteCoverage([hourly(0.1)], null)).toBe(true);

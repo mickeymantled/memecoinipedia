@@ -17,6 +17,8 @@
     "vitest": "catalog:"
   },
   "dependencies": {
+    "@memecoinipedia/db": "workspace:*",
+    "kysely": "^0.29.9",
     "undici": "^8.12.4",
     "zod": "^4.6.7"
   }

@@ -68,7 +68,7 @@ What is left are the clean bars.
 
 The effect with the default window: a price counts as reached only if at least two 1-minute closes in a 3-minute span were at or above it, with real volume and at least five wallets in one of those minutes. One candle cannot do it. Neither can two wallets trading back and forth.
 
-**Hourly and daily bars.** Each clean bar is its own window: `price` is its close, `volume` its `volumeUsd`, `traders` its `traders`. `strict` is true when `volume` is at least `minWindowVolumeUsd` and `traders` is at least `minWindowTraders`.
+**Hourly and daily bars.** Each clean bar is its own window: `price` is its close, `high` is `max(o, h, l, c)` of the bar (used only by the coverage flag in step 4), `volume` its `volumeUsd`, `traders` its `traders`. `strict` is true when `volume` is at least `minWindowVolumeUsd` and `traders` is at least `minWindowTraders`.
 
 **Finer data wins.** An hourly bar is not used as a window when any pool has a clean 1-minute bar inside that hour. A daily bar is not used as a window when any pool has a clean 1-minute or hourly bar inside that day, whether or not that hourly bar is itself used as a window. "Inside" means the finer bar's `t` is at or after the coarse bar's `t` and before the end of its bucket. Only clean bars count: a bar that was dropped suppresses nothing. Suppressed bars still count for the wick in step 4.
 
@@ -92,7 +92,7 @@ Using the busiest pool, not the highest price, means a small side pool that drif
 
 `athMarketCapUsd` can never exceed `athWickMarketCapUsd`.
 
-**Coverage flag.** If a strict coin point from an hourly or daily bar has a `price` above the ATH price, or the ATH is null while such a point exists, raise `peak_outside_minute_coverage`. It means the real peak may sit in a period we hold no 1-minute bars for, and the fetcher must fetch them and recompute.
+**Coverage flag.** If a strict coin point from an hourly or daily bar has a high (`max(o, h, l, c)` of its bar) above the ATH price, or the ATH is null while such a point exists, raise `peak_outside_minute_coverage`. A period can hold a higher ATH only if it traded above the current one, and its close says nothing about that: a coin can spike and collapse inside one hour. The flag means the real peak may sit in a period we hold no 1-minute bars for, and the fetcher must fetch them and recompute.
 
 ## 7. Step 5: the level series
 
@@ -143,17 +143,22 @@ This is a price pattern, not proof of intent. Graduated pump.fun pools cannot ha
 | `rugPattern` | boolean |
 | `flags` | list of flag names, each at most once, sorted alphabetically |
 
-Flags: `ath_before_launch`, `bad_bar`, `duplicate_bar`, `implausible_market_cap`, `no_qualifying_window`, `peak_outside_minute_coverage`.
+Flags: `ath_before_launch`, `bad_bar`, `duplicate_bar`, `implausible_market_cap`, `no_qualifying_window`, `peak_outside_minute_coverage`, `screened_out` (set by the fetcher, not by the metric library).
 
 The exact TypeScript shapes are in `/ingest/src/metrics/types.ts`.
 
 ## 12. What the fetcher must provide
 
-These are requirements on ingestion (task A5), listed here because the rules above depend on them:
+These are requirements on ingestion (task A5), listed here because the rules above depend on them. They were tightened on 2026-11-15, after the first live run cost 60 compute units a coin.
 
-- 1-minute bars for the bonding curve's last hours and for the first 48 hours after graduation.
-- Coarser bars for the rest of the coin's life, on every pool that passes the liquidity rule.
-- 1-minute bars for any later day that could hold the peak. When `peak_outside_minute_coverage` is raised, fetch that period at 1-minute resolution and recompute until the flag clears.
+- **Screen.** Daily bars of the graduation pool for its whole life come first. If the highest daily high is under $90,000 as a market cap, the coin cannot have an ATH of $100,000, because an ATH never exceeds a candle high. Nothing else is fetched. The coin is stored with that high as its wick, no ATH, and the flag `screened_out`. A coin whose Dune hourly peak is more than 1.5 times that high is not screened on one pool: its other pools are fetched first.
+- **1-minute bars** for the first 1,500 minutes of the graduation pool, starting five minutes before it began trading.
+- **Hourly bars** for every day whose daily high is $80,000 or more as a market cap and that 1-minute bars do not already cover. A day below that line cannot add time above any threshold, so daily bars are enough for it.
+- **1-minute bars for any later period that could hold the peak.** When `peak_outside_minute_coverage` is raised, fetch 1,500 minutes around the highest such bar and recompute, until the flag clears or only bars under $90,000 are left. Those cannot make a coin listed, so they are not fetched and the flag stays.
+- **Other pools** only for a coin whose highest daily high is $1,000,000 or more, or whose Dune peak is far above what its graduation pool shows. They are chosen by the liquidity rule in section 2.
+- **The bonding curve** only when the graduation pool opened at $90,000 or more. The pool opens at the curve's final price, so only then can the curve itself have passed $100,000. Then its last 1,500 minutes are fetched at 1-minute resolution.
+
+What these rules cost in accuracy: time above a threshold is measured to the minute for the first day and to the hour on later days at or above $80,000. A coin under $1,000,000 is measured on its graduation pool alone. Minutes a coin spent above $100,000 on the bonding curve are counted only in the case above. A6 measures the difference against an exhaustive fetch.
 
 ## 13. Known limits
 
@@ -164,3 +169,4 @@ These are requirements on ingestion (task A5), listed here because the rules abo
 - Hourly and daily closes are stamped at the start of their bucket, so a level taken from one starts up to a bucket early.
 - A busier window that is not strict hides a strict one in the same minute. One large trade on a side pool can outweigh the main pool's three-minute volume, and that minute then yields a point that cannot raise the level or set the ATH. The error is on the cautious side: it can understate, never overstate. Preferring strict windows was considered and rejected, because it would let a marginal side pool set the price whenever the main pool traded heavily among a few wallets. A6 counts how often this happens at the peak.
 - The first two or three windows of a coin are noisy, because one early bad bar sits in every one of them.
+- A coin under the listing line can keep `peak_outside_minute_coverage` for good: the fetcher does not fetch periods whose high is under $90,000, so the flag stays on it.

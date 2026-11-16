@@ -19,6 +19,8 @@ export interface Window {
   price: number;
   volume: number;
   traders: number;
+  /** `max(o, h, l, c)` of an hourly or daily bar; equal to `price` for a 1-minute window. */
+  high: number;
   strict: boolean;
   poolAddress: string;
   isPrimary: boolean;
@@ -29,6 +31,8 @@ export interface Window {
 export interface CoinPoint {
   t: number;
   price: number;
+  /** The `high` of the window the point came from. Only the coverage flag reads it. */
+  high: number;
   strict: boolean;
   poolAddress: string;
   resolution: Resolution;
