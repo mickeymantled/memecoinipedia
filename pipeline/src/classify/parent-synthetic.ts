@@ -71,6 +71,8 @@ export function gibberish(rand: () => number): string {
 
 export interface SyntheticCoin extends ParentCoin {
   description: string | null;
+  /** When the ATH was reached. Stored in the database; the ranking does not read it. */
+  ath_at: number | null;
 }
 
 /** `n` listed coins with gibberish names: shaped like the real table for timing, not for meaning. */

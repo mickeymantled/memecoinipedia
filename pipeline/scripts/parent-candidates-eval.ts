@@ -6,6 +6,11 @@
  * pairs.csv has `child_address,parent_address` per line (a header line is fine). For each pair it
  * prints the rank of the true parent among the candidates, or "missing", then recall at 1, 3 and
  * 10. Reads DATABASE_URL; everything runs in one read-only transaction.
+ *
+ * The 20 hand-checked pairs (addresses only) are in pipeline/eval/parent-pairs.csv; the first 11
+ * are pairs whose name shows the link, the last 9 are pairs where only the description does:
+ *
+ *   tsx --env-file=.env pipeline/scripts/parent-candidates-eval.ts --pairs pipeline/eval/parent-pairs.csv
  */
 import { readFile } from 'node:fs/promises';
 import { parseArgs } from 'node:util';
