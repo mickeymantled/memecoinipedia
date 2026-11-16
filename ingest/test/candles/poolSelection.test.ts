@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { selectPools, type SelectPoolsArgs } from '../../src/candles/poolSelection.js';
-import type { PoolInfo } from '../../src/sources/codex/index.js';
+import { OTHER_POOL_QUOTE, type PoolInfo } from '../../src/sources/codex/index.js';
 
 const MIGRATED_AT = 1_731_701_291;
 
@@ -12,6 +12,7 @@ const pool = (address: string, over: Partial<PoolInfo> = {}): PoolInfo => ({
   createdAt: MIGRATED_AT + 12,
   liquidityUsd: 10_000,
   quoteToken: 'SOL',
+  quoteTokenAddress: OTHER_POOL_QUOTE.SOL,
   ...over,
 });
 const curve = (address = 'CURVE', over: Partial<PoolInfo> = {}): PoolInfo =>
@@ -93,6 +94,53 @@ describe('selectPools', () => {
       pool('UNKNOWN', { createdAt: MIGRATED_AT + 1_000, liquidityUsd: null }),
     ]);
     expect(r.others.map((p) => p.address)).toEqual(['EXACT']);
+  });
+
+  describe('quote tokens', () => {
+    const WEIRD = {
+      quoteToken: 'WEIRD',
+      quoteTokenAddress: 'WeirdQuoteMint1111111111111111111111111111',
+    };
+
+    it('keeps the curve and the graduation pool whatever their quote token', () => {
+      const r = select([curve('CURVE', WEIRD), pool('GRAD', { createdAt: MIGRATED_AT, ...WEIRD })]);
+      expect(r.curve?.address).toBe('CURVE');
+      expect(r.graduation?.address).toBe('GRAD');
+      expect(r.otherQuotePools).toBe(0);
+    });
+
+    it('keeps another pool only when its other side is SOL, USDC or USDT, by mint address', () => {
+      const r = select([
+        curve(),
+        pool('GRAD', { createdAt: MIGRATED_AT }),
+        pool('SOLP', { createdAt: MIGRATED_AT + 1, quoteTokenAddress: OTHER_POOL_QUOTE.SOL }),
+        pool('USDCP', { createdAt: MIGRATED_AT + 2, quoteTokenAddress: OTHER_POOL_QUOTE.USDC }),
+        pool('USDTP', { createdAt: MIGRATED_AT + 3, quoteTokenAddress: OTHER_POOL_QUOTE.USDT }),
+        pool('COINP', { createdAt: MIGRATED_AT + 4, ...WEIRD }),
+        // A token that only calls itself SOL does not pass.
+        pool('FAKESOL', {
+          createdAt: MIGRATED_AT + 5,
+          quoteToken: 'SOL',
+          quoteTokenAddress: 'Fake',
+        }),
+        pool('NOADDR', { createdAt: MIGRATED_AT + 6, quoteTokenAddress: null }),
+      ]);
+      expect(r.others.map((p) => p.address).sort()).toEqual(['SOLP', 'USDCP', 'USDTP']);
+      expect(r.otherQuotePools).toBe(3);
+      expect(r.skippedOthers).toBe(0);
+    });
+
+    it('counts left-out quotes apart from pools left out for liquidity or the cap', () => {
+      const r = select([
+        curve(),
+        pool('GRAD', { createdAt: MIGRATED_AT }),
+        pool('DUST', { createdAt: MIGRATED_AT + 1, liquidityUsd: 3 }),
+        pool('COINP', { createdAt: MIGRATED_AT + 2, liquidityUsd: 90_000, ...WEIRD }),
+      ]);
+      expect(r.others).toEqual([]);
+      expect(r.skippedOthers).toBe(1);
+      expect(r.otherQuotePools).toBe(1);
+    });
   });
 
   describe('a pool list cut off at 250', () => {

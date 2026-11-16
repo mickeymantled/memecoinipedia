@@ -3,7 +3,13 @@
  * This is everything a queue job does, kept free of the queue so it can be
  * tested and reused by other drivers.
  */
-import { claimStage, databaseShape, finishStage, type StageName } from '@memecoinipedia/db';
+import {
+  claimStage,
+  databaseShape,
+  finishStage,
+  reopenStages,
+  type StageName,
+} from '@memecoinipedia/db';
 import type { Kysely } from 'kysely';
 import type { Database } from '@memecoinipedia/db';
 import { BudgetExceededError } from '../sources/budget.js';
@@ -17,7 +23,7 @@ import {
 } from './stage.js';
 
 export type ExecuteOutcome =
-  | { kind: 'done' | 'skipped'; coinId: number; stage: StageName }
+  | { kind: 'done' | 'skipped'; coinId: number; stage: StageName; reopened?: StageName[] }
   /** Already done or skipped at this version: nothing was run. */
   | { kind: 'final'; coinId: number; stage: StageName }
   /** The stage is holding (`admit` said no): the coin was not claimed and nothing changed. */
@@ -143,7 +149,14 @@ export async function executeStage(
     return { kind: 'lost', ...base };
   }
 
-  if (result.status === 'done') return { kind: 'done', ...base };
+  if (result.status === 'done') {
+    if (result.reopen && result.reopen.length > 0) {
+      const reopened = [...result.reopen];
+      await reopenStages(opts.db, coinId, reopened, opts.now());
+      return { kind: 'done', ...base, reopened };
+    }
+    return { kind: 'done', ...base };
+  }
   if (result.status === 'skipped') return { kind: 'skipped', ...base };
   const refunded = result.refundAttempt === true;
   if (result.retry && (refunded || claim.attempt < opts.maxAttempts)) {

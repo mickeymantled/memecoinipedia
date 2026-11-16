@@ -55,6 +55,7 @@ function minuteWindowsV(bars: readonly Bar[], pool: CleanPool, p: MetricParams, 
       poolAddress: pool.address,
       isPrimary: pool.isPrimary,
       resolution: '1m' as const,
+      liquidity: bar.liquidityUsd,
       liq: bar.liquidityUsd,
     };
   });

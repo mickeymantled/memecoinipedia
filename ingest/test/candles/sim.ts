@@ -20,6 +20,8 @@ export interface SimPool {
   /** Listed liquidity, USD. */
   liquidity: number;
   minutes: SimMinute[];
+  /** The quote (backing) token the pool lists; wrapped SOL when absent. */
+  quote?: { address: string; symbol: string };
 }
 
 export interface SimCoin {
@@ -97,7 +99,7 @@ export function simProvider(coin: SimCoin): {
             liquidity: p.liquidity,
             volume: 0,
             quoteToken: 'token1',
-            backingToken: {
+            backingToken: p.quote ?? {
               address: 'So11111111111111111111111111111111111111112',
               symbol: 'SOL',
             },

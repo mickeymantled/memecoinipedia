@@ -97,23 +97,3 @@ export async function replaceCoinIssues(
     }
   });
 }
-
-/**
- * Records one issue of one kind, replacing that coin's open issue of the same
- * kind (so there is at most one open row per coin and kind). The same kind and
- * detail again changes nothing.
- *
- * Kept only because `ingest/src/candles/fetch.ts` calls it, and that file is
- * being changed on another branch. New code calls `replaceCoinIssues` and names
- * the kinds its stage owns.
- *
- * @deprecated use `replaceCoinIssues`.
- */
-export async function recordDataIssue(
-  db: Kysely<Database>,
-  coinId: number,
-  kind: string,
-  detail?: unknown,
-): Promise<void> {
-  await replaceCoinIssues(db, coinId, [kind], [{ kind, detail }]);
-}

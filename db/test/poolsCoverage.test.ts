@@ -3,8 +3,13 @@ import { sql } from 'kysely';
 import { addCoverage, countCoverageRequests, getCoverage } from '../src/candleCoverage.js';
 import { putBars, type CandleBar } from '../src/candles.js';
 import { upsertCoin } from '../src/coins.js';
-import { recordDataIssue } from '../src/dataIssues.js';
-import { getCoinPools, refreshPoolBarStats, upsertPool } from '../src/pools.js';
+import { replaceCoinIssues } from '../src/dataIssues.js';
+import {
+  getCoinPools,
+  PoolOwnedByOtherCoinError,
+  refreshPoolBarStats,
+  upsertPool,
+} from '../src/pools.js';
 import { createTestDatabase, type TestDatabase } from '../src/testing.js';
 import { adminUrl, describeDb } from './helpers.js';
 
@@ -20,12 +25,20 @@ const bar = (t: number, liq: number | null): CandleBar => ({
   liquidityUsd: liq,
 });
 
+/** One issue of one kind, replacing the coin's open issue of that kind. */
+const recordFor =
+  (db: TestDatabase['db']) =>
+  (coinId: number, kind: string, detail?: unknown): Promise<void> =>
+    replaceCoinIssues(db, coinId, [kind], [{ kind, detail }]);
+
 describeDb('pools, coverage and data issues', () => {
   let t: TestDatabase;
   let coinId = 0;
   let n = 0;
+  let record: ReturnType<typeof recordFor>;
   beforeAll(async () => {
     t = await createTestDatabase(adminUrl!);
+    record = recordFor(t.db);
   });
   afterAll(async () => {
     await t.drop();
@@ -76,7 +89,9 @@ describeDb('pools, coverage and data issues', () => {
   it('refuses to move a pool to another coin', async () => {
     await upsertPool(t.db, base());
     const other = await upsertCoin(t.db, { chain: 'solana', address: `other${n}` });
-    await expect(upsertPool(t.db, { ...base(), coinId: other })).rejects.toThrow(/already belongs/);
+    await expect(upsertPool(t.db, { ...base(), coinId: other })).rejects.toThrow(
+      PoolOwnedByOtherCoinError,
+    );
   });
 
   it('lists the pools of a coin with their roles', async () => {
@@ -141,9 +156,9 @@ describeDb('pools, coverage and data issues', () => {
   });
 
   it('keeps one open issue per coin and kind, and adds again after it is resolved', async () => {
-    await recordDataIssue(t.db, coinId, 'graduation_pool_not_found', { why: 1 });
-    await recordDataIssue(t.db, coinId, 'graduation_pool_not_found', { why: 2 });
-    await recordDataIssue(t.db, coinId, 'other_kind');
+    await record(coinId, 'graduation_pool_not_found', { why: 1 });
+    await record(coinId, 'graduation_pool_not_found', { why: 2 });
+    await record(coinId, 'other_kind');
     const open = () =>
       t.db
         .selectFrom('data_issues')
@@ -156,7 +171,7 @@ describeDb('pools, coverage and data issues', () => {
     expect(rows.map((r) => r.kind)).toEqual(['graduation_pool_not_found', 'other_kind']);
     expect(rows[0]!.detail).toEqual({ why: 2 });
     // The same issue again changes nothing: same row, same time.
-    await recordDataIssue(t.db, coinId, 'graduation_pool_not_found', { why: 2 });
+    await record(coinId, 'graduation_pool_not_found', { why: 2 });
     expect((await open())[0]).toEqual(rows[0]);
 
     await t.db
@@ -164,7 +179,7 @@ describeDb('pools, coverage and data issues', () => {
       .set({ resolved_at: new Date(), resolution: 'fixed' })
       .where('id', '=', rows[0]!.id)
       .execute();
-    await recordDataIssue(t.db, coinId, 'graduation_pool_not_found');
+    await record(coinId, 'graduation_pool_not_found');
     expect((await open()).map((r) => r.kind)).toEqual(['graduation_pool_not_found', 'other_kind']);
     // the resolved one is still there, untouched
     const all = await t.db

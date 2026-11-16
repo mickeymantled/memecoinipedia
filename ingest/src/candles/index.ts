@@ -40,6 +40,8 @@ export { fetchCandlesForCoin } from './fetch.js';
 export {
   computeMetricsForCoin,
   screenedOutResult,
+  noCandlesResult,
+  NO_CANDLES_FLAG,
   METRICS_VERSION,
   SCREENED_OUT_FLAG,
   type ComputeMetricsResult,

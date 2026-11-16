@@ -67,8 +67,8 @@ async function run(coin: SimCoin, limits?: Parameters<typeof fetchCandlesForCoin
     .select(['ath_market_cap_usd', 'metric_flags'])
     .where('id', '=', id)
     .executeTakeFirstOrThrow();
-  const issues = await t.db.selectFrom('data_issues').select('kind').execute();
-  return { r, m, row, sim, issues: issues.map((i) => i.kind) };
+  // The fetcher returns its issues and writes none; the candles stage records them.
+  return { r, m, row, sim, issues: r.summary.issues };
 }
 
 /** The USOF shape: a peak inside one hour more than 1,500 minutes after graduation, then a collapse. */

@@ -180,6 +180,27 @@ export async function finishStage(db: Kysely<Database>, opts: FinishOptions): Pr
   return Number(res.numUpdatedRows) === 1;
 }
 
+/**
+ * Puts the given stages of one coin back to `pending` with zero attempts, in one statement, so the
+ * next run does them again. Only rows that are `done` or `skipped` change. Returns how many did.
+ */
+export async function reopenStages(
+  db: Kysely<Database>,
+  coinId: number,
+  stages: readonly StageName[],
+  now: Date,
+): Promise<number> {
+  if (stages.length === 0) return 0;
+  const res = await db
+    .updateTable('coin_stages')
+    .set({ status: 'pending', attempts: 0, updated_at: now })
+    .where('coin_id', '=', coinId)
+    .where('stage', 'in', [...stages])
+    .where('status', 'in', ['done', 'skipped'])
+    .executeTakeFirst();
+  return Number(res.numUpdatedRows);
+}
+
 export interface ListNotDoneOptions {
   /** Current version of the stage. Default 1. */
   version?: number;

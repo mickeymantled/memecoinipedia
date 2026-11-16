@@ -1,5 +1,6 @@
 import {
   isBondingCurvePool,
+  OTHER_POOL_QUOTE_MINTS,
   pickGraduationPool,
   type GraduationPoolSource,
   type PoolInfo,
@@ -21,6 +22,11 @@ export interface PoolSelection {
   others: PoolInfo[];
   /** Other pools left out: listed liquidity under the minimum, unknown, or over the cap. */
   skippedOthers: number;
+  /**
+   * Other pools left out because their quote token is not SOL, USDC or USDT (by mint address).
+   * Counted apart from `skippedOthers`; the curve and the graduation pool are never counted here.
+   */
+  otherQuotePools: number;
   /** Data issues the caller should record. */
   issues: { kind: 'graduation_pool_not_found'; detail: Record<string, unknown> }[];
 }
@@ -44,7 +50,11 @@ export interface SelectPoolsArgs {
  * Graduation pool: Codex.io's migrated pool address when it gives one, else the
  * non-curve pool created closest to the migration time (`pickGraduationPool`).
  *
- * Other pools: a coin can have up to 250 listed pools, mostly dust, and each one
+ * The curve and the graduation pool are kept whatever their quote token: since September 2026
+ * pump.fun coins launch against many quote tokens.
+ *
+ * Other pools: only those quoted in SOL, USDC or USDT (`OTHER_POOL_QUOTE_MINTS`). A pool between
+ * two tracked coins prices each in the other, which is no market for our purpose. A coin can have up to 250 listed pools, mostly dust, and each one
  * costs a request for daily bars. Only pools whose listed liquidity is at least
  * the secondary minimum are kept, the most liquid first, up to the cap. A pool
  * that held liquidity once and is drained now is left out; that is the price of
@@ -79,7 +89,10 @@ export function selectPools(args: SelectPoolsArgs): PoolSelection {
   const candidates = result.pools.filter(
     (p) => p.address !== curve?.address && p.address !== graduation?.address,
   );
-  const liquid = candidates
+  const quoted = candidates.filter(
+    (p) => p.quoteTokenAddress !== null && OTHER_POOL_QUOTE_MINTS.includes(p.quoteTokenAddress),
+  );
+  const liquid = quoted
     .filter((p) => p.liquidityUsd !== null && p.liquidityUsd >= args.minSecondaryPoolLiquidityUsd)
     .sort(
       (a, b) =>
@@ -104,7 +117,8 @@ export function selectPools(args: SelectPoolsArgs): PoolSelection {
     curve,
     graduation,
     others,
-    skippedOthers: candidates.length - others.length,
+    skippedOthers: quoted.length - others.length,
+    otherQuotePools: candidates.length - quoted.length,
     issues,
   };
 }

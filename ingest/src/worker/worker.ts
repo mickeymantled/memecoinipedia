@@ -216,6 +216,11 @@ export class PipelineWorker {
         case 'done':
         case 'skipped':
         case 'final':
+          if ('reopened' in out && out.reopened) {
+            await this.enqueueReopened(coinId, out.reopened);
+            // A stage that reopened itself is not finished: its dependents follow when it is.
+            if (out.reopened.includes(stage)) return;
+          }
           await this.enqueueDependents(stage, coinId);
           return;
         case 'held':
@@ -260,6 +265,20 @@ export class PipelineWorker {
         }
         if (!coinQualifies(rule, ath)) continue;
       }
+      await this.enqueue(next, [coinId]);
+    }
+  }
+
+  /**
+   * Queues the stages a result put back to pending: the active ones whose requirement is not
+   * reopened too. The rest follow when the stage they require finishes. A stage that is not active
+   * in this worker stays pending for a later run that includes it; nothing here waits for it.
+   */
+  private async enqueueReopened(coinId: number, reopened: readonly StageName[]): Promise<void> {
+    for (const next of this.stages) {
+      if (!reopened.includes(next)) continue;
+      const requires = this.opts.registry.requirementOf(next);
+      if (requires !== null && reopened.includes(requires)) continue;
       await this.enqueue(next, [coinId]);
     }
   }
@@ -360,19 +379,6 @@ export class PipelineWorker {
       ) as found
     `.execute(this.opts.db);
     return res.rows[0]?.found === true;
-  }
-
-  /** Jobs waiting or in retry (not running), per active stage. */
-  async queuedByStage(): Promise<Partial<Record<StageName, number>>> {
-    const out: Partial<Record<StageName, number>> = {};
-    for (const stage of this.stages) {
-      const res = await sql<{ n: string }>`
-        select count(*)::text as n from ${sql.id(this.schema, 'job')}
-        where name = ${queueName(stage)} and state in ('created', 'retry')
-      `.execute(this.opts.db);
-      out[stage] = Number(res.rows[0]?.n ?? 0);
-    }
-    return out;
   }
 
   /** Handlers running in this process. */

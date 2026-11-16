@@ -6,7 +6,8 @@ import {
   getCoverage,
   loadMetricInput,
   putBars,
-  recordDataIssue,
+  PoolOwnedByOtherCoinError,
+  takeOverPool,
   refreshPoolBarStats,
   upsertPool,
   type StoredPool,
@@ -88,6 +89,9 @@ export async function fetchCandlesForCoin(
     escalated: false,
     pools: [],
     skippedOtherPools: 0,
+    otherQuotePools: null,
+    poolsTakenOver: 0,
+    launchInfoNamedPool: null,
     graduationPoolUnverified: false,
     barsFetched: emptyCounts(),
     barsStored: emptyCounts(),
@@ -100,7 +104,11 @@ export async function fetchCandlesForCoin(
     hourlyCapHit: false,
     flags: [],
     issues: [],
+    issueRecords: [],
+    issueKindsChecked: [],
   };
+  /** Addresses of pools owned by another coin, left out; counted once each. */
+  const clashed = new Set<string>();
   const finish = (): void => {
     summary.units = round6(meter.units);
   };
@@ -142,7 +150,8 @@ export async function fetchCandlesForCoin(
       graduatedAt ??= launch.migratedAt;
       await fillCoinTimes(launch);
       if (limits.staged && launch.migratedPoolAddress !== null && coin.refreshPools !== true) {
-        await upsertPool(db, {
+        summary.launchInfoNamedPool = true;
+        await upsertPoolUnlessOwned({
           chain,
           address: launch.migratedPoolAddress,
           coinId: coin.id,
@@ -152,6 +161,7 @@ export async function fetchCandlesForCoin(
           sourcePairId: pairIdFor(launch.migratedPoolAddress),
         });
       } else {
+        summary.launchInfoNamedPool = false;
         await lookupPools(launch, true);
       }
       stored = await getCoinPools(db, coin.id);
@@ -250,8 +260,9 @@ export async function fetchCandlesForCoin(
       summary.w = last.stage.w;
       summary.escalated = last.stage.escalated;
     }
+    checked('candle_hourly_cap_hit');
     if (summary.hourlyCapHit) {
-      await issue('candle_hourly_cap_hit', {
+      issue('candle_hourly_cap_hit', {
         maxHourlyRequests:
           last?.stage.path === 'full' ? limits.maxHourlyRequestsFull : limits.maxHourlyRequests,
       });
@@ -288,7 +299,7 @@ export async function fetchCandlesForCoin(
       if (targets.length === 0) break;
       const next = planPeakRefinement(await buildState(), targets, done);
       if (!next.request) {
-        await issue('peak_refinement_incomplete', {
+        issue('peak_refinement_incomplete', {
           why: next.capHit ? 'request_cap' : 'no_more_periods',
           refinementRequests: done,
           cap: limits.maxRefinementRequests,
@@ -301,6 +312,7 @@ export async function fetchCandlesForCoin(
       summary.refinementRequestsTotal = done + 1;
     }
 
+    checked('peak_refinement_incomplete');
     for (const p of stored) await refreshPoolBarStats(db, p.id);
     finish();
     return { ok: true, summary };
@@ -381,7 +393,8 @@ export async function fetchCandlesForCoin(
     if (!selection.curve && !selection.graduation && selection.others.length === 0) {
       if (!stage0) return;
       const young = launch.migratedAt !== null && asOf - launch.migratedAt < YOUNG_COIN_SEC;
-      for (const i of selection.issues) await issue(i.kind, i.detail);
+      checked('graduation_pool_not_found');
+      for (const i of selection.issues) issue(i.kind, i.detail);
       throw new Stop({
         reason: 'no_pools',
         retry: young,
@@ -394,8 +407,8 @@ export async function fetchCandlesForCoin(
       pool: PoolInfo | null,
       role: PoolRole,
       fallbackDex: string,
-    ): Promise<number> =>
-      upsertPool(db, {
+    ): Promise<void> =>
+      upsertPoolUnlessOwned({
         chain,
         address,
         coinId: coin.id,
@@ -414,8 +427,10 @@ export async function fetchCandlesForCoin(
     for (const p of selection.others) await put(p.address, p, 'other', 'unknown');
 
     summary.skippedOtherPools = selection.skippedOthers;
+    summary.otherQuotePools = selection.otherQuotePools + clashed.size;
     summary.graduationPoolUnverified = selection.graduation?.unverified ?? false;
-    for (const i of selection.issues) await issue(i.kind, i.detail);
+    checked('graduation_pool_not_found');
+    for (const i of selection.issues) issue(i.kind, i.detail);
   }
 
   /** Sets launch and graduation time on the coin when they are empty. Never overwrites. */
@@ -437,9 +452,46 @@ export async function fetchCandlesForCoin(
     }
   }
 
-  async function issue(kind: string, detail: Record<string, unknown>): Promise<void> {
-    await recordDataIssue(db, coin.id, kind, detail);
+  /**
+   * Notes an issue found in this run; the caller writes it (`replaceCoinIssues`). One per kind:
+   * a second one of the same kind replaces the first.
+   */
+  function issue(kind: string, detail: Record<string, unknown>): void {
+    summary.issueRecords = summary.issueRecords.filter((i) => i.kind !== kind);
+    summary.issueRecords.push({ kind, detail });
     if (!summary.issues.includes(kind)) summary.issues.push(kind);
+  }
+
+  /** This run looked for issues of `kind`, so an open one it did not find again is stale. */
+  function checked(kind: string): void {
+    if (!summary.issueKindsChecked.includes(kind)) summary.issueKindsChecked.push(kind);
+  }
+
+  /**
+   * Stores a pool, or leaves it out when another coin already owns its address (a pool between two
+   * tracked coins). The pool is counted in `otherQuotePools`; the stage carries on.
+   */
+  async function upsertPoolUnlessOwned(pool: Parameters<typeof upsertPool>[1]): Promise<void> {
+    try {
+      await upsertPool(db, pool);
+    } catch (err) {
+      if (!(err instanceof PoolOwnedByOtherCoinError)) throw err;
+      if (!pool.isPrimary) {
+        clashed.add(pool.address);
+        return;
+      }
+      // The coin's own curve or graduation pool: take it over from a coin that holds it as an
+      // ordinary other pool. Two coins claiming it as their own should never happen: fail loudly.
+      const r = await takeOverPool(db, pool, deps.clock());
+      if (r.status === 'taken') summary.poolsTakenOver += 1;
+      if (r.status === 'claimed_by_two') {
+        throw new Stop({
+          reason: 'pool_claimed_by_two_coins',
+          retry: false,
+          message: `A pool is the curve or graduation pool of both coin ${coin.id} and coin ${r.ownerCoinId}`,
+        });
+      }
+    }
   }
 }
 

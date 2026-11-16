@@ -396,6 +396,7 @@ export class CodexClient {
       createdAt: r.pair.createdAt ?? null,
       liquidityUsd: r.liquidity ?? null,
       quoteToken: r.backingToken?.symbol ?? r.backingToken?.address ?? r.quoteToken ?? null,
+      quoteTokenAddress: r.backingToken?.address ?? null,
     }));
     pools.sort((a, b) => (a.createdAt ?? Infinity) - (b.createdAt ?? Infinity));
     return { pools, truncated: results.length >= PAIRS_LIMIT };

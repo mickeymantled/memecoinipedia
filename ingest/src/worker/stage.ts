@@ -99,7 +99,17 @@ export interface StageContext {
 export type StageCoin = Omit<Selectable<CoinsTable>, 'metadata_raw'>;
 
 export type StageResult =
-  | { status: 'done'; detail?: Record<string, unknown> }
+  | {
+      status: 'done';
+      detail?: Record<string, unknown>;
+      /**
+       * Stages of this coin to put back to `pending` once this result is recorded (this stage may
+       * be among them). The worker then queues the earliest of them that is active, and the others
+       * follow through their requirements. Used when a stage finds that work done earlier must be
+       * redone.
+       */
+      reopen?: readonly PipelineStageName[];
+    }
   | { status: 'skipped'; reason: string }
   | { status: 'failed'; reason: string; retry: boolean; refundAttempt?: boolean };
 
@@ -142,6 +152,11 @@ export function coinQualifies(rule: StageCoinRule | undefined, ath: number | nul
 
 export const done = (detail?: Record<string, unknown>): StageResult =>
   detail ? { status: 'done', detail } : { status: 'done' };
+/** Done, and the listed stages of the same coin go back to pending (see `StageResult`). */
+export const doneAndReopen = (
+  detail: Record<string, unknown> | undefined,
+  reopen: readonly PipelineStageName[],
+): StageResult => ({ status: 'done', ...(detail ? { detail } : {}), reopen });
 export const skipped = (reason: string): StageResult => ({ status: 'skipped', reason });
 export const failed = (reason: string, retry: boolean, refundAttempt = false): StageResult =>
   refundAttempt

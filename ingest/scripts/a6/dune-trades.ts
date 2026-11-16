@@ -3,19 +3,15 @@
  * (swaps, wallets, USD, lowest / median / highest price as a market cap). Spends Dune credits:
  * the review capped the whole task at 40 and used two runs of about 3.9 credits each.
  *
- * The Dune client lives on the branch that adds `ingest/src/sources/dune` (pull request #23). Run
- * this script from a detached worktree of that branch (copy it into the worktree's
- * `ingest/scripts/`), not from this branch, where the import below does not resolve.
- *
- *   node --env-file=.env --import tsx ingest/scripts/dune-trades.ts OUT.csv MINT YYYY-MM YYYY-MM-DD HH:MM HH:MM
+ *   node --env-file=.env --import tsx ingest/scripts/a6/dune-trades.ts OUT.csv MINT YYYY-MM YYYY-MM-DD HH:MM HH:MM
  *
  * The query filters on the partition column (`block_month`), the day and the minute range, and on the
  * coin, so it reads a few minutes of one day, not the table. It reads the credit balance (a free
  * call) before and after and prints only the difference.
  */
 import { readFileSync } from 'node:fs';
-import { DuneClient, duneApiKeyFromEnv, duneErrorMessage } from '../src/sources/dune/index.js';
-import { UnitBudget } from '../src/sources/budget.js';
+import { DuneClient, duneApiKeyFromEnv, duneErrorMessage } from '../../src/sources/dune/index.js';
+import { UnitBudget } from '../../src/sources/budget.js';
 
 const [out, mint, month, day, from, to] = process.argv.slice(2);
 if (!out || !mint || !month || !day || !from || !to) throw new Error('Usage: OUT.csv MINT YYYY-MM YYYY-MM-DD HH:MM HH:MM');

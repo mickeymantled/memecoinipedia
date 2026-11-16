@@ -27,6 +27,17 @@ export interface StoredPool {
   sourcePairId: string | null;
 }
 
+/** A pool address belongs to one coin; `upsertPool` throws this for another coin's pool. */
+export class PoolOwnedByOtherCoinError extends Error {
+  constructor(
+    readonly address: string,
+    readonly ownerCoinId: number,
+  ) {
+    super(`Pool ${address} already belongs to coin ${ownerCoinId}`);
+    this.name = 'PoolOwnedByOtherCoinError';
+  }
+}
+
 const toDate = (s: number | null | undefined): Date | null =>
   s === null || s === undefined ? null : new Date(s * 1000);
 
@@ -34,7 +45,7 @@ const toDate = (s: number | null | undefined): Date | null =>
  * Inserts a pool, or, when `(chain, address)` exists, updates the fields that
  * differ. Returns the pool id. Calling it again with the same values writes
  * nothing (updated_at stays). A pool address belongs to one coin: passing a
- * different `coinId` for an existing address is an error.
+ * different `coinId` for an existing address throws `PoolOwnedByOtherCoinError`.
  */
 export async function upsertPool(db: Kysely<Database>, pool: PoolInput): Promise<number> {
   const values = {
@@ -59,7 +70,7 @@ export async function upsertPool(db: Kysely<Database>, pool: PoolInput): Promise
       .forUpdate()
       .executeTakeFirstOrThrow();
     if (row.coin_id !== pool.coinId) {
-      throw new Error(`Pool ${pool.address} already belongs to coin ${row.coin_id}`);
+      throw new PoolOwnedByOtherCoinError(pool.address, row.coin_id);
     }
     const same =
       row.dex === values.dex &&
@@ -76,6 +87,64 @@ export async function upsertPool(db: Kysely<Database>, pool: PoolInput): Promise
         .execute();
     }
     return row.id;
+  });
+}
+
+export type TakeOverResult =
+  /** The pool now belongs to the coin (it did not before). `previousOwnerCoinId` held it as an ordinary other pool. */
+  | { status: 'taken'; previousOwnerCoinId: number }
+  /** The coin already owned it. Nothing changed. */
+  | { status: 'own' }
+  /** The present owner holds it as its own curve or graduation pool: it is not taken. */
+  | { status: 'claimed_by_two'; ownerCoinId: number };
+
+/**
+ * Moves a pool to `pool.coinId` when its present owner holds it only as an ordinary other pool
+ * (not its curve, not its graduation pool, not primary). One transaction, the row locked. Bars and
+ * coverage are keyed by the pool's id (`candle_chunks.pool_id`, `candle_coverage.pool_id`), so they
+ * move with it and nothing has to be fetched again. The previous owner's metrics stage goes back to
+ * `pending` (zero attempts) in the same transaction, because its inputs changed. The pool's role,
+ * dex, quote and times are set to what `pool` says. A pool that does not exist yet is an error.
+ */
+export async function takeOverPool(
+  db: Kysely<Database>,
+  pool: PoolInput,
+  now: Date,
+): Promise<TakeOverResult> {
+  return db.transaction().execute(async (trx) => {
+    const row = await trx
+      .selectFrom('pools')
+      .selectAll()
+      .where('chain', '=', pool.chain)
+      .where('address', '=', pool.address)
+      .forUpdate()
+      .executeTakeFirstOrThrow();
+    if (row.coin_id === pool.coinId) return { status: 'own' } as const;
+    if (row.is_primary || row.is_graduation_pool) {
+      return { status: 'claimed_by_two', ownerCoinId: row.coin_id } as const;
+    }
+    await trx
+      .updateTable('pools')
+      .set({
+        coin_id: pool.coinId,
+        dex: pool.dex,
+        is_primary: pool.isPrimary,
+        is_graduation_pool: pool.isGraduationPool,
+        quote_token: pool.quoteToken ?? null,
+        created_at_chain: toDate(pool.createdAtChain),
+        source_pair_id: pool.sourcePairId ?? null,
+        updated_at: sql`now()`,
+      })
+      .where('id', '=', row.id)
+      .execute();
+    await trx
+      .updateTable('coin_stages')
+      .set({ status: 'pending', attempts: 0, updated_at: now })
+      .where('coin_id', '=', row.coin_id)
+      .where('stage', '=', 'metrics')
+      .where('status', 'in', ['done', 'skipped'])
+      .execute();
+    return { status: 'taken', previousOwnerCoinId: row.coin_id } as const;
   });
 }
 

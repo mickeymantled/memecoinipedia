@@ -2,7 +2,7 @@
  * The `candles` stage: fetch and store a coin's price bars from Codex.io, with
  * the staged plan in `src/candles` (screen, then light or full path).
  *
- * It wraps `fetchCandlesForCoin` and changes nothing in it. What it adds:
+ * It wraps `fetchCandlesForCoin`. What it adds:
  *
  * - One `CodexClient` for the whole run, shared by every worker. Its unit
  *   budget is the run's ceiling (`--max-codex-units`) and its rate limiter is the
@@ -14,12 +14,15 @@
  *   coin is fetched twice.
  * - A per-coin `detail` on the stage row (see `candlesDetail`).
  *
- * Data issues: the fetcher records `graduation_pool_not_found`,
- * `candle_hourly_cap_hit` and `peak_refinement_incomplete`. They belong to this
- * stage (`CANDLES_ISSUE_KINDS`), and no other stage writes or removes them.
+ * Data issues: the fetcher finds `graduation_pool_not_found`, `candle_hourly_cap_hit` and
+ * `peak_refinement_incomplete` and returns them; the stage writes them with `replaceCoinIssues`.
+ * They belong to this stage (`CANDLES_ISSUE_KINDS`), and no other stage writes or removes them.
+ * A run replaces only the kinds it examined to the end (`issueKindsChecked`), so one that finds
+ * no hourly cap hit clears an old `candle_hourly_cap_hit`, while a run that did not list the
+ * pools leaves `graduation_pool_not_found` as it was.
  */
-import { getCoinPools } from '@memecoinipedia/db';
-import { fetchCandlesForCoin } from '../../candles/index.js';
+import { replaceCoinIssues } from '@memecoinipedia/db';
+import { fetchCandlesForCoin, METRICS_VERSION } from '../../candles/index.js';
 import type { CandleFetchSummary } from '../../candles/index.js';
 import { FLAT_UNITS, RATE_LIMIT_MESSAGE, type CodexClient } from '../../sources/codex/index.js';
 import { failed, done, type Stage, type StageResult } from '../stage.js';
@@ -50,14 +53,25 @@ export interface CandlesDetail extends Record<string, unknown> {
    * stage 0. Null when stage 0 happened in an earlier run (a coin resumed after a stop).
    */
   launchInfoNamedPool: boolean | null;
+  /**
+   * Pools of the coin's pool list left out because their quote token is not SOL, USDC or USDT, or
+   * because another coin owns the address. The bonding curve and the graduation pool are never
+   * left out. Null when no pool list was looked up in the run that finished the stage. No addresses.
+   */
+  otherQuotePools: number | null;
+  /** Pools moved to this coin from a coin that held them as ordinary other pools. No addresses. */
+  poolsTakenOver: number;
   hourlyCapHit: boolean;
+  /**
+   * The `METRICS_VERSION` the fetch's peak refinement ran under. The metrics stage reopens a coin
+   * whose flag survives a recompute only when this is lower than its own version, so a coin is
+   * refetched once per rules version and never in a loop.
+   */
+  metricsVersion: number;
 }
 
 /** The small JSON kept on the stage row. Well under 1 KB: counters and flags only. */
-export function candlesDetail(
-  summary: CandleFetchSummary,
-  launchInfoNamedPool: boolean | null,
-): CandlesDetail {
+export function candlesDetail(summary: CandleFetchSummary): CandlesDetail {
   return {
     path: summary.path,
     w: summary.w === null ? null : Math.round(summary.w * 100) / 100,
@@ -67,30 +81,12 @@ export function candlesDetail(
     // `requests` counts the refinement requests too; they are reported on their own.
     barRequests: Math.max(0, summary.requests - summary.refinementRounds),
     refinementRequests: summary.refinementRounds,
-    launchInfoNamedPool,
+    launchInfoNamedPool: summary.launchInfoNamedPool,
+    otherQuotePools: summary.otherQuotePools,
+    poolsTakenOver: summary.poolsTakenOver,
     hourlyCapHit: summary.hourlyCapHit,
+    metricsVersion: METRICS_VERSION,
   };
-}
-
-/**
- * The client with each launch-info and pool-list call noted, per coin, so the stage can tell
- * whether launch info named the graduation pool without asking the fetcher to say so.
- */
-function tracked(codex: CodexClient, calls: string[]): CodexClient {
-  return new Proxy(codex, {
-    get(target, prop) {
-      const value: unknown = Reflect.get(target, prop, target);
-      if (typeof value !== 'function') return value;
-      const fn = value as (...args: unknown[]) => unknown;
-      if (prop === 'getLaunchInfo' || prop === 'getPools') {
-        return (...args: unknown[]) => {
-          calls.push(prop);
-          return fn.apply(target, args);
-        };
-      }
-      return fn.bind(target);
-    },
-  });
 }
 
 export interface CandlesStageDeps {
@@ -136,17 +132,20 @@ export function createCandlesStage(deps: CandlesStageDeps): CandlesStage {
       return true;
     },
     async run(ctx, coin): Promise<StageResult> {
-      const calls: string[] = [];
-      // Stage 0 (launch info, maybe the pool list) happens only for a coin with no stored pool.
-      const stage0 = (await getCoinPools(ctx.db, coin.id)).length === 0;
       const result = await fetchCandles(
-        { db: ctx.db, codex: tracked(deps.codex, calls), clock: ctx.now },
+        { db: ctx.db, codex: deps.codex, clock: ctx.now },
         { id: coin.id, address: coin.address, chain: coin.chain },
       );
-      if (result.ok) {
-        const named = stage0 ? calls[0] === 'getLaunchInfo' && calls[1] !== 'getPools' : null;
-        return done(candlesDetail(result.summary, named));
-      }
+      // The issues this run found replace the stage's own open ones (only the kinds it examined).
+      const { issueRecords, issueKindsChecked } = result.summary;
+      const owned = new Set<string>([...issueKindsChecked, ...issueRecords.map((i) => i.kind)]);
+      await replaceCoinIssues(
+        ctx.db,
+        coin.id,
+        CANDLES_ISSUE_KINDS.filter((k) => owned.has(k)),
+        issueRecords,
+      );
+      if (result.ok) return done(candlesDetail(result.summary));
       if (result.reason === 'budget_exhausted') {
         stop(result.message);
         // The run's ceiling, not this coin's fault: retry in a later run, and do not count the attempt.
