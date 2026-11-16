@@ -9,6 +9,13 @@
  *   Status (read-only, from the database alone; works whether or not the process is running):
  *     tsx scripts/live.ts status
  *
+ *   Health (read-only, one transaction, no provider request, takes no lock: runs beside the live
+ *   process). One line per check, ok / warn / alert; exit 0 when nothing alerts, 1 when something
+ *   does, 2 for a usage error or a database it cannot read. A warn never changes the exit code.
+ *     tsx scripts/live.ts health [--json] [--limit NAME=VALUE]... [--monthly-codex-units N]
+ *       [--max-codex-units-per-day N]
+ *   --limit overrides one limit of `HealthLimits` (src/live/health.ts) and may be repeated.
+ *
  * Run it from the `ingest` directory (`pnpm -C ingest exec tsx scripts/live.ts ...`), with
  * DATABASE_URL, CODEX_API_KEY and HELIUS_API_KEY (and JUPITER_API_KEY if you have one) in the
  * environment (nothing prints them).
@@ -32,6 +39,12 @@
 import { parseArgs } from 'node:util';
 import { createReadOnlyDb } from '@memecoinipedia/db';
 import { collectLiveStatus, formatLiveStatus } from '../src/live/status.js';
+import {
+  applyLimitOverrides,
+  formatHealth,
+  healthExitCode,
+  runHealth,
+} from '../src/live/health.js';
 import { runLive } from '../src/live/run.js';
 import { installStopSignals } from '../src/shared/signals.js';
 import { consoleLogger, secretsFromEnv } from '../src/worker/log.js';
@@ -41,7 +54,9 @@ function usage(message?: string): never {
   process.stderr.write(
     'Usage: live.ts run [--max-codex-units-per-day N] [--codex-rps N] [--gateway-rps N]\n' +
       '                   [--max-attempts N] [--graduates-per-day N] [--confirm]\n' +
-      '       live.ts status\n',
+      '       live.ts status\n' +
+      '       live.ts health [--json] [--limit NAME=VALUE]... [--monthly-codex-units N]\n' +
+      '                      [--max-codex-units-per-day N]\n',
   );
   process.exit(message ? 2 : 0);
 }
@@ -57,7 +72,8 @@ function positive(name: string, value: string | undefined, integer = true): numb
 
 async function main(): Promise<void> {
   const [command, ...rest] = process.argv.slice(2);
-  if (command !== 'run' && command !== 'status')
+  if (command === '--help' || command === '-h') usage();
+  if (command !== 'run' && command !== 'status' && command !== 'health')
     usage(command ? `Unknown command "${command}"` : undefined);
   const { values } = parseArgs({
     args: rest,
@@ -68,6 +84,9 @@ async function main(): Promise<void> {
       'max-attempts': { type: 'string' },
       'graduates-per-day': { type: 'string' },
       confirm: { type: 'boolean', default: false },
+      json: { type: 'boolean', default: false },
+      limit: { type: 'string', multiple: true },
+      'monthly-codex-units': { type: 'string' },
       help: { type: 'boolean', default: false },
     },
     strict: true,
@@ -85,6 +104,48 @@ async function main(): Promise<void> {
     } finally {
       await db.destroy();
     }
+    return;
+  }
+
+  if (command === 'health') {
+    const url = process.env['DATABASE_URL'];
+    if (!url) usage('DATABASE_URL is not set');
+    let limits;
+    try {
+      limits = applyLimitOverrides(values.limit ?? []);
+    } catch (err) {
+      usage((err as Error).message);
+    }
+    const monthly = positive('--monthly-codex-units', values['monthly-codex-units'], false);
+    const ceiling = positive('--max-codex-units-per-day', values['max-codex-units-per-day'], false);
+    const now = new Date();
+    let report;
+    try {
+      const db = createReadOnlyDb(url);
+      try {
+        report = await runHealth(db, now, limits, {
+          ...(monthly !== undefined ? { monthlyCodexUnits: monthly } : {}),
+          ...(ceiling !== undefined ? { maxCodexUnitsPerDay: ceiling } : {}),
+        });
+      } finally {
+        await db.destroy();
+      }
+    } catch (err) {
+      let text = err instanceof Error ? err.message : String(err);
+      for (const s of secretsFromEnv(process.env))
+        if (s.length >= 6) text = text.split(s).join('[redacted]');
+      // 42P01: a table is missing, 42703: a column is missing. Either way the schema is behind.
+      const code = (err as { code?: unknown } | null)?.code;
+      const behind =
+        code === '42P01' || code === '42703'
+          ? ' The database schema is behind this code: migrations have not all been applied. ' +
+            'Run `pnpm --filter @memecoinipedia/db migrate`, then try again.'
+          : '';
+      process.stderr.write(`health: cannot read the database: ${text}.${behind}\n`);
+      process.exit(2);
+    }
+    out(values.json ? JSON.stringify(report) : formatHealth(report));
+    process.exitCode = healthExitCode(report);
     return;
   }
 
