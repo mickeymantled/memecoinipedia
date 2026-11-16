@@ -51,6 +51,7 @@ export interface MetricParams {
   minWindowVolumeUsd: number;
   minWindowTraders: number;
   minSecondaryPoolLiquidityUsd: number;
+  minWindowLiquidityUsd: number;
   carryForwardMaxSec: number;
   maxMarketCapUsd: number;
   /** Ascending. `MetricResult.secondsAbove` follows the same order. */
@@ -65,6 +66,7 @@ export const DEFAULT_METRIC_PARAMS: MetricParams = {
   minWindowVolumeUsd: 1_000,
   minWindowTraders: 5,
   minSecondaryPoolLiquidityUsd: 5_000,
+  minWindowLiquidityUsd: 5_000,
   carryForwardMaxSec: 86_400,
   maxMarketCapUsd: 20_000_000_000,
   thresholdsUsd: [100_000, 1_000_000, 10_000_000, 100_000_000],
@@ -90,6 +92,10 @@ export interface MetricResult {
   athWickMarketCapUsd: number | null;
   athWickAt: number | null;
   athWickPoolAddress: string | null;
+  /** Liquidity (USD) reported by the window that set the ATH, or null. */
+  athLiquidityUsd: number | null;
+  /** USD traded in the hour up to and including the ATH minute, all pools, or null. */
+  athHourVolumeUsd: number | null;
   /** Seconds at or above each threshold, in the order of `thresholdsUsd`. */
   secondsAbove: number[];
   /** 0 to 100, or null when there is no level series. */

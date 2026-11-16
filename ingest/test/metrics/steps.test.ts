@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { computeAth, computeWick, peakOutsideMinuteCoverage } from '../../src/metrics/ath.js';
+import {
+  athHourVolume,
+  computeAth,
+  computeWick,
+  peakOutsideMinuteCoverage,
+} from '../../src/metrics/ath.js';
 import { maxDrawdownPct } from '../../src/metrics/drawdown.js';
 import type { CleanPool, CoinPoint, LevelPoint } from '../../src/metrics/internal.js';
 import { buildLevelSeries } from '../../src/metrics/level.js';
 import { findCrashPoint, rugPattern } from '../../src/metrics/rug.js';
 import { holdSeconds, secondsAbove } from '../../src/metrics/timeAbove.js';
-import { DEFAULT_METRIC_PARAMS } from '../../src/metrics/types.js';
+import { DEFAULT_METRIC_PARAMS, type Bar } from '../../src/metrics/types.js';
 import { DAY, M0, bar } from './helpers.js';
 
 const SUPPLY = 1_000_000_000;
@@ -15,6 +20,7 @@ const pt = (t: number, price: number, strict = true, over: Partial<CoinPoint> = 
   price,
   high: over.high ?? price,
   strict,
+  liquidity: null,
   poolAddress: 'P',
   resolution: '1m',
   ...over,
@@ -35,6 +41,7 @@ describe('section 6: ATH and wick', () => {
       athAt: M0 + 60,
       athPoolAddress: 'Q',
       secondsToAth: 160,
+      athLiquidityUsd: null,
     });
     expect(athPrice).toBe(0.0003);
     expect(flags).toEqual([]);
@@ -80,56 +87,119 @@ describe('section 6: ATH and wick', () => {
       athAt: null,
       athPoolAddress: null,
       secondsToAth: null,
+      athLiquidityUsd: null,
     });
     expect(athPrice).toBeNull();
     expect(flags).toEqual(['no_qualifying_window']);
   });
 
-  it('wick is the highest of o, h, l, c over every bar of every resolution and pool', () => {
-    // Pool P minute bar: high 0.0004. Pool S hourly bar: high 0.0007 (the wick). Daily: 0.0005.
-    const pools: CleanPool[] = [
-      {
-        address: 'P',
-        isPrimary: true,
-        bars1m: [bar(M0, 0.0001, { h: 0.0004 })],
-        bars1h: [],
-        bars1d: [],
-      },
-      {
-        address: 'S',
-        isPrimary: false,
-        bars1m: [],
-        bars1h: [bar(M0 + 3_600, 0.0001, { h: 0.0007 })],
-        bars1d: [bar(DAY, 0.0005)],
-      },
-    ];
-    expect(computeWick(pools, SUPPLY)).toEqual({
-      athWickMarketCapUsd: 0.0007 * SUPPLY,
-      athWickAt: M0 + 3_600,
-      athWickPoolAddress: 'S',
-    });
-  });
-
-  it('wick: the earliest bar wins, and on equal t the smallest address, in either pool order', () => {
-    const mk = (address: string, t: number): CleanPool => ({
+  describe('wick', () => {
+    const NO_ATH = computeAth([], M0, SUPPLY);
+    const W = DEFAULT_METRIC_PARAMS;
+    const mkPool = (address: string, bars1m: Bar[], extra: Partial<CleanPool> = {}): CleanPool => ({
       address,
       isPrimary: true,
-      bars1m: [bar(t, 3)],
+      bars1m,
       bars1h: [],
       bars1d: [],
+      ...extra,
     });
-    const early = computeWick([mk('B', M0 + 60), mk('Z', M0)], SUPPLY);
-    expect(early.athWickAt).toBe(M0);
-    expect(computeWick([mk('B', M0), mk('A', M0)], SUPPLY).athWickPoolAddress).toBe('A');
-    expect(computeWick([mk('A', M0), mk('B', M0)], SUPPLY).athWickPoolAddress).toBe('A');
+    const wick = (pools: CleanPool[], ath = NO_ATH) => computeWick(pools, ath, W, SUPPLY);
+    const athAt = (price: number, t: number, address = 'P') =>
+      computeAth([pt(t, price, true, { poolAddress: address })], M0 - 100, SUPPLY);
+
+    it('is the highest max(open, close) of a candidate 1-minute bar; highs and lows do not count', () => {
+      const bars = [bar(M0, 0.0001, { h: 0.0009 }), bar(M0 + 60, 0.0002, { o: 0.0003 })];
+      expect(wick([mkPool('P', bars)])).toEqual({
+        athWickMarketCapUsd: 0.0003 * SUPPLY,
+        athWickAt: M0 + 60,
+        athWickPoolAddress: 'P',
+      });
+    });
+
+    it('ignores hourly and daily bars', () => {
+      const pools = [
+        mkPool('P', [bar(M0, 0.0001)], {
+          bars1h: [bar(M0 + 3_600, 0.0007)],
+          bars1d: [bar(DAY + 86_400, 0.0009)],
+        }),
+      ];
+      expect(wick(pools).athWickMarketCapUsd).toBe(0.0001 * SUPPLY);
+    });
+
+    it('ignores a thin minute: volume or traders under the window minimums', () => {
+      const bars = [
+        bar(M0, 0.0001),
+        bar(M0 + 60, 0.0005, { volumeUsd: 999 }),
+        bar(M0 + 120, 0.0006, { traders: 4 }),
+      ];
+      expect(wick([mkPool('P', bars)]).athWickAt).toBe(M0);
+      const exact = [bar(M0, 0.0001), bar(M0 + 60, 0.0005, { volumeUsd: 1_000, traders: 5 })];
+      expect(wick([mkPool('P', exact)]).athWickAt).toBe(M0 + 60);
+    });
+
+    it('ignores an unfunded minute, but a funded previous bar of the pool funds it', () => {
+      const bars = [
+        bar(M0, 0.0001, { liquidityUsd: 4_999 }),
+        bar(M0 + 60, 0.0005, { liquidityUsd: 4_999 }),
+      ];
+      expect(wick([mkPool('P', bars)]).athWickAt).toBeNull(); // neither bar is funded
+      const drained = [
+        bar(M0, 0.0001, { liquidityUsd: 5_000 }),
+        bar(M0 + 600, 0.0005, { liquidityUsd: 100 }), // not adjacent: still "previous"
+      ];
+      expect(wick([mkPool('P', drained)]).athWickAt).toBe(M0 + 600);
+      // Unknown liquidity counts as funded.
+      expect(wick([mkPool('P', [bar(M0, 0.0001)])]).athWickAt).toBe(M0);
+    });
+
+    it('is the ATH when the ATH is higher, or when there is no candidate', () => {
+      const bars = [bar(M0, 0.0001)];
+      const high = athAt(0.0003, M0 + 120, 'Q');
+      expect(wick([mkPool('P', bars)], high)).toEqual({
+        athWickMarketCapUsd: 0.0003 * SUPPLY,
+        athWickAt: M0 + 120,
+        athWickPoolAddress: 'Q',
+      });
+      const thin = [bar(M0, 0.0009, { volumeUsd: 5 })];
+      expect(wick([mkPool('P', thin)], high).athWickAt).toBe(M0 + 120);
+    });
+
+    it('stays on the candidate bar when the ATH price is equal', () => {
+      const tied = athAt(0.0001, M0 + 120, 'Q');
+      expect(wick([mkPool('P', [bar(M0, 0.0001)])], tied)).toMatchObject({
+        athWickAt: M0,
+        athWickPoolAddress: 'P',
+      });
+    });
+
+    it('the earliest bar wins, and on equal t the smallest address, in either pool order', () => {
+      const mk = (address: string, t: number): CleanPool => mkPool(address, [bar(t, 3)]);
+      expect(wick([mk('B', M0 + 60), mk('Z', M0)]).athWickAt).toBe(M0);
+      expect(wick([mk('B', M0), mk('A', M0)]).athWickPoolAddress).toBe('A');
+      expect(wick([mk('A', M0), mk('B', M0)]).athWickPoolAddress).toBe('A');
+    });
+
+    it('is null only with neither a candidate nor an ATH', () => {
+      expect(wick([])).toEqual({
+        athWickMarketCapUsd: null,
+        athWickAt: null,
+        athWickPoolAddress: null,
+      });
+    });
   });
 
-  it('wick is null without clean bars', () => {
-    expect(computeWick([], SUPPLY)).toEqual({
-      athWickMarketCapUsd: null,
-      athWickAt: null,
-      athWickPoolAddress: null,
-    });
+  it('athHourVolume sums 1-minute volume of every pool in (athAt - 3600, athAt]', () => {
+    const a = [bar(M0 - 60, 1, { volumeUsd: 7 }), bar(M0, 1, { volumeUsd: 10 })];
+    const b = [bar(M0 + 3_600, 1, { volumeUsd: 20 }), bar(M0 + 3_660, 1, { volumeUsd: 99 })];
+    const pools: CleanPool[] = [
+      { address: 'P', isPrimary: true, bars1m: a, bars1h: [], bars1d: [] },
+      { address: 'Q', isPrimary: true, bars1m: b, bars1h: [bar(M0 + 3_600, 1)], bars1d: [] },
+    ];
+    // At M0 + 3,600 the window is (M0, M0 + 3,600]: P's M0 bar is out, Q's bar at the end is in.
+    expect(athHourVolume(pools, M0 + 3_600)).toBe(20);
+    expect(athHourVolume(pools, M0)).toBe(17); // (M0 - 3,600, M0]
+    expect(athHourVolume(pools, null)).toBeNull();
   });
 
   it('peak_outside_minute_coverage: strict coarse point above the ATH, or any while the ATH is null', () => {

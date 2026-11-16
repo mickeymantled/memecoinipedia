@@ -25,6 +25,7 @@ export function buildCoinPoints(windows: readonly Window[]): CoinPoint[] {
       price: w.price,
       high: w.high,
       strict: w.strict,
+      liquidity: w.liquidity,
       poolAddress: w.poolAddress,
       resolution: w.resolution,
     }));

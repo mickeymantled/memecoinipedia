@@ -4,7 +4,7 @@ import { bar, input, minute, pool } from './build.js';
 export const isolatedBarAfterGap: MetricFixture = {
   name: 'isolated-bar-after-gap',
   description:
-    'A single high-volume bar eight minutes after the last trade has a one-bar window: never strict, so it cannot set the ATH or raise the level, but it sets the wick and still produces a level point.',
+    'A single high-volume bar eight minutes after the last trade has a one-bar window: never strict, so it cannot set the ATH or raise the level, but it still produces a level point; as a lone high-volume bar of its own it is also a wick candidate.',
   reasoning: `
 One primary pool. m0, m1: close .0002, 500 USD, 6 traders. m10: close .0004, 5,000 USD, 10 traders. asOf = m11, launchedAt = T0.
 
@@ -18,6 +18,8 @@ Wick: .0004 at m10 (T0+600): 400,000.
 Level: m1 sets .0002. m10 is not strict and its price is above the level: level stays .0002, a level point (m10, .0002) is still produced.
 Level points: m1, m10. Holds: m1->m10 540 s; m10 (T0+600) -> asOf (T0+660) 60 s. Total 600 above $100k.
 Drawdown 0. Rug false.
+
+Rules v4 (this paragraph supersedes any wick figure above). athLiquidityUsd null (no bar of the ATH window reports liquidity); athHourVolumeUsd 1,000 (volume of the clean 1-minute bars of every pool in the hour ending at m1). Wick: only a clean 1-minute bar with at least $1,000 of volume and 5 traders of its own, funded or of unknown liquidity, is a candidate, valued at max(open, close); the ATH takes over when higher. The wick is unchanged.
 `,
   input: input(
     [
@@ -37,6 +39,8 @@ Drawdown 0. Rug false.
     athWickMarketCapUsd: 400_000,
     athWickAt: 1_699_920_600,
     athWickPoolAddress: 'pool-a',
+    athLiquidityUsd: null,
+    athHourVolumeUsd: 1_000,
     secondsAbove: [600, 0, 0, 0],
     maxDrawdownPct: 0,
     rugPattern: false,
