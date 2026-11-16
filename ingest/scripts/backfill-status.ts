@@ -3,10 +3,11 @@
  * `default_transaction_read_only = on`, so the database refuses any write.
  *
  *   pnpm -C ingest exec tsx scripts/backfill-status.ts \
- *     [--min-rough-peak USD] [--limit N] [--order peak|hash] [--include-no-price]
+ *     [--min-rough-peak USD] [--limit N] [--order peak|hash] [--include-no-price] [--source NAME]
  *
  * With no options the selection is the one the last backfill run recorded. It needs DATABASE_URL
- * and makes no provider call.
+ * and makes no provider call. Without --source, coins of dune-curve-only (issue #102) are not
+ * counted; `--source dune-curve-only` shows that list.
  */
 import { parseArgs } from 'node:util';
 import { createReadOnlyDb, type SelectionSpec } from '@memecoinipedia/db';
@@ -16,7 +17,8 @@ import { secretsFromEnv } from '../src/worker/log.js';
 function usage(message?: string): never {
   if (message) process.stderr.write(`${message}\n\n`);
   process.stderr.write(
-    'Usage: backfill-status.ts [--min-rough-peak USD] [--limit N] [--order peak|hash] [--include-no-price]\n',
+    'Usage: backfill-status.ts [--min-rough-peak USD] [--limit N] [--order peak|hash] [--include-no-price]\n' +
+      '                          [--source NAME]\n',
   );
   process.exit(message ? 2 : 0);
 }
@@ -28,6 +30,7 @@ async function main(): Promise<void> {
       limit: { type: 'string' },
       order: { type: 'string' },
       'include-no-price': { type: 'boolean' },
+      source: { type: 'string' },
       help: { type: 'boolean', default: false },
     },
     strict: true,
@@ -51,6 +54,7 @@ async function main(): Promise<void> {
     ...(values.limit !== undefined ? { limit: num('--limit', values.limit)! } : {}),
     ...(values.order !== undefined ? { order: values.order } : {}),
     ...(values['include-no-price'] !== undefined ? { includeNoPrice: true } : {}),
+    ...(values.source ? { source: values.source } : {}),
   };
   const db = createReadOnlyDb(url);
   try {

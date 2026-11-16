@@ -134,6 +134,12 @@ export async function seedBackfillChunk(
 
 export type SelectionOrder = 'peak' | 'hash';
 
+/**
+ * `coins.discovery_source` of the coins that reached the rough-peak floor without graduating
+ * (issue #102). A selection leaves them out unless it names this source.
+ */
+export const CURVE_ONLY_DISCOVERY_SOURCE = 'dune-curve-only';
+
 export interface SelectionSpec {
   chain: string;
   /** Coins with a rough ATH at or above this. */
@@ -148,6 +154,12 @@ export interface SelectionSpec {
    * applied. Set `includeNoPrice` with it so the order walks coins with no rough ATH too.
    */
   coinIds?: readonly number[] | null;
+  /**
+   * Only coins whose `discovery_source` is this. Absent or null: every coin except those of
+   * `CURVE_ONLY_DISCOVERY_SOURCE`, so a command that does not ask for them selects what it
+   * selected before they existed. Not applied to `coinIds` unless given.
+   */
+  source?: string | null;
 }
 
 /** Where a coin stands in a selection's order. */
@@ -177,7 +189,16 @@ const colsOf = (alias: string) => ({
   hash: sql.ref(`${alias}.hash_order`),
 });
 
-const base = (spec: SelectionSpec, alias = 'c') => {
+/** The source part of a selection: the named source, or everything but the curve-only list. */
+function sourceCondition(source: string | null | undefined, alias: string) {
+  const ref = sql.ref(`${alias}.discovery_source`);
+  return source
+    ? sql`${ref} = ${source}`
+    : sql`${ref} is distinct from ${CURVE_ONLY_DISCOVERY_SOURCE}`;
+}
+
+/** The selection without its source part. */
+const baseWithoutSource = (spec: SelectionSpec, alias = 'c') => {
   const c = colsOf(alias);
   if (spec.coinIds) {
     return sql`${c.chain} = ${spec.chain} and ${c.id} = any(${[...spec.coinIds]}::bigint[])`;
@@ -186,6 +207,30 @@ const base = (spec: SelectionSpec, alias = 'c') => {
     ? sql`${c.chain} = ${spec.chain} and (${c.rough} >= ${spec.minRoughPeakUsd} or ${c.rough} is null)`
     : sql`${c.chain} = ${spec.chain} and ${c.rough} >= ${spec.minRoughPeakUsd}`;
 };
+
+const base = (spec: SelectionSpec, alias = 'c') => {
+  const b = baseWithoutSource(spec, alias);
+  if (spec.coinIds && !spec.source) return b;
+  return sql`${b} and ${sourceCondition(spec.source, alias)}`;
+};
+
+/**
+ * Coins the selection's rule would take but its source leaves out: with no source, the coins of
+ * `CURVE_ONLY_DISCOVERY_SOURCE` that pass the rest of the rule (the limit is not applied). With a
+ * source named, zero.
+ */
+export async function countLeftOutBySource(
+  db: Kysely<Database>,
+  spec: SelectionSpec,
+): Promise<number> {
+  if (spec.source || spec.coinIds) return 0;
+  const r = await sql<{ n: string }>`
+    select count(*)::text as n from coins c
+    where ${baseWithoutSource(spec)} and c.discovery_source = ${CURVE_ONLY_DISCOVERY_SOURCE}`.execute(
+    db,
+  );
+  return Number(r.rows[0]?.n ?? 0);
+}
 
 /** True for coins strictly after `k` in the order. */
 function after(spec: SelectionSpec, k: SelectionKey, alias = 'c') {
@@ -281,7 +326,7 @@ export const DEFAULT_GRADUATION_POOL_DELAY_SEC = 3_600;
 export async function selectCoinsByRule(
   db: Kysely<Database>,
   rule: CoinRule,
-  options: { chain?: string; maxDelaySeconds?: number } = {},
+  options: { chain?: string; maxDelaySeconds?: number; source?: string | null } = {},
 ): Promise<number[]> {
   const chain = options.chain ?? 'solana';
   const maxDelay = options.maxDelaySeconds ?? DEFAULT_GRADUATION_POOL_DELAY_SEC;
@@ -293,6 +338,7 @@ export async function selectCoinsByRule(
     select c.id::text as id
     from coins c
     where c.chain = ${chain}
+      and ${sourceCondition(options.source, 'c')}
       and (
         exists (
           select 1 from pools p

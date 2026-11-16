@@ -12,6 +12,7 @@
  */
 import fs from 'node:fs';
 import {
+  CURVE_ONLY_DISCOVERY_SOURCE,
   SEED_CHUNK,
   seedBackfillChunk,
   type BackfillSeedResult,
@@ -32,7 +33,7 @@ export const SEED_CHAIN = 'solana';
 export const SEED_LAUNCHPAD = 'pump.fun';
 export const DEFAULT_DISCOVERY_SOURCE = 'dune-graduates';
 /** `coins.discovery_source` of the curve-only list (issue #102). Selections key on it. */
-export const CURVE_ONLY_SOURCE = 'dune-curve-only';
+export const CURVE_ONLY_SOURCE = CURVE_ONLY_DISCOVERY_SOURCE;
 
 export interface SeedFileReport {
   /** Data records in the file, valid or not. */

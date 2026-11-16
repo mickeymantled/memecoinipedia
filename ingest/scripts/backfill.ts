@@ -10,10 +10,17 @@
  *
  *   Run (a dry run without --confirm: the selection, coins per stage and the estimate in units):
  *     tsx scripts/backfill.ts run [--min-rough-peak 30000] [--limit N] [--order peak|hash]
- *       [--include-no-price] [--stages candles,metrics,metadata[,metadata_file]]
+ *       [--include-no-price] [--source NAME] [--stages candles,metrics,metadata[,metadata_file]]
  *       [--codex-rps 100] [--concurrency 200] [--metrics-concurrency N] [--metadata-concurrency N]
  *       [--file-concurrency 3] [--db-pool 30] [--queue-pool 8] [--gateway-rps 1] [--max-attempts 3] [--retry-failed]
  *       [--max-codex-units N] [--max-helius-credits N] [--confirm]
+ *
+ *   --source on run and select (not the seed's --source, which names a file's source when
+ *   seeding) selects only the coins stored with that discovery source. Without it, coins of
+ *   dune-curve-only (coins that reached the peak floor without graduating, issue #102) are left
+ *   out, so every command selects what it selected before they were seeded; the dry run says how
+ *   many were left out. --source dune-curve-only selects them, with its own estimate; it works
+ *   with --limit and --order hash (for example 300 coins in hash order first, then the rest).
  *
  *   The metadata file (social links, the creator's own description and image) is a stage of its own,
  *   paced by the gateways and not in the default stages: tsx scripts/backfill.ts run --stages metadata_file
@@ -69,7 +76,7 @@ function usage(message?: string): never {
   process.stderr.write(
     'Usage: backfill.ts seed --file FILE [--list graduates|curve-only] [--source NAME] [--confirm]\n' +
       '       backfill.ts run [--min-rough-peak USD] [--limit N] [--order peak|hash]\n' +
-      '                       [--include-no-price] [--stages candles,metrics,metadata[,metadata_file]]\n' +
+      '                       [--include-no-price] [--source NAME] [--stages candles,metrics,metadata[,metadata_file]]\n' +
       '                       [--codex-rps N] [--concurrency N] [--metrics-concurrency N]\n' +
       '                       [--metadata-concurrency N] [--file-concurrency N]\n' +
       '                       [--db-pool N] [--queue-pool N]\n' +
@@ -77,7 +84,7 @@ function usage(message?: string): never {
       '                       [--max-codex-units N] [--max-helius-credits N] [--confirm]\n' +
       '       backfill.ts run --refresh-pools (--coins FILE | --rule late-graduation-pool)\n' +
       '                       [--max-codex-units N] [--confirm]\n' +
-      '       backfill.ts select --rule late-graduation-pool\n',
+      '       backfill.ts select --rule late-graduation-pool [--source NAME]\n',
   );
   process.exit(message ? 2 : 0);
 }
@@ -178,6 +185,7 @@ async function main(): Promise<void> {
     try {
       const ids = await selectCoinsByRule(db, rule, {
         maxDelaySeconds: DEFAULT_PLAN_LIMITS.maxGraduationPoolDelaySeconds,
+        ...(values.source ? { source: values.source } : {}),
       });
       for (const id of ids) out(String(id));
       process.stderr.write(`${ids.length} coins picked by ${rule}\n`);
@@ -232,6 +240,7 @@ async function main(): Promise<void> {
       includeNoPrice: values['include-no-price'],
       order,
       limit: limit ?? null,
+      ...(values.source ? { source: values.source } : {}),
     },
     stages: stages as BackfillStageName[],
     ...(rps !== undefined ? { codexRps: rps } : {}),

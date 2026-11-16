@@ -40,6 +40,49 @@ export interface BackfillEstimate {
   rows: CellEstimateRow[];
   coinsToDo: number;
   units: number;
+  /** Set for the curve-only list (`estimateCurveOnlyUnits`); `units` is the upper figure. */
+  curveOnly?: { screenUnitsPerCoin: number; restUnitsPerCoin: number; floorUnits: number };
+}
+
+/**
+ * The curve-only list (issue #102) has its own estimate: no coin has a graduation pool, so every
+ * coin makes the launch-record request (4 units), the pool-list request (4 units plus 0.0048 a
+ * pool, left out) and the daily screen on its curve (4 units): 12 units. Only a coin whose screen
+ * passes goes on: the first 1,500 minutes of the curve and one hourly request, 2 requests, 8
+ * units. Peak refinement and other pools' bars are not counted. The list holds coins whose
+ * hourly peak was $100,000 or more, so most pass the screen (it stops a coin under $90,000);
+ * `units` counts every coin as passing, `floorUnits` none.
+ */
+export const CURVE_ONLY_SCREEN_UNITS = 12;
+export const CURVE_ONLY_REST_UNITS = 8;
+
+export function estimateCurveOnlyUnits(counts: RoughPeakCounts): BackfillEstimate {
+  const total = counts.counts.reduce((s, x) => s + x, 0) + counts.noPrice;
+  const done = counts.done.reduce((s, x) => s + x, 0) + counts.doneNoPrice;
+  const toDo = Math.max(0, total - done);
+  const per = CURVE_ONLY_SCREEN_UNITS + CURVE_ONLY_REST_UNITS;
+  return {
+    rows:
+      toDo === 0
+        ? []
+        : [
+            {
+              label: 'curve-only',
+              coins: total,
+              alreadyDone: done,
+              toDo,
+              unitsPerCoin: per,
+              units: toDo * per,
+            },
+          ],
+    coinsToDo: toDo,
+    units: toDo * per,
+    curveOnly: {
+      screenUnitsPerCoin: CURVE_ONLY_SCREEN_UNITS,
+      restUnitsPerCoin: CURVE_ONLY_REST_UNITS,
+      floorUnits: toDo * CURVE_ONLY_SCREEN_UNITS,
+    },
+  };
 }
 
 /** The units a backfill of the counted coins would spend: the coins still to do, by cell. */
