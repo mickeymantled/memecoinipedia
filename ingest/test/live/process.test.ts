@@ -201,7 +201,12 @@ describeDb('the dry run', () => {
     // Through a connection that cannot write.
     const ro = createReadOnlyDb(f.t.url);
     try {
-      const o = liveOptions(f, { confirm: false, db: ro, graduatesPerDay: 1_000 });
+      const o = liveOptions(f, {
+        confirm: false,
+        db: ro,
+        graduatesPerDay: 1_000,
+        now: f.clock.now,
+      });
       const report = await runLive(o);
       expect(report.status).toBe('dry_run');
       expect(report.runId).toBeNull();
