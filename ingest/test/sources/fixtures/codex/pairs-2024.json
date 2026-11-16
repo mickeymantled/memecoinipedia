@@ -1,0 +1,413 @@
+{
+  "data": {
+    "listPairsWithMetadataForToken": {
+      "results": [
+        {
+          "liquidity": "446676",
+          "volume": "70795",
+          "quoteToken": "token1",
+          "backingToken": {
+            "address": "So11111111111111111111111111111111111111112",
+            "symbol": "SOL"
+          },
+          "exchange": {
+            "name": "Raydium"
+          },
+          "pair": {
+            "address": "93tjgwff5Ac5ThyMi8C4WejVVQq4tuMeMuYW1LEYZ7bu",
+            "createdAt": 1731701303,
+            "protocol": "RaydiumV4",
+            "exchangeHash": "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
+            "token0": "So11111111111111111111111111111111111111112",
+            "token1": "Df6yfrKC8kZE3KNkrHERKzAetSxbrWeniQfyJY4Jpump"
+          }
+        },
+        {
+          "liquidity": "467",
+          "volume": "16",
+          "quoteToken": "token1",
+          "backingToken": {
+            "address": "So11111111111111111111111111111111111111112",
+            "symbol": "SOL"
+          },
+          "exchange": {
+            "name": "Orca"
+          },
+          "pair": {
+            "address": "4Eq688gAJRJiRzhFR4tKpVyRhknDvC8UkqsLmfsEzFFX",
+            "createdAt": 1732062383,
+            "protocol": "Orca",
+            "exchangeHash": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
+            "token0": "So11111111111111111111111111111111111111112",
+            "token1": "Df6yfrKC8kZE3KNkrHERKzAetSxbrWeniQfyJY4Jpump"
+          }
+        },
+        {
+          "liquidity": "2059",
+          "volume": "7",
+          "quoteToken": "token1",
+          "backingToken": {
+            "address": "3KroURETdWLyFReapbdh6nTWQgS7Y6rorLY8jb1pJXoM",
+            "symbol": "MOOSK"
+          },
+          "exchange": {
+            "name": "Raydium CPMM"
+          },
+          "pair": {
+            "address": "CNTVj1FBgZVzLTuC2EdfzUVAqAR9jMnbqUnnJ9iPWvVa",
+            "createdAt": 1741730497,
+            "protocol": "RaydiumCpmm",
+            "exchangeHash": "CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C",
+            "token0": "3KroURETdWLyFReapbdh6nTWQgS7Y6rorLY8jb1pJXoM",
+            "token1": "Df6yfrKC8kZE3KNkrHERKzAetSxbrWeniQfyJY4Jpump"
+          }
+        },
+        {
+          "liquidity": "1563",
+          "volume": "4",
+          "quoteToken": "token1",
+          "backingToken": {
+            "address": "HSLLxqCjiK4NYsRohH2DYkLHBA7nuxPDqA5NvmS8sPTn",
+            "symbol": "Larp"
+          },
+          "exchange": {
+            "name": "PumpSwap"
+          },
+          "pair": {
+            "address": "DVn57A8UmyUCRJdbSkJg8HS5Bs4KHTbs4bofjVffpgDR",
+            "createdAt": 1791820218,
+            "protocol": "PumpAmm",
+            "exchangeHash": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+            "token0": "HSLLxqCjiK4NYsRohH2DYkLHBA7nuxPDqA5NvmS8sPTn",
+            "token1": "Df6yfrKC8kZE3KNkrHERKzAetSxbrWeniQfyJY4Jpump"
+          }
+        },
+        {
+          "liquidity": "1933",
+          "volume": "2",
+          "quoteToken": "token1",
+          "backingToken": {
+            "address": "5h9qt27Rn5o26WvshrBt5868SdTGD715HEM7Q6jkGTcb",
+            "symbol": "CHILLGIRL"
+          },
+          "exchange": {
+            "name": "Raydium CPMM"
+          },
+          "pair": {
+            "address": "EP5HxmfTKzLLfHh4jAdVo3oWSMqijv6knPyk36vsRgiU",
+            "createdAt": 1789655797,
+            "protocol": "RaydiumCpmm",
+            "exchangeHash": "CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C",
+            "token0": "5h9qt27Rn5o26WvshrBt5868SdTGD715HEM7Q6jkGTcb",
+            "token1": "Df6yfrKC8kZE3KNkrHERKzAetSxbrWeniQfyJY4Jpump"
+          }
+        },
+        {
+          "liquidity": "36",
+          "volume": "1",
+          "quoteToken": "token1",
+          "backingToken": {
+            "address": "2zMMhcVQEXDtdE6vsFS7S7D5oUodfJHE8vd1gnBouauv",
+            "symbol": "PENGU"
+          },
+          "exchange": {
+            "name": "Orca"
+          },
+          "pair": {
+            "address": "E5yhqqjrnVqxcS6xW9trZv3deJbPYakvmD7acTHFoSda",
+            "createdAt": 1734803711,
+            "protocol": "Orca",
+            "exchangeHash": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
+            "token0": "2zMMhcVQEXDtdE6vsFS7S7D5oUodfJHE8vd1gnBouauv",
+            "token1": "Df6yfrKC8kZE3KNkrHERKzAetSxbrWeniQfyJY4Jpump"
+          }
+        },
+        {
+          "liquidity": "23",
+          "volume": "1",
+          "quoteToken": "token1",
+          "backingToken": {
+            "address": "So11111111111111111111111111111111111111112",
+            "symbol": "SOL"
+          },
+          "exchange": {
+            "name": "Orca"
+          },
+          "pair": {
+            "address": "FtfgQtHpmawbdUBZAoopZBNKQpwomBoE5LM2KDh4JuZk",
+            "createdAt": 1732238056,
+            "protocol": "Orca",
+            "exchangeHash": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
+            "token0": "So11111111111111111111111111111111111111112",
+            "token1": "Df6yfrKC8kZE3KNkrHERKzAetSxbrWeniQfyJY4Jpump"
+          }
+        },
+        {
+          "liquidity": "17",
+          "volume": "1",
+          "quoteToken": "token0",
+          "backingToken": {
+            "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            "symbol": "USDC"
+          },
+          "exchange": {
+            "name": "Orca"
+          },
+          "pair": {
+            "address": "5HygKG1zJK7zb6w6Vy3xuoKp2ubjTNLEgQqg2k5pZw7x",
+            "createdAt": 1732067307,
+            "protocol": "Orca",
+            "exchangeHash": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
+            "token0": "Df6yfrKC8kZE3KNkrHERKzAetSxbrWeniQfyJY4Jpump",
+            "token1": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+          }
+        },
+        {
+          "liquidity": "11",
+          "volume": "0",
+          "quoteToken": "token0",
+          "backingToken": {
+            "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            "symbol": "USDC"
+          },
+          "exchange": {
+            "name": "Orca"
+          },
+          "pair": {
+            "address": "A95aaGRHmpjQRsMNGmeknGEGa97sjNp8FWoB2EWnEYpK",
+            "createdAt": 1732165362,
+            "protocol": "Orca",
+            "exchangeHash": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
+            "token0": "Df6yfrKC8kZE3KNkrHERKzAetSxbrWeniQfyJY4Jpump",
+            "token1": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+          }
+        },
+        {
+          "liquidity": "13",
+          "volume": "0",
+          "quoteToken": "token1",
+          "backingToken": {
+            "address": "Aw8qLRHGhMcKq7rxs5XBNCd9oe3BvoAhpNMVz7AdGmty",
+            "symbol": "PANDA"
+          },
+          "exchange": {
+            "name": "Orca"
+          },
+          "pair": {
+            "address": "2bPYJx1JSg5cHvpYpWLZWtRuW7rQxyuPZ9G8CeQjiHaF",
+            "createdAt": 1732194055,
+            "protocol": "Orca",
+            "exchangeHash": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
+            "token0": "Aw8qLRHGhMcKq7rxs5XBNCd9oe3BvoAhpNMVz7AdGmty",
+            "token1": "Df6yfrKC8kZE3KNkrHERKzAetSxbrWeniQfyJY4Jpump"
+          }
+        },
+        {
+          "liquidity": "1",
+          "volume": "0",
+          "quoteToken": "token0",
+          "backingToken": {
+            "address": "3EMheh5MPVWpAGDdXnGBgs6uaukKL29zv65uuXxspump",
+            "symbol": "IMT"
+          },
+          "exchange": {
+            "name": "Meteora Pools"
+          },
+          "pair": {
+            "address": "GGkxZF5NCkNBDiebqaVPNkLP4HjWmFJXBb7t5MNRMZMz",
+            "createdAt": 1746782177,
+            "protocol": "MeteoraPools",
+            "exchangeHash": "Eo7WjKq67rjJQSZxS6z3YkapzY3eMj6Xy8X5EQVn5UaB",
+            "token0": "Df6yfrKC8kZE3KNkrHERKzAetSxbrWeniQfyJY4Jpump",
+            "token1": "3EMheh5MPVWpAGDdXnGBgs6uaukKL29zv65uuXxspump"
+          }
+        },
+        {
+          "liquidity": "38",
+          "volume": "0",
+          "quoteToken": "token0",
+          "backingToken": {
+            "address": "9xbgwwXdzJYv8sLmVCFsRSNKwzCCNQWiEhWVGNhWCNGE",
+            "symbol": "Pawel"
+          },
+          "exchange": {
+            "name": "Meteora Pools"
+          },
+          "pair": {
+            "address": "C5Zzo6XHXZVEah1RVAa5cnXHU8kMW3CJ8hijPuipQRd1",
+            "createdAt": 1734470137,
+            "protocol": "MeteoraPools",
+            "exchangeHash": "Eo7WjKq67rjJQSZxS6z3YkapzY3eMj6Xy8X5EQVn5UaB",
+            "token0": "Df6yfrKC8kZE3KNkrHERKzAetSxbrWeniQfyJY4Jpump",
+            "token1": "9xbgwwXdzJYv8sLmVCFsRSNKwzCCNQWiEhWVGNhWCNGE"
+          }
+        },
+        {
+          "liquidity": "4",
+          "volume": "0",
+          "quoteToken": "token1",
+          "backingToken": {
+            "address": "9BB6NFEcjBCtnNLFko2FqVQBq8HHM13kCyYcdQbgpump",
+            "symbol": "FARTCOIN"
+          },
+          "exchange": {
+            "name": "Orca"
+          },
+          "pair": {
+            "address": "2Y8CkgZGJCYirgod3nqrPhNLw44pucvFPLBNJJVWr7nc",
+            "createdAt": 1732286925,
+            "protocol": "Orca",
+            "exchangeHash": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
+            "token0": "9BB6NFEcjBCtnNLFko2FqVQBq8HHM13kCyYcdQbgpump",
+            "token1": "Df6yfrKC8kZE3KNkrHERKzAetSxbrWeniQfyJY4Jpump"
+          }
+        },
+        {
+          "liquidity": "5",
+          "volume": "0",
+          "quoteToken": "token1",
+          "backingToken": {
+            "address": "3LNQD9bZjiNhS2ZAgBdMoHZ1rYK7k8XdEetnGogTpump",
+            "symbol": "NotChill"
+          },
+          "exchange": {
+            "name": "Raydium CLMM"
+          },
+          "pair": {
+            "address": "BZKvV64CAYU5ekqFBaBkT5RnkJYwb3vnaVHP9fyNfRmp",
+            "createdAt": 1732158282,
+            "protocol": "RaydiumClmm",
+            "exchangeHash": "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK",
+            "token0": "3LNQD9bZjiNhS2ZAgBdMoHZ1rYK7k8XdEetnGogTpump",
+            "token1": "Df6yfrKC8kZE3KNkrHERKzAetSxbrWeniQfyJY4Jpump"
+          }
+        },
+        {
+          "liquidity": "7",
+          "volume": "1",
+          "quoteToken": "token1",
+          "backingToken": {
+            "address": "HUzHR6cEtSPqYNh9YRh9J2udoGwGGuZ5tEvEoxFfDREV",
+            "symbol": "CHURNHOUSE"
+          },
+          "exchange": {
+            "name": "Meteora DAMM"
+          },
+          "pair": {
+            "address": "2jYZVQ499UkbjNKyHp7Bwhee8sA3ib9vpjN1wprnnzSF",
+            "createdAt": 1777711114,
+            "protocol": "MeteoraDAMMV2",
+            "exchangeHash": "cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG",
+            "token0": "HUzHR6cEtSPqYNh9YRh9J2udoGwGGuZ5tEvEoxFfDREV",
+            "token1": "Df6yfrKC8kZE3KNkrHERKzAetSxbrWeniQfyJY4Jpump"
+          }
+        },
+        {
+          "liquidity": "5",
+          "volume": "0",
+          "quoteToken": "token1",
+          "backingToken": {
+            "address": "C3dpGA9wZjGWtoLts48BhEaHaAcVbDPRaQyPSeTduPTH",
+            "symbol": "WASTED"
+          },
+          "exchange": {
+            "name": "Raydium CPMM"
+          },
+          "pair": {
+            "address": "E4s5n91mRFQiCgi1q2cinzMZzbv1SvpoJdXgBKo4LLk1",
+            "createdAt": 1735922851,
+            "protocol": "RaydiumCpmm",
+            "exchangeHash": "CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C",
+            "token0": "C3dpGA9wZjGWtoLts48BhEaHaAcVbDPRaQyPSeTduPTH",
+            "token1": "Df6yfrKC8kZE3KNkrHERKzAetSxbrWeniQfyJY4Jpump"
+          }
+        },
+        {
+          "liquidity": "6",
+          "volume": "0",
+          "quoteToken": "token1",
+          "backingToken": {
+            "address": "3v39wuiJ4kGzsmd1w4DCFDWfGC2ScaJ9mXfZJaXvoREV",
+            "symbol": "ESR"
+          },
+          "exchange": {
+            "name": "Meteora DAMM"
+          },
+          "pair": {
+            "address": "EdTSmuLTM2FVQcc44GZmLpEhitMCHwvgx5266WBcG3Ab",
+            "createdAt": 1785028159,
+            "protocol": "MeteoraDAMMV2",
+            "exchangeHash": "cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG",
+            "token0": "3v39wuiJ4kGzsmd1w4DCFDWfGC2ScaJ9mXfZJaXvoREV",
+            "token1": "Df6yfrKC8kZE3KNkrHERKzAetSxbrWeniQfyJY4Jpump"
+          }
+        },
+        {
+          "liquidity": "0",
+          "volume": "0",
+          "quoteToken": "token1",
+          "backingToken": {
+            "address": "FCfRpeNjVDN5fFztjWHDobibC3nirgjsBHcJhHuzmnir",
+            "symbol": "SQUEEZE"
+          },
+          "exchange": {
+            "name": "LaunchLab"
+          },
+          "pair": {
+            "address": "6VrE5XjNrKR1vCCdEmXCJq5Gr9QEkQG5A5DXszeq9xLJ",
+            "createdAt": 1789160714,
+            "protocol": "RaydiumLaunchpad",
+            "exchangeHash": "LanMV9sAd7wArD4vJFi2qDdfnVhFxYSUg6eADduJ3uj",
+            "token0": "FCfRpeNjVDN5fFztjWHDobibC3nirgjsBHcJhHuzmnir",
+            "token1": "Df6yfrKC8kZE3KNkrHERKzAetSxbrWeniQfyJY4Jpump"
+          }
+        },
+        {
+          "liquidity": "0",
+          "volume": "0",
+          "quoteToken": "token1",
+          "backingToken": {
+            "address": "F9NvtnZej5KNiv3EdYM6QsQpHzaVZZVnRZ85SRZXuzvK",
+            "symbol": "SQUEEZE"
+          },
+          "exchange": {
+            "name": "LaunchLab"
+          },
+          "pair": {
+            "address": "9JsL7Dx8Sxm4Cse5GTZJj5CyzfxrJcku8mhYrr8bkW1",
+            "createdAt": 1789160575,
+            "protocol": "RaydiumLaunchpad",
+            "exchangeHash": "LanMV9sAd7wArD4vJFi2qDdfnVhFxYSUg6eADduJ3uj",
+            "token0": "F9NvtnZej5KNiv3EdYM6QsQpHzaVZZVnRZ85SRZXuzvK",
+            "token1": "Df6yfrKC8kZE3KNkrHERKzAetSxbrWeniQfyJY4Jpump"
+          }
+        },
+        {
+          "liquidity": "7",
+          "volume": "0",
+          "quoteToken": "token1",
+          "backingToken": {
+            "address": "9xzmB67zWX8PJiGpQFbWuNBXTqyPpu2qV3mxQfhqUREV",
+            "symbol": "CSR"
+          },
+          "exchange": {
+            "name": "Meteora DAMM"
+          },
+          "pair": {
+            "address": "FBFnHBMmkrjC7HRr9PKoRYpfPABW9RaT4ThwZjnSUFUc",
+            "createdAt": 1783801775,
+            "protocol": "MeteoraDAMMV2",
+            "exchangeHash": "cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG",
+            "token0": "9xzmB67zWX8PJiGpQFbWuNBXTqyPpu2qV3mxQfhqUREV",
+            "token1": "Df6yfrKC8kZE3KNkrHERKzAetSxbrWeniQfyJY4Jpump"
+          }
+        }
+      ]
+    },
+    "usageData": {
+      "total": {
+        "computeUnits": "5200000"
+      }
+    }
+  }
+}
