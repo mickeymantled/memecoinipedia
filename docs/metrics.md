@@ -8,7 +8,7 @@ The thresholds are starting values. Task A6 tunes them against the 500-coin samp
 
 - `totalSupply`: 1,000,000,000 for every pump.fun coin. Market cap is always price times `totalSupply`.
 - `launchedAt`: when the coin was created, unix seconds.
-- `asOf`: the end of the observation period, unix seconds. Bars that start after `asOf` are ignored.
+- `asOf`: the end of the observation period, unix seconds. Bars that start after `asOf` are ignored. A bar that starts at or before `asOf` is kept whole, even when its bucket ends later.
 - `pools`: every pool we hold bars for. Each pool has:
   - `address`, `dex`
   - `isPrimary`: true for the pump.fun bonding curve and for the pool the coin graduated into. False for every other pool.
@@ -22,7 +22,7 @@ The thresholds are starting values. Task A6 tunes them against the 500-coin samp
   - `liquidityUsd`: pool liquidity in USD, or null when unknown.
 - Only buckets with at least one trade have a bar. A missing minute means nobody traded.
 
-Bars may arrive unsorted. Sort each list by `t` before use. The result must not depend on the order of bars or of pools in the input.
+Bars may arrive unsorted. Sort each list by `t` before use. The result must not depend on the order of bars or of pools in the input, with one exception: when a list holds two bars with the same `t`, the later one in the input wins (section 3, rule 4). Pool addresses are unique within an input.
 
 ## 2. Parameters
 
@@ -39,23 +39,27 @@ Bars may arrive unsorted. Sort each list by `t` before use. The result must not 
 | `rugWithinSec` | 1,800 | How soon after ATH the fall must happen |
 | `rugRecoveryFraction` | 0.5 | A later recovery to this share of ATH cancels the rug |
 
-All comparisons against a parameter are inclusive: a window with exactly $1,000 of volume counts, and a market cap of exactly $100,000 is above the $100k threshold.
+All comparisons against a parameter are inclusive: a window with exactly $1,000 of volume counts, and a market cap of exactly $100,000 is above the $100k threshold. They allow a relative tolerance of 1e-12, so a value that sits exactly on a limit in decimal terms is not lost to binary rounding.
+
+`windowMinutes` must be 2 or more.
 
 ## 3. Step 1: clean the bars
 
-Apply in this order, to every resolution:
+Apply in this order, to every resolution. A bar dropped by one rule takes no part in the rules after it.
 
 1. Ignore bars with `t` greater than `asOf`.
 2. Drop a bar if any of `o`, `h`, `l`, `c` is not a finite number above zero, or `volumeUsd` is not a finite number of zero or more. Raise the flag `bad_bar`.
 3. Drop a bar if the largest of `o`, `h`, `l`, `c` times `totalSupply` is above `maxMarketCapUsd`. Raise the flag `implausible_market_cap`. The whole bar goes, not only the bad field.
 4. If a pool has two bars with the same `t` at the same resolution, keep the one that comes last in the input and raise the flag `duplicate_bar`.
-5. Drop every bar of a non-primary pool whose `liquidityUsd` is null or below `minSecondaryPoolLiquidityUsd`. No flag. Bars of primary pools are never dropped for liquidity.
+5. Drop every bar of a non-primary pool whose `liquidityUsd` is null, not a finite number, or below `minSecondaryPoolLiquidityUsd`. No flag. Bars of primary pools are never dropped for liquidity.
+
+In a bar that is kept, a `traders` or `trades` value that is not a finite number of zero or more counts as zero.
 
 What is left are the clean bars.
 
 ## 4. Step 2: windows
 
-**1-minute bars.** For each clean 1-minute bar at time `t` in a pool, its window is that pool's clean 1-minute bars in the `windowMinutes` minutes ending at `t`. With the default of 3 those are the bars at `t - 120`, `t - 60` and `t`, and between one and three of them are present.
+**1-minute bars.** For each clean 1-minute bar at time `t` in a pool, its window is that pool's clean 1-minute bars in the `windowMinutes` minutes ending at `t`: the bars at `t - 60k` for `k` from 0 to `windowMinutes - 1`. With the default of 3 those are the bars at `t - 120`, `t - 60` and `t`, and between one and three of them are present.
 
 - `price`: the lower median of the closes present. With three bars that is the middle close. With two bars it is the lower close. With one bar it is that bar's close. (For an even count, the lower median is the lower of the two middle values.)
 - `volume`: the sum of `volumeUsd` over the bars present.
@@ -66,11 +70,11 @@ The effect with the default window: a price counts as reached only if at least t
 
 **Hourly and daily bars.** Each clean bar is its own window: `price` is its close, `volume` its `volumeUsd`, `traders` its `traders`. `strict` is true when `volume` is at least `minWindowVolumeUsd` and `traders` is at least `minWindowTraders`.
 
-**Finer data wins.** An hourly bar is not used as a window when any pool has a clean 1-minute bar inside that hour. A daily bar is not used as a window when any pool has a clean 1-minute or hourly bar inside that day. Those bars still count for the wick in step 4.
+**Finer data wins.** An hourly bar is not used as a window when any pool has a clean 1-minute bar inside that hour. A daily bar is not used as a window when any pool has a clean 1-minute or hourly bar inside that day, whether or not that hourly bar is itself used as a window. "Inside" means the finer bar's `t` is at or after the coarse bar's `t` and before the end of its bucket. Only clean bars count: a bar that was dropped suppresses nothing. Suppressed bars still count for the wick in step 4.
 
 ## 5. Step 3: one point per timestamp
 
-Group the windows from all pools by `t`. Where more than one pool has a window at the same `t`, keep the window with the largest `volume`. On a tie, a primary pool wins; on a further tie, the pool with the smallest address by string comparison.
+Group the windows from all pools by `t`. Where more than one pool has a window at the same `t`, keep the window with the largest `volume`. On a tie, a primary pool wins; on a further tie, the pool with the smallest address. Addresses are compared as plain strings by character code, which is case-sensitive, never by locale.
 
 Each kept window is a **coin point**: `t`, `price`, `strict`, pool, resolution.
 
@@ -156,3 +160,7 @@ These are requirements on ingestion (task A5), listed here because the rules abo
 - A coin that spikes for exactly one minute on real volume gets an ATH below that minute's close. That is the price of rejecting single-candle wicks. The raw figure is kept as the wick, and A6 reviews the coins where the two differ most.
 - A sustained data error that stays under $20 billion and lasts two minutes with volume would pass. A6 reviews every coin whose wick is far above its ATH and every coin whose ATH is far from the cross-check source.
 - Requiring five wallets in a single minute is stricter than five across the window. Very slow, genuine markets can fail it. A6 measures how often.
+- A single point that is not strict can lower the level. On the busiest pool that is normally a true state of the pool. But a lone print from a side pool in a minute when the main pool is silent, or one bad low bar, lowers the level too. That can cut time-above short, inflate the drawdown and set the rug pattern, and the level only comes back at the next strict point. A6 counts how often one point that is not strict moves the level by more than half. The candidate fix is to let the level drop to a price only after two consecutive points at or below it.
+- Hourly and daily closes are stamped at the start of their bucket, so a level taken from one starts up to a bucket early.
+- A busier window that is not strict hides a strict one in the same minute. One large trade on a side pool can outweigh the main pool's three-minute volume, and that minute then yields a point that cannot raise the level or set the ATH. The error is on the cautious side: it can understate, never overstate. Preferring strict windows was considered and rejected, because it would let a marginal side pool set the price whenever the main pool traded heavily among a few wallets. A6 counts how often this happens at the peak.
+- The first two or three windows of a coin are noisy, because one early bad bar sits in every one of them.
