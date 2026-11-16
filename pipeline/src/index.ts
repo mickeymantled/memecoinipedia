@@ -13,3 +13,6 @@ export * from './classify/schema.js';
 export * from './classify/store.js';
 export * from './classify/synthetic.js';
 export * from './eval/index.js';
+export * from './classify/parent-eval.js';
+export * from './classify/parent-index.js';
+export * from './classify/parent-score.js';

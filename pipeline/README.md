@@ -34,6 +34,8 @@ measure the system prompt instead of estimating it.
 | `src/classify/estimate.ts`, `plan.ts`, `pricing.ts` | 6. dry run and the spend ceiling |
 | `src/classify/file-store.ts` | 7. file mode |
 | `scripts/classify.ts` | 8. the script |
+| `src/classify/parent-score.ts`, `parent-index.ts` | B5 (#69): parent candidates. Normalisation, stop list, named weights and the pure score; the in-memory index and `createParentCandidateProvider(db)` (an `ExtrasProvider`; combine with a research provider via `combineExtras`). Not wired into a run yet (one line, with B7) |
+| `scripts/parent-candidates-eval.ts`, `src/classify/parent-eval.ts` | B5: rank of the true parent and recall at 1, 3, 10 for a CSV of `child_address,parent_address` (read-only; `DATABASE_URL`) |
 | `src/classify/anthropic.ts` | the only file that imports `@anthropic-ai/sdk` (pinned at 1.8.0) |
 
 ## Sources for every API fact used
