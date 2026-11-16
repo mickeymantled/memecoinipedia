@@ -286,6 +286,26 @@ export async function selectCoinsByRule(
   return r.rows.map((x) => Number(x.id));
 }
 
+/**
+ * Puts the failed rows of `stages` for coins inside the selection back to pending with zero
+ * attempts (a full set of retries). Rows of coins outside the selection are left alone. Returns the
+ * number of rows changed.
+ */
+export async function requeueFailedInSelection(
+  db: Kysely<Database>,
+  sel: ResolvedSelection,
+  stages: readonly string[],
+  now: Date,
+): Promise<number> {
+  if (stages.length === 0) return 0;
+  const r = await sql`
+    update coin_stages s set status = 'pending', attempts = 0, updated_at = ${now}
+    from coins c
+    where c.id = s.coin_id and s.status = 'failed' and s.stage = any(${[...stages]}::text[])
+      and ${selectionCondition(sel)}`.execute(db);
+  return Number(r.numAffectedRows ?? 0);
+}
+
 /** Resolves the limit into a key (an index walk of `limit` rows) and counts the selection. */
 export async function resolveSelection(
   db: Kysely<Database>,
