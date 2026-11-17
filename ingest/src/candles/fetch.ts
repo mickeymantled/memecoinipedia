@@ -5,6 +5,7 @@ import {
   getCoinPools,
   getCoverage,
   loadMetricInput,
+  markPoolsListed,
   putBars,
   moveGraduationPool,
   PoolClaimedByTwoCoinsError,
@@ -75,6 +76,8 @@ export async function fetchCandlesForCoin(
 ): Promise<FetchCandlesResult> {
   const { db, codex } = deps;
   const chain = coin.chain ?? 'solana';
+  const refresh = coin.refreshPools === true || coin.refreshPools === 'top-up';
+  const topUp = coin.refreshPools === 'top-up';
   let asOf = Math.floor(deps.clock().getTime() / 1000);
   const limits = { ...DEFAULT_PLAN_LIMITS, ...stripUndefined(options.limits) };
   const maxSecondaryPools = options.maxSecondaryPools ?? DEFAULT_MAX_SECONDARY_POOLS;
@@ -147,7 +150,7 @@ export async function fetchCandlesForCoin(
     // A pool from the list carries its creation time; one named by launch info alone does not.
     listed = stored.some((p) => p.createdAtChain !== null);
 
-    if (stored.length > 0 && coin.refreshPools === true) {
+    if (stored.length > 0 && refresh) {
       // A refresh: list the pools again under the current rules and store the ones not held. The
       // coin's own record stands in for launch info (the stored graduation pool is the named one,
       // the stored graduation time the migration), so the refresh costs one list request. The
@@ -166,17 +169,19 @@ export async function fetchCandlesForCoin(
       for (const p of stored) {
         for (const c of await getCoverage(db, p.id, 86400)) heldUntil = Math.max(heldUntil, c.to);
       }
-      if (heldUntil > 0) {
+      // A top-up goes on to the clock: the held pools get their new bars and the new pools theirs.
+      if (heldUntil > 0 && !topUp) {
         asOf = Math.min(asOf, heldUntil);
         summary.asOf = asOf;
       }
-    } else if (stored.length === 0 || coin.refreshPools === true) {
+    } else if (stored.length === 0 || refresh) {
       // Stage 0: launch info, and the pool list only when launch info names no migrated pool.
       const launch = await launchInfo();
       launchedAt ??= launch.createdAt;
       graduatedAt ??= launch.migratedAt;
       await fillCoinTimes(launch);
-      if (limits.staged && launch.migratedPoolAddress !== null && coin.refreshPools !== true) {
+      // A top-up of a coin with no stored pool is a first fetch, shortcut included; a refresh lists.
+      if (limits.staged && launch.migratedPoolAddress !== null && (!refresh || topUp)) {
         summary.launchInfoNamedPool = true;
         await upsertPoolUnlessOwned({
           chain,
@@ -406,9 +411,13 @@ export async function fetchCandlesForCoin(
    * nothing usable stops the coin; later it just leaves the pools as they are.
    */
   async function lookupPools(launch: LaunchInfo, stage0: boolean): Promise<void> {
+    // Only a top-up of a coin that holds pools leaves the roles alone; at stage 0 it is a first fetch.
+    const keepRole = topUp && !stage0;
     summary.lookupRequests += 1;
     const listing = await codex.getPools(coin.address, meter);
     listed = true;
+    // Whatever the list holds, it was read now: the live top-up reads it again only when it is old.
+    await markPoolsListed(db, coin.id, deps.clock());
     const selection = selectPools({
       pools: listing,
       migratedPoolAddress: launch.migratedPoolAddress,
@@ -453,20 +462,38 @@ export async function fetchCandlesForCoin(
     if (selection.curve) await put(selection.curve.address, selection.curve, 'curve', 'unknown');
     if (selection.graduation) {
       const held = stored.find((p) => p.isGraduationPool);
-      if (held !== undefined && held.address !== selection.graduation.address) {
+      if (keepRole && (held === undefined || held.address !== selection.graduation.address)) {
+        // A top-up never moves (or sets) the graduation role: the coin's metrics and its ATH pool
+        // rest on it. Recorded for a refresh to settle; the listed pool is not stored.
+        issue('graduation_pool_differs', {
+          storedPool: held?.address ?? null,
+          listedPool: selection.graduation.address,
+          source: selection.graduation.source,
+        });
+      } else if (held !== undefined && held.address !== selection.graduation.address) {
         await moveGraduationRole(selection.graduation);
       } else {
         await put(selection.graduation.address, selection.graduation.pool, 'graduation', 'unknown');
       }
     }
     // Other pools are stored now so a later run needs no second list; only the full path fetches them.
-    for (const p of selection.others) await put(p.address, p, 'other', 'unknown');
+    for (const p of selection.others) {
+      // A top-up that left the graduation role alone must not demote the pool that holds it.
+      if (
+        topUp &&
+        stored.some((s) => s.address === p.address && (s.isPrimary || s.isGraduationPool))
+      ) {
+        continue;
+      }
+      await put(p.address, p, 'other', 'unknown');
+    }
 
     summary.skippedOtherPools = selection.skippedOthers;
     summary.otherQuotePools = selection.otherQuotePools + clashed.size;
     summary.graduationPoolUnverified = selection.graduation?.unverified ?? false;
     checked('graduation_pool_not_found');
     checked('graduation_pool_late');
+    checked('graduation_pool_differs');
     for (const i of selection.issues) issue(i.kind, i.detail);
   }
 

@@ -2,11 +2,18 @@
  * The daily refresh and the candle top-up (issue #74), against a throwaway database, a simulated
  * Codex.io and Jupiter, and a clock the test moves by hand. Nothing here reaches a provider.
  */
-import { ensureStages, insertLiveGraduates } from '@memecoinipedia/db';
+import {
+  bumpLiveCounters,
+  ensureStages,
+  insertLiveGraduates,
+  setLiveState,
+} from '@memecoinipedia/db';
 import { sql } from 'kysely';
 import { afterEach, expect, it } from 'vitest';
 import {
   JUPITER_FREE_RPS,
+  STATE_SETTINGS,
+  dayKey,
   REFRESH_MINTS_PER_REQUEST,
   TOPUP_STOP_SHARE,
 } from '../../src/live/constants.js';
@@ -251,6 +258,28 @@ describeDb('the status report and Jupiter pauses', () => {
     expect(status.today).toMatchObject({ jupiterPauses: 3, jupiterSecondsPaused: 150 });
     expect(formatLiveStatus(status)).toMatch(/paused 3 times after HTTP 429 for 150 s in all/);
   });
+
+  it('prints the pool-list reads the top-up handed out today beside its count, with the most a day allows', async () => {
+    fx = await liveFixture();
+    const f = fx;
+    await setLiveState(
+      f.db,
+      STATE_SETTINGS,
+      { maxCodexUnitsPerDay: 40_000, runId: f.runId },
+      f.clock.now(),
+    );
+    await bumpLiveCounters(
+      f.db,
+      dayKey(f.clock.now()),
+      { topup: 12, topup_lists: 7 },
+      f.clock.now(),
+    );
+    const status = await collectLiveStatus(f.db, f.clock.now());
+    expect(status.today).toMatchObject({ topUp: 12, topUpLists: 7, topUpListsMax: 1_000 });
+    expect(formatLiveStatus(status)).toMatch(
+      /top-up reopened 12 coins, 7 of them handed a pool-list read \(at most 1,000 a day\)/,
+    );
+  });
 });
 
 describeDb('the candle top-up', () => {
@@ -302,7 +331,7 @@ describeDb('the candle top-up', () => {
 
     const queuedBefore = f.queued.length;
     const pass = await topUpOnce(f.deps);
-    expect(pass).toEqual({ status: 'ran', queued: 1 });
+    expect(pass).toEqual({ status: 'ran', queued: 1, lists: 0 });
     const ids = f.queued.slice(queuedBefore).flatMap((q) => q.ids);
     expect(ids).toEqual([(await row(f, top.mint)).id]);
     expect(ids).not.toContain((await row(f, low.mint)).id);
@@ -348,7 +377,7 @@ describeDb('the candle top-up', () => {
       } as unknown as CodexDayGate,
     };
     expect((await refreshOnce(atCeiling)).status).toBe('done');
-    expect(await topUpOnce(atCeiling)).toEqual({ status: 'paused', queued: 0 });
+    expect(await topUpOnce(atCeiling)).toEqual({ status: 'paused', queued: 0, lists: 0 });
     expect(f.queued).toEqual([]);
     // Under the stop share the same coin is queued.
     const open = {
@@ -357,6 +386,6 @@ describeDb('the candle top-up', () => {
         snapshot: () => ({ usedToday: 0, ceiling, open: true, opensAt: null }),
       } as unknown as CodexDayGate,
     };
-    expect(await topUpOnce(open)).toEqual({ status: 'ran', queued: 1 });
+    expect(await topUpOnce(open)).toEqual({ status: 'ran', queued: 1, lists: 0 });
   });
 });

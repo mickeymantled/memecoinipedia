@@ -142,6 +142,8 @@ export interface BackfillRegistryOptions {
   candlesAdmit?: () => boolean;
   /** Coins whose candles stage lists the pools again (a refresh run). */
   refreshPools?: (coinId: number) => boolean;
+  /** Coins whose old pool list the live top-up reads again (issue #87). */
+  topUpPools?: (coinId: number) => boolean;
   /** How long Jupiter's rate limit holds the metadata stage, in milliseconds. Absent: for the run (a backfill stops on it). */
   metadataStopHoldMs?: number;
 }
@@ -173,6 +175,7 @@ export function buildBackfillRegistry(o: BackfillRegistryOptions): {
     candles = createCandlesStage({
       codex: o.clients.codex,
       ...(o.refreshPools ? { refreshPools: o.refreshPools } : {}),
+      ...(o.topUpPools ? { topUpPools: o.topUpPools } : {}),
     });
     const own = candles;
     const extra = o.candlesAdmit;

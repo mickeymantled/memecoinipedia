@@ -33,8 +33,10 @@ import {
   REFRESH_LISTED_USD,
   REFRESH_MINTS_PER_REQUEST,
   ASSUMED_LISTED_COINS,
+  TOPUP_POOL_LIST_MAX_AGE_DAYS,
   TOPUP_STOP_SHARE,
   UNITS_PER_TOPUP,
+  topUpListsPerDay,
   STATE_DISCOVERY_CURSOR,
   SWEEP_REREAD_SECONDS,
   UNITS_PER_LAST_LOOK,
@@ -192,6 +194,13 @@ export interface LivePlan {
   topUp: TopUpCounts;
   /** Codex.io units the top-up would spend if every selected coin were fetched. */
   topUpUnits: number;
+  /**
+   * List requests a day for the pool lists the top-up reads again (issue #87): `dueNow` is the
+   * selected coins whose list is already old (what the first top-up would find), `today` the part
+   * of it a day allows (the cap), `steadyPerDay` the selected coins over the limit in days (a coin
+   * selected every day is read once in that many days). Units: `UNITS_PER_REQUEST` each.
+   */
+  topUpLists: { dueNow: number; cap: number; today: number; steadyPerDay: number; units: number };
   maxCodexUnitsPerDay: number;
   /** False when the model's Codex.io units a day are above the ceiling. */
   withinCeiling: boolean;
@@ -242,9 +251,25 @@ export async function planLive(
     listedSource: listedCounted > 0 ? 'database' : 'assumed',
     topUp,
     topUpUnits: topUp.total * UNITS_PER_TOPUP,
+    topUpLists: topUpListEstimate(topUp, o.maxCodexUnitsPerDay),
     maxCodexUnitsPerDay: o.maxCodexUnitsPerDay,
     withinCeiling: load.codex.units <= o.maxCodexUnitsPerDay,
     stateTable,
+  };
+}
+
+export function topUpListEstimate(
+  topUp: TopUpCounts,
+  ceilingUnits: number,
+): LivePlan['topUpLists'] {
+  const cap = topUpListsPerDay(ceilingUnits);
+  const today = Math.min(topUp.poolListDue, cap);
+  return {
+    dueNow: topUp.poolListDue,
+    cap,
+    today,
+    steadyPerDay: Math.ceil(topUp.total / TOPUP_POOL_LIST_MAX_AGE_DAYS),
+    units: today * UNITS_PER_REQUEST,
   };
 }
 
@@ -305,6 +330,14 @@ export function formatLivePlan(p: LivePlan): string {
       `${n(p.topUp.byStaleBars)} by rule 2 (newest bar over 7 days old), a coin can match both; ` +
       `expected ${n(p.topUpUnits)} Codex.io units at ${UNITS_PER_TOPUP} each, spent after discovery, new coins and later triggers, ` +
       `and stopping at ${Math.round(TOPUP_STOP_SHARE * 100)}% of the ceiling.`,
+  );
+  const tl = p.topUpLists;
+  lines.push(
+    `  Pool lists  the top-up reads a coin's pool list again when it is over ${TOPUP_POOL_LIST_MAX_AGE_DAYS} days old, ` +
+      `one request of about ${UNITS_PER_REQUEST} units each, counted in the ceiling: ` +
+      `${n(tl.dueNow)} of the selected coins are due now, so the first top-up makes ${n(tl.today)} list requests ` +
+      `(${n(tl.units)} units; at most ${n(tl.cap)} a day, a coin left out is due the next day); ` +
+      `afterwards about ${n(tl.steadyPerDay)} a day (${n(tl.steadyPerDay * UNITS_PER_REQUEST)} units) at this many selected coins.`,
   );
   lines.push(
     `  Helius    ${n(l.helius.requests)} requests, ${n(l.helius.credits)} credits a day (metadata of listed coins, at most).`,

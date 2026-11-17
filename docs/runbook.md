@@ -104,6 +104,41 @@ The daily Codex.io ceiling is always in force: 40,000 units a day unless you pas
 `--max-codex-units-per-day N`. How to tell it worked: the log says `live run N started`, and after a
 minute `live.ts health` shows `ok` for `process`.
 
+**The top-up reads a coin's pool list again when it is old** (issue #87). The daily candle top-up
+extends the bars of the pools a coin holds; a coin whose pool list was last read more than 14
+days ago (`TOPUP_POOL_LIST_MAX_AGE_DAYS`) also gets one list request, through the same path as
+`backfill run --refresh-pools`: new pools are stored under the current rules, their bars are
+fetched with the others' up to the clock, and the metrics are recomputed. The request is one more
+Codex.io request of about 4 units and counts against the daily ceiling like any other; none is
+made while the gate is closed, and the top-up hands out at most a tenth of the ceiling a day to
+them (1,000 requests at 40,000 units). The time of the read is `coins.pools_listed_at`. A coin
+with no stored time (every coin that existed when migration 0022 was applied) is aged by its
+newest stored pool, else by its last finished candles; the first days after this shipped, most
+selected coins are therefore due, and the daily share spreads those reads over the days that
+follow (a coin left out is due again the next day). The dry run prints the list requests it
+expects ("Pool lists" line). A top-up never moves the graduation role: when the list names another
+graduation pool than the stored one it records the data issue `graduation_pool_differs` (stored
+and listed pool, source) and leaves the role. The rule `late-graduation-pool` selects such a coin
+(a stored graduation pool created more than the distance from the graduation, or no graduation
+pool on a coin whose candles are done), because the top-up has closed the old
+`graduation_pool_late` or `graduation_pool_not_found` issue that would have excluded it. To settle
+them, stop the live process (a refresh takes the pipeline lock), look first, then run:
+
+```
+pnpm -C ingest exec tsx --env-file=../.env scripts/backfill.ts select --rule late-graduation-pool | wc -l
+pnpm -C ingest exec tsx --env-file=../.env scripts/backfill.ts run --refresh-pools --rule late-graduation-pool
+pnpm -C ingest exec tsx --env-file=../.env scripts/backfill.ts run --refresh-pools --rule late-graduation-pool --max-codex-units N --confirm
+```
+
+(the second prints the estimate, the third spends: one list request a coin, so N is about 5 times the count). The refresh moves or
+sets the role and closes `graduation_pool_differs`. The rule also picks coins that were never
+read under the current distance, so the count can be higher than the open issues. No command shows
+open data issues by kind; count them with
+`psql "$DATABASE_URL" -c "select kind, count(*) from data_issues where resolved_at is null and kind = 'graduation_pool_differs' group by kind"`. Only
+a coin on the full path (highest daily high of $1,000,000 or more, or a Dune peak far above it)
+has the bars of pools other than its graduation pool fetched, as in a refresh: for a coin on the
+light path the new pool is stored and its bars wait.
+
 **You want to stop the live process.**
 
 Press Ctrl-C in its terminal, or send it SIGTERM. What is running finishes, then it prints the
