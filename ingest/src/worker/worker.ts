@@ -69,8 +69,6 @@ export interface PipelineWorkerOptions {
   stageTimeoutSeconds?: number;
   /** Connections in pg-boss's own pool. Default pg-boss's own (10). */
   queuePoolSize?: number;
-  /** Called after jobs are queued, with the stage and the coin ids. */
-  onEnqueued?: (stage: StageName, coinIds: readonly number[]) => void;
   pollingIntervalSeconds?: number;
   monitorIntervalSeconds?: number;
   schema?: string;
@@ -296,7 +294,6 @@ export class PipelineWorker {
   }
 
   private async enqueue(stage: StageName, coinIds: readonly number[]): Promise<void> {
-    if (coinIds.length > 0) this.opts.onEnqueued?.(stage, coinIds);
     for (let i = 0; i < coinIds.length; i += PAGE) {
       await this.boss.insert(
         queueName(stage),

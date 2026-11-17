@@ -66,6 +66,7 @@ import {
   DEFAULT_QUEUE_POOL,
   FEED_PAGE,
   MAX_CONNECTIONS,
+  METADATA_GATE_OUTSTANDING,
   OUTSTANDING_PER_SLOT,
 } from './defaults.js';
 import { Feeder } from './feeder.js';
@@ -592,13 +593,17 @@ export async function runBackfill(opts: BackfillOptions): Promise<BackfillReport
       // Jobs an earlier run left are removed before any handler takes one.
       await worker.start({ clearQueued: true });
 
+      const gateStage = BACKFILL_STAGES.find((x) => stages.includes(x));
       const feeder = new Feeder({
         db,
         worker,
         selection: plan.selection,
         maxOutstanding:
-          opts.maxQueued ?? Math.max(FEED_PAGE * 2, candlesConcurrency * OUTSTANDING_PER_SLOT),
-        gateStage: BACKFILL_STAGES.find((x) => stages.includes(x)),
+          opts.maxQueued ??
+          (gateStage === 'metadata'
+            ? METADATA_GATE_OUTSTANDING
+            : Math.max(FEED_PAGE * 2, candlesConcurrency * OUTSTANDING_PER_SLOT)),
+        gateStage,
         pageSize: opts.feedPage ?? FEED_PAGE,
         log: opts.log,
         signal: stopCtl.signal,

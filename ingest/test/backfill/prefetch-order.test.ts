@@ -236,6 +236,23 @@ describeDb('metadata prefetch follows the head of the queue (#118)', () => {
   );
 
   it(
+    'a metadata-only run with the default feeder settings: full Helius batches',
+    { timeout: 180_000 },
+    async () => {
+      await seed(COINS, true);
+      const stop = new AbortController();
+      const { clients, counts } = countingClients(() => stop.abort());
+      const report = await runBackfill(
+        backfillOptions({ stages: ['metadata'], clients, signal: stop.signal }),
+      );
+      expect(counts.heliusRequests).toBeLessThanOrEqual(Math.ceil(COINS / 1000) + SLACK);
+      expect(counts.jupiterRequests).toBeLessThanOrEqual(Math.ceil(COINS / 100) + SLACK);
+      expect(report.status).toBe('done');
+      expect(await stageCount('metadata')).toBe(COINS);
+    },
+  );
+
+  it(
     'the live process started with metadata jobs left in the queue by an earlier process',
     { timeout: 180_000 },
     async () => {
