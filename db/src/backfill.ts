@@ -29,6 +29,12 @@ export interface BackfillSeedRow {
   creatorWallet: string | null;
   graduatedAt: Date | null;
   roughAthMarketCapUsd: number | null;
+  /**
+   * The creation event's mayhem flag; null or absent when the file does not carry it. A true
+   * (from the file or already stored) is never turned back; otherwise a stored value is kept and
+   * a null stored value takes the file's.
+   */
+  isMayhemMode?: boolean | null;
 }
 
 export interface BackfillSeedResult {
@@ -66,18 +72,21 @@ export async function seedBackfillChunk(
   await db.transaction().execute(async (trx) => {
     const touched = await sql<{ inserted: boolean }>`
       insert into coins (chain, address, launchpad, launched_at, creator_wallet, graduated_at,
-                         discovery_source, rough_ath_market_cap_usd)
+                         discovery_source, rough_ath_market_cap_usd, is_mayhem_mode)
       select ${opts.chain}, t.address, t.launchpad, t.launched_at, t.creator_wallet, t.graduated_at,
-             ${opts.discoverySource}, t.rough
+             ${opts.discoverySource}, t.rough, t.mayhem
       from unnest(
         ${addresses}::text[],
         ${unique.map((r) => r.launchpad)}::text[],
         ${unique.map((r) => r.launchedAt)}::timestamptz[],
         ${unique.map((r) => r.creatorWallet)}::text[],
         ${unique.map((r) => r.graduatedAt)}::timestamptz[],
-        ${unique.map((r) => r.roughAthMarketCapUsd)}::float8[]
-      ) as t(address, launchpad, launched_at, creator_wallet, graduated_at, rough)
+        ${unique.map((r) => r.roughAthMarketCapUsd)}::float8[],
+        ${unique.map((r) => r.isMayhemMode ?? null)}::boolean[]
+      ) as t(address, launchpad, launched_at, creator_wallet, graduated_at, rough, mayhem)
       on conflict (chain, address) do update set
+        is_mayhem_mode = case when coins.is_mayhem_mode is true or excluded.is_mayhem_mode is true then true
+                              else coalesce(coins.is_mayhem_mode, excluded.is_mayhem_mode) end,
         launchpad = coalesce(coins.launchpad, excluded.launchpad),
         launched_at = coalesce(coins.launched_at, excluded.launched_at),
         creator_wallet = coalesce(coins.creator_wallet, excluded.creator_wallet),
@@ -92,6 +101,10 @@ export async function seedBackfillChunk(
          or (coins.discovery_source is null and excluded.discovery_source is not null)
          or (excluded.rough_ath_market_cap_usd is not null
              and coins.rough_ath_market_cap_usd is distinct from excluded.rough_ath_market_cap_usd)
+         or (excluded.is_mayhem_mode is not null
+             and coins.is_mayhem_mode is distinct from
+                 (case when coins.is_mayhem_mode is true or excluded.is_mayhem_mode is true then true
+                       else coalesce(coins.is_mayhem_mode, excluded.is_mayhem_mode) end))
       returning (xmax = 0) as inserted
     `.execute(trx);
     const inserted = touched.rows.filter((r) => r.inserted).length;
@@ -117,9 +130,95 @@ export async function seedBackfillChunk(
   return result;
 }
 
+/** What `applyMayhemFlags` found (or, in a dry run, would do) for a list of (address, flag) pairs. */
+export interface MayhemFlagResult {
+  /** Distinct addresses given. */
+  given: number;
+  /** Given with true / with false. */
+  givenTrue: number;
+  givenFalse: number;
+  /** Addresses that are no coin in the database (nothing is inserted). */
+  notFound: number;
+  /** Coins whose flag changes: null to true, null to false, false to true. */
+  setTrue: number;
+  setFalse: number;
+  /** Coins already holding a true, which stays true whatever the file says. */
+  keptTrue: number;
+  /** Coins already holding the file's value. */
+  unchanged: number;
+}
+
+/**
+ * Loads Mayhem Mode flags onto coins that are already in the database (it inserts nothing). A true
+ * from either side stays true; a false only fills a null. With `apply` false nothing is written
+ * and the result says what would change. Same rule as the seed's merge.
+ */
+export async function applyMayhemFlags(
+  db: Kysely<Database>,
+  pairs: readonly { address: string; isMayhemMode: boolean }[],
+  opts: { chain: string; apply: boolean; now: Date },
+): Promise<MayhemFlagResult> {
+  const byAddress = new Map<string, boolean>();
+  for (const p of pairs) {
+    byAddress.set(p.address, (byAddress.get(p.address) ?? false) || p.isMayhemMode);
+  }
+  const addresses = [...byAddress.keys()];
+  const flags = addresses.map((a) => byAddress.get(a) as boolean);
+  const result: MayhemFlagResult = {
+    given: addresses.length,
+    givenTrue: flags.filter((f) => f).length,
+    givenFalse: flags.filter((f) => !f).length,
+    notFound: 0,
+    setTrue: 0,
+    setFalse: 0,
+    keptTrue: 0,
+    unchanged: 0,
+  };
+  if (addresses.length === 0) return result;
+  const r = await sql<{ kind: string; n: string }>`
+    select case
+             when c.id is null then 'not_found'
+             when c.is_mayhem_mode is true and not t.flag then 'kept_true'
+             when c.is_mayhem_mode is not distinct from t.flag then 'unchanged'
+             when t.flag then 'set_true'
+             when c.is_mayhem_mode is null then 'set_false'
+             else 'unchanged' end as kind,
+           count(*)::text as n
+    from unnest(${addresses}::text[], ${flags}::boolean[]) as t(address, flag)
+    left join coins c on c.chain = ${opts.chain} and c.address = t.address
+    group by 1`.execute(db);
+  for (const row of r.rows) {
+    const n = Number(row.n);
+    if (row.kind === 'not_found') result.notFound = n;
+    else if (row.kind === 'kept_true') result.keptTrue = n;
+    else if (row.kind === 'unchanged') result.unchanged = n;
+    else if (row.kind === 'set_true') result.setTrue = n;
+    else if (row.kind === 'set_false') result.setFalse = n;
+  }
+  if (opts.apply && result.setTrue + result.setFalse > 0) {
+    await sql`
+      update coins c
+      set is_mayhem_mode = case when c.is_mayhem_mode is true or t.flag then true
+                                else coalesce(c.is_mayhem_mode, t.flag) end,
+          updated_at = ${opts.now}
+      from unnest(${addresses}::text[], ${flags}::boolean[]) as t(address, flag)
+      where c.chain = ${opts.chain} and c.address = t.address
+        and c.is_mayhem_mode is distinct from
+            (case when c.is_mayhem_mode is true or t.flag then true
+                  else coalesce(c.is_mayhem_mode, t.flag) end)`.execute(db);
+  }
+  return result;
+}
+
 // ------------------------------------------------------------------ selection
 
 export type SelectionOrder = 'peak' | 'hash';
+
+/**
+ * `coins.discovery_source` of the coins that reached the rough-peak floor without graduating
+ * (issue #102). A selection leaves them out unless it names this source.
+ */
+export const CURVE_ONLY_DISCOVERY_SOURCE = 'dune-curve-only';
 
 export interface SelectionSpec {
   chain: string;
@@ -135,6 +234,12 @@ export interface SelectionSpec {
    * applied. Set `includeNoPrice` with it so the order walks coins with no rough ATH too.
    */
   coinIds?: readonly number[] | null;
+  /**
+   * Only coins whose `discovery_source` is this. Absent or null: every coin except those of
+   * `CURVE_ONLY_DISCOVERY_SOURCE`, so a command that does not ask for them selects what it
+   * selected before they existed. Not applied to `coinIds` unless given.
+   */
+  source?: string | null;
 }
 
 /** Where a coin stands in a selection's order. */
@@ -164,7 +269,16 @@ const colsOf = (alias: string) => ({
   hash: sql.ref(`${alias}.hash_order`),
 });
 
-const base = (spec: SelectionSpec, alias = 'c') => {
+/** The source part of a selection: the named source, or everything but the curve-only list. */
+function sourceCondition(source: string | null | undefined, alias: string) {
+  const ref = sql.ref(`${alias}.discovery_source`);
+  return source
+    ? sql`${ref} = ${source}`
+    : sql`${ref} is distinct from ${CURVE_ONLY_DISCOVERY_SOURCE}`;
+}
+
+/** The selection without its source part. */
+const baseWithoutSource = (spec: SelectionSpec, alias = 'c') => {
   const c = colsOf(alias);
   if (spec.coinIds) {
     return sql`${c.chain} = ${spec.chain} and ${c.id} = any(${[...spec.coinIds]}::bigint[])`;
@@ -173,6 +287,30 @@ const base = (spec: SelectionSpec, alias = 'c') => {
     ? sql`${c.chain} = ${spec.chain} and (${c.rough} >= ${spec.minRoughPeakUsd} or ${c.rough} is null)`
     : sql`${c.chain} = ${spec.chain} and ${c.rough} >= ${spec.minRoughPeakUsd}`;
 };
+
+const base = (spec: SelectionSpec, alias = 'c') => {
+  const b = baseWithoutSource(spec, alias);
+  if (spec.coinIds && !spec.source) return b;
+  return sql`${b} and ${sourceCondition(spec.source, alias)}`;
+};
+
+/**
+ * Coins the selection's rule would take but its source leaves out: with no source, the coins of
+ * `CURVE_ONLY_DISCOVERY_SOURCE` that pass the rest of the rule (the limit is not applied). With a
+ * source named, zero.
+ */
+export async function countLeftOutBySource(
+  db: Kysely<Database>,
+  spec: SelectionSpec,
+): Promise<number> {
+  if (spec.source || spec.coinIds) return 0;
+  const r = await sql<{ n: string }>`
+    select count(*)::text as n from coins c
+    where ${baseWithoutSource(spec)} and c.discovery_source = ${CURVE_ONLY_DISCOVERY_SOURCE}`.execute(
+    db,
+  );
+  return Number(r.rows[0]?.n ?? 0);
+}
 
 /** True for coins strictly after `k` in the order. */
 function after(spec: SelectionSpec, k: SelectionKey, alias = 'c') {
@@ -255,7 +393,9 @@ export const DEFAULT_GRADUATION_POOL_DELAY_SEC = 3_600;
  *   2. has a graduation pool with no creation time (named by launch info, never listed) whose first
  *      stored bar starts more than a day after the graduation time, or that holds no bar on a coin
  *      whose candles are done, or
- *   3. has no graduation pool and its candles stage is done.
+ *   3. has a graduation time, no graduation pool and its candles stage is done. A coin with no
+ *      graduation time (a never-graduated curve, issue #102) is never picked by this branch: it
+ *      has no graduation pool to be missing.
  * A pool or a coin with no time is never late by (1).
  *
  * A coin with an open `graduation_pool_late` or `graduation_pool_not_found` issue whose detail
@@ -266,7 +406,7 @@ export const DEFAULT_GRADUATION_POOL_DELAY_SEC = 3_600;
 export async function selectCoinsByRule(
   db: Kysely<Database>,
   rule: CoinRule,
-  options: { chain?: string; maxDelaySeconds?: number } = {},
+  options: { chain?: string; maxDelaySeconds?: number; source?: string | null } = {},
 ): Promise<number[]> {
   const chain = options.chain ?? 'solana';
   const maxDelay = options.maxDelaySeconds ?? DEFAULT_GRADUATION_POOL_DELAY_SEC;
@@ -278,6 +418,7 @@ export async function selectCoinsByRule(
     select c.id::text as id
     from coins c
     where c.chain = ${chain}
+      and ${sourceCondition(options.source, 'c')}
       and (
         exists (
           select 1 from pools p
@@ -295,7 +436,8 @@ export async function selectCoinsByRule(
             )
         )
         or (
-          ${candlesDone}
+          c.graduated_at is not null
+          and ${candlesDone}
           and not exists (
             select 1 from pools p where p.coin_id = c.id and p.is_graduation_pool
           )

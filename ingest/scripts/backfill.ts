@@ -2,14 +2,27 @@
  * The backfill: seed the candidate list, then run the stages over a selection of it.
  *
  *   Seed (writes only; no provider call; needs --confirm to write):
- *     tsx scripts/backfill.ts seed --file FILE [--source NAME] [--confirm]
+ *     tsx scripts/backfill.ts seed --file FILE [--list graduates|curve-only] [--source NAME] [--confirm]
+ *   --list says which candidate list the file is (default graduates; never guessed from the file).
+ *   With curve-only the file has no graduation times (a row that has one is rejected), the source
+ *   is always dune-curve-only (--source is refused with it, and dune-curve-only is refused with
+ *   graduates: the selection leaves the list out by that name) and the file's is_mayhem_mode
+ *   column is stored. For graduates a blank
+ *   graduation time is rejected, as before.
  *
  *   Run (a dry run without --confirm: the selection, coins per stage and the estimate in units):
  *     tsx scripts/backfill.ts run [--min-rough-peak 30000] [--limit N] [--order peak|hash]
- *       [--include-no-price] [--stages candles,metrics,metadata[,metadata_file]]
+ *       [--include-no-price] [--source NAME] [--stages candles,metrics,metadata[,metadata_file]]
  *       [--codex-rps 100] [--concurrency 200] [--metrics-concurrency N] [--metadata-concurrency N]
  *       [--file-concurrency 3] [--db-pool 30] [--queue-pool 8] [--gateway-rps 1] [--max-attempts 3] [--retry-failed]
  *       [--max-codex-units N] [--max-helius-credits N] [--confirm]
+ *
+ *   --source on run and select (not the seed's --source, which names a file's source when
+ *   seeding) selects only the coins stored with that discovery source. Without it, coins of
+ *   dune-curve-only (coins that reached the peak floor without graduating, issue #102) are left
+ *   out, so every command selects what it selected before they were seeded; the dry run says how
+ *   many were left out. --source dune-curve-only selects them, with its own estimate; it works
+ *   with --limit and --order hash (for example 300 coins in hash order first, then the rest).
  *
  *   The metadata file (social links, the creator's own description and image) is a stage of its own,
  *   paced by the gateways and not in the default stages: tsx scripts/backfill.ts run --stages metadata_file
@@ -25,7 +38,7 @@
  *   It refuses to run without --coins or --rule.
  *   --rule NAME picks the coins from the database instead of a file; the rule is
  *   late-graduation-pool: a graduation pool created more than 3,600 seconds after the coin's
- *   graduation time, or no graduation pool on a coin whose candles are done. It asks no provider.
+ *   graduation time, or no graduation pool on a graduate (a coin with a graduation time) whose candles are done. A coin with no graduation time is never picked. It asks no provider.
  *     tsx scripts/backfill.ts run --refresh-pools --rule late-graduation-pool [--confirm ...]
  *
  *   Print the coins a rule picks, one id a line, to a file for --coins (no provider call, no write;
@@ -53,18 +66,24 @@ import {
   DEFAULT_BACKFILL_STAGES,
   type BackfillStageName,
 } from '../src/backfill/setup.js';
+import { CANDIDATE_LISTS, type CandidateList } from '../src/discovery/index.js';
 import { DEFAULT_MIN_ROUGH_PEAK_USD } from '../src/backfill/defaults.js';
 import { runBackfill } from '../src/backfill/run.js';
-import { formatSeedReport, seedFromCandidateFile } from '../src/backfill/seed.js';
+import {
+  checkSeedSource,
+  CURVE_ONLY_SOURCE,
+  formatSeedReport,
+  seedFromCandidateFile,
+} from '../src/backfill/seed.js';
 import { installStopSignals } from '../src/shared/signals.js';
 import { consoleLogger, secretsFromEnv } from '../src/worker/log.js';
 
 function usage(message?: string): never {
   if (message) process.stderr.write(`${message}\n\n`);
   process.stderr.write(
-    'Usage: backfill.ts seed --file FILE [--source NAME] [--confirm]\n' +
+    'Usage: backfill.ts seed --file FILE [--list graduates|curve-only] [--source NAME] [--confirm]\n' +
       '       backfill.ts run [--min-rough-peak USD] [--limit N] [--order peak|hash]\n' +
-      '                       [--include-no-price] [--stages candles,metrics,metadata[,metadata_file]]\n' +
+      '                       [--include-no-price] [--source NAME] [--stages candles,metrics,metadata[,metadata_file]]\n' +
       '                       [--codex-rps N] [--concurrency N] [--metrics-concurrency N]\n' +
       '                       [--metadata-concurrency N] [--file-concurrency N]\n' +
       '                       [--db-pool N] [--queue-pool N]\n' +
@@ -72,7 +91,7 @@ function usage(message?: string): never {
       '                       [--max-codex-units N] [--max-helius-credits N] [--confirm]\n' +
       '       backfill.ts run --refresh-pools (--coins FILE | --rule late-graduation-pool)\n' +
       '                       [--max-codex-units N] [--confirm]\n' +
-      '       backfill.ts select --rule late-graduation-pool\n',
+      '       backfill.ts select --rule late-graduation-pool [--source NAME]\n',
   );
   process.exit(message ? 2 : 0);
 }
@@ -86,6 +105,15 @@ function positive(name: string, value: string | undefined, integer = true): numb
   return n;
 }
 
+/** `--list`: which candidate list the seed file is. Absent: graduates. Never guessed from the file. */
+function parseList(value: string | undefined): CandidateList {
+  if (value === undefined) return 'graduates';
+  if (!(CANDIDATE_LISTS as readonly string[]).includes(value)) {
+    usage(`--list is ${CANDIDATE_LISTS.join(' or ')}`);
+  }
+  return value as CandidateList;
+}
+
 async function main(): Promise<void> {
   const [command, ...rest] = process.argv.slice(2);
   if (command !== 'seed' && command !== 'run' && command !== 'select')
@@ -95,6 +123,7 @@ async function main(): Promise<void> {
     options: {
       file: { type: 'string' },
       source: { type: 'string' },
+      list: { type: 'string' },
       'min-rough-peak': { type: 'string' },
       limit: { type: 'string' },
       order: { type: 'string' },
@@ -126,6 +155,19 @@ async function main(): Promise<void> {
 
   if (command === 'seed') {
     if (!values.file) usage('--file FILE is required');
+    const list = parseList(values.list);
+    if (list === 'curve-only' && values.source) {
+      usage(
+        '--source cannot be given with --list curve-only: the list is always seeded as ' +
+          `${CURVE_ONLY_SOURCE}, because the selection leaves it out by that name (under another ` +
+          'name a plain run would reach it and spend).',
+      );
+    }
+    try {
+      checkSeedSource(list, values.source);
+    } catch (err) {
+      usage(err instanceof Error ? err.message : String(err));
+    }
     const url = process.env['DATABASE_URL'];
     if (values.confirm && !url) usage('DATABASE_URL is not set');
     const db = values.confirm && url ? createDb(url, { max: 4 }) : undefined;
@@ -133,6 +175,7 @@ async function main(): Promise<void> {
       const report = await seedFromCandidateFile({
         file: values.file,
         confirm: values.confirm,
+        list,
         db,
         ...(values.source ? { discoverySource: values.source } : {}),
         onProgress: (n) => {
@@ -162,6 +205,7 @@ async function main(): Promise<void> {
     try {
       const ids = await selectCoinsByRule(db, rule, {
         maxDelaySeconds: DEFAULT_PLAN_LIMITS.maxGraduationPoolDelaySeconds,
+        ...(values.source ? { source: values.source } : {}),
       });
       for (const id of ids) out(String(id));
       process.stderr.write(`${ids.length} coins picked by ${rule}\n`);
@@ -216,6 +260,7 @@ async function main(): Promise<void> {
       includeNoPrice: values['include-no-price'],
       order,
       limit: limit ?? null,
+      ...(values.source ? { source: values.source } : {}),
     },
     stages: stages as BackfillStageName[],
     ...(rps !== undefined ? { codexRps: rps } : {}),

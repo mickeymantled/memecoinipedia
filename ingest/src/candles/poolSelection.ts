@@ -83,14 +83,22 @@ export function selectPools(args: SelectPoolsArgs): PoolSelection {
       .filter((p) => isBondingCurvePool(p))
       .sort((a, b) => (a.createdAt ?? Infinity) - (b.createdAt ?? Infinity))[0] ?? null;
 
-  const pick = pickGraduationPool({
-    pools: result.pools.filter((p) => p.address !== curve?.address),
-    migratedPoolAddress: args.migratedPoolAddress,
-    migratedAt: args.migratedAt,
-    truncated: result.truncated,
-    maxGraduationPoolDelaySeconds:
-      args.maxGraduationPoolDelaySeconds ?? DEFAULT_GRADUATION_DELAY_SEC,
-  });
+  // No sign of a graduation: no migrated pool address, no migration time, and `migrated` not true.
+  // Such a coin (a never-graduated curve, issue #102) has no graduation pool: choosing the earliest
+  // non-curve pool would make a stray pool its primary and leave the curve unfetched. Its other
+  // pools are ordinary other pools. With any sign present nothing changes.
+  const neverGraduated =
+    args.migratedPoolAddress === null && args.migratedAt === null && args.migrated !== true;
+  const pick = neverGraduated
+    ? null
+    : pickGraduationPool({
+        pools: result.pools.filter((p) => p.address !== curve?.address),
+        migratedPoolAddress: args.migratedPoolAddress,
+        migratedAt: args.migratedAt,
+        truncated: result.truncated,
+        maxGraduationPoolDelaySeconds:
+          args.maxGraduationPoolDelaySeconds ?? DEFAULT_GRADUATION_DELAY_SEC,
+      });
   const graduation = pick
     ? {
         address: pick.address,
@@ -127,7 +135,7 @@ export function selectPools(args: SelectPoolsArgs): PoolSelection {
       },
     });
   }
-  if (!graduation && (result.truncated || args.migrated === true)) {
+  if (!graduation && !neverGraduated && (result.truncated || args.migrated === true)) {
     issues.push({
       kind: 'graduation_pool_not_found',
       detail: {

@@ -230,7 +230,8 @@ export function formatStatus(s: BackfillStatus): string {
   lines.push(`Backfill status at ${s.now.toISOString().slice(0, 19)}Z (${run})`);
   lines.push(
     `Selected: ${n(s.selection.size)} coins (rough peak ${usd(sp.minRoughPeakUsd)} or more` +
-      `${sp.includeNoPrice ? ', and no price' : ''}, ${sp.order} order` +
+      `${sp.includeNoPrice ? ', and no price' : ''}, ` +
+      `${sp.source ? `source ${sp.source}, ` : ''}${sp.order} order` +
       `${sp.limit ? `, limit ${n(sp.limit)}` : ''})` +
       `${s.selectionFromRun ? '' : ' [options from the command line]'}`,
   );

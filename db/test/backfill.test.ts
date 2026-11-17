@@ -3,7 +3,9 @@ import { afterAll, beforeAll, beforeEach, expect, it } from 'vitest';
 import { sql } from 'kysely';
 import {
   countByRoughPeak,
+  countLeftOutBySource,
   countListed,
+  CURVE_ONLY_DISCOVERY_SOURCE,
   keyOf,
   recordUsageSample,
   resolveSelection,
@@ -162,6 +164,28 @@ describeDb('seeding for a backfill', () => {
     expect(c.rough_ath_market_cap_usd).toBe(90_000);
   });
 
+  it('merges the mayhem flag: a true stays true, a null takes the file, no change writes nothing', async () => {
+    const flag = async () =>
+      (await t.db.selectFrom('coins').select('is_mayhem_mode').executeTakeFirstOrThrow())
+        .is_mayhem_mode;
+    await seedBackfillChunk(t.db, [row(1, 90_000)], opts);
+    expect(await flag()).toBeNull(); // a file without the flag leaves it null
+    const a = await seedBackfillChunk(t.db, [row(1, 90_000, { isMayhemMode: false })], {
+      ...opts,
+      now: LATER,
+    });
+    expect(a.updated).toBe(1);
+    expect(await flag()).toBe(false);
+    await seedBackfillChunk(t.db, [row(1, 90_000, { isMayhemMode: true })], opts);
+    expect(await flag()).toBe(true);
+    // A later false, or a null, never turns a true back.
+    await seedBackfillChunk(t.db, [row(1, 90_000, { isMayhemMode: false })], opts);
+    await seedBackfillChunk(t.db, [row(1, 90_000, { isMayhemMode: null })], opts);
+    expect(await flag()).toBe(true);
+    const again = await seedBackfillChunk(t.db, [row(1, 90_000, { isMayhemMode: true })], opts);
+    expect(again).toMatchObject({ updated: 0, unchanged: 1 });
+  });
+
   it('stores hash_order as the first 52 bits of the md5 of the address', async () => {
     await seedBackfillChunk(t.db, [row(7, 50_000)], opts);
     const c = await t.db.selectFrom('coins').select('hash_order').executeTakeFirstOrThrow();
@@ -258,6 +282,88 @@ describeDb('selection', () => {
       Array.from({ length: N }, (_, i) => rough(i + 1)).filter((r) => r === null).length,
     );
     expect(c.done.every((d) => d === 0)).toBe(true);
+  });
+});
+
+describeDb('selection by discovery source (issue #102)', () => {
+  let t: TestDatabase;
+  const GRADS = 120;
+  const CURVES = 90;
+  const curveOpts = { ...opts, discoverySource: CURVE_ONLY_DISCOVERY_SOURCE };
+  beforeAll(async () => {
+    t = await createTestDatabase(adminUrl!);
+    // Graduates 1..120 and curve-only coins 1001..1090, all above the floor.
+    const grads = Array.from({ length: GRADS }, (_, i) => row(i + 1, 40_000 + (i % 9) * 10_000));
+    const curves = Array.from({ length: CURVES }, (_, i) =>
+      row(1001 + i, 150_000 + (i % 7) * 10_000, { graduatedAt: null }),
+    );
+    await seedBackfillChunk(t.db, grads, opts);
+    await seedBackfillChunk(t.db, curves, curveOpts);
+  });
+  afterAll(async () => {
+    await t.drop();
+  });
+
+  const sourcesOf = async (sel: ResolvedSelection): Promise<Set<string | null>> => {
+    const page = await selectionPage(t.db, sel, null, 10_000);
+    const rows = await t.db
+      .selectFrom('coins')
+      .select('discovery_source')
+      .where(
+        'id',
+        'in',
+        page.map((p) => p.id),
+      )
+      .execute();
+    return new Set(rows.map((r) => r.discovery_source));
+  };
+
+  it.each(['peak', 'hash'] as const)(
+    'without a source the curve-only coins are left out, as before they existed (%s)',
+    async (order) => {
+      const sel = await resolveSelection(t.db, { ...SPEC, order });
+      expect(sel.size).toBe(GRADS);
+      expect(await sourcesOf(sel)).toEqual(new Set(['test-file']));
+      expect(await countLeftOutBySource(t.db, { ...SPEC, order })).toBe(CURVES);
+    },
+  );
+
+  it.each(['peak', 'hash'] as const)(
+    'a named source selects only its coins, and the left-out count is zero (%s)',
+    async (order) => {
+      const spec = { ...SPEC, order, source: CURVE_ONLY_DISCOVERY_SOURCE };
+      const sel = await resolveSelection(t.db, spec);
+      expect(sel.size).toBe(CURVES);
+      expect(await sourcesOf(sel)).toEqual(new Set([CURVE_ONLY_DISCOVERY_SOURCE]));
+      expect(await countLeftOutBySource(t.db, spec)).toBe(0);
+    },
+  );
+
+  it('works with a limit in hash order: the first 30 coins, then the whole list, no coin twice', async () => {
+    const spec = { ...SPEC, order: 'hash' as const, source: CURVE_ONLY_DISCOVERY_SOURCE };
+    const first = await resolveSelection(t.db, { ...spec, limit: 30 });
+    expect(first.size).toBe(30);
+    const firstIds = (await selectionPage(t.db, first, null, 1000)).map((p) => p.id);
+    expect(firstIds).toHaveLength(30);
+    const all = await resolveSelection(t.db, spec);
+    const allIds = (await selectionPage(t.db, all, null, 1000)).map((p) => p.id);
+    expect(allIds.slice(0, 30)).toEqual(firstIds);
+    expect(new Set(allIds).size).toBe(CURVES);
+    // The count of the cells is over the same coins.
+    const counts = await countByRoughPeak(t.db, first, [100_000], { stage: 'candles', version: 1 });
+    expect(counts.counts.reduce((a, b) => a + b, 0)).toBe(30);
+  });
+
+  it('explicit coin ids are not filtered by the default', async () => {
+    const id = (
+      await t.db
+        .selectFrom('coins')
+        .select('id')
+        .where('address', '=', addr(1001))
+        .executeTakeFirstOrThrow()
+    ).id;
+    const sel = await resolveSelection(t.db, { ...SPEC, coinIds: [id], includeNoPrice: true });
+    expect(sel.size).toBe(1);
   });
 });
 

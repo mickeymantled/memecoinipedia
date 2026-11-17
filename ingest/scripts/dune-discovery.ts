@@ -6,8 +6,14 @@
  *   node --env-file=/path/to/.env --import tsx scripts/dune-discovery.ts --max-credits 600 [--confirm]
  *
  * Arguments
- *   --sql FILE                 the query. Default ingest/sql/dune/discovery.sql. It takes no placeholders
- *   --out DIR                  where the files go. Default data/dune (git-ignored)
+ *   --list graduates|curve-only  which candidate list this is. Default graduates; never guessed from the
+ *                              file. curve-only (issue #102): the default query is curve-only-candidates.sql, the
+ *                              default --out is data/dune-curve-only, and the downloaded file is read as the
+ *                              curve-only list (a row with a graduation time is an error); it prints counts by
+ *                              launch month and by mayhem flag and writes no sample
+ *   --sql FILE                 the query. Default ingest/sql/dune/discovery.sql (curve-only: curve-only-candidates.sql).
+ *                              It takes no placeholders
+ *   --out DIR                  where the files go. Default data/dune (curve-only: data/dune-curve-only), git-ignored
  *   --max-credits N            the most this run may spend, in Dune credits. Required with --confirm
  *   --performance small|medium|large   Dune engine tier. Default medium
  *   --probes FILE              probe coins. Default probes/coins.json
@@ -41,12 +47,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
+  CANDIDATE_LISTS,
   drawSample,
   formatSizingTable,
+  readCurveOnlyFile,
   readGraduatesFile,
   sampleToCsv,
   sizeTargetSet,
   sizeTotals,
+  type CandidateList,
 } from '../src/discovery/index.js';
 import { BudgetExceededError, UnitBudget } from '../src/sources/budget.js';
 import {
@@ -99,6 +108,8 @@ export class UsageError extends Error {
 }
 
 export interface RunnerArgs {
+  /** Which candidate list the file is. Absent: graduates. */
+  list?: CandidateList;
   sql: string;
   out: string;
   maxCredits: number | null;
@@ -113,6 +124,7 @@ export interface RunnerArgs {
 }
 
 const KNOWN = [
+  '--list',
   '--sql',
   '--out',
   '--max-credits',
@@ -168,11 +180,21 @@ export function parseRunnerArgs(argv: readonly string[]): RunnerArgs {
   if (columns?.some((c) => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(c))) {
     throw new UsageError('--columns must be a comma-separated list of column names');
   }
+  const listValue = values.get('--list') ?? 'graduates';
+  if (!(CANDIDATE_LISTS as readonly string[]).includes(listValue)) {
+    throw new UsageError(`--list is ${CANDIDATE_LISTS.join(' or ')}`);
+  }
+  const list = listValue as CandidateList;
+  const curveOnly = list === 'curve-only';
   const abs = (v: string | undefined, fallback: string) =>
     v ? path.resolve(v) : path.join(REPO, fallback);
   return {
-    sql: abs(values.get('--sql'), 'ingest/sql/dune/discovery.sql'),
-    out: abs(values.get('--out'), 'data/dune'),
+    list,
+    sql: abs(
+      values.get('--sql'),
+      curveOnly ? 'ingest/sql/dune/curve-only-candidates.sql' : 'ingest/sql/dune/discovery.sql',
+    ),
+    out: abs(values.get('--out'), curveOnly ? 'data/dune-curve-only' : 'data/dune'),
     maxCredits,
     performance: performance as DunePerformance,
     probes: abs(values.get('--probes'), 'probes/coins.json'),
@@ -257,6 +279,11 @@ export function buildPlan(args: RunnerArgs): Plan {
   const sqlExists = fs.existsSync(args.sql);
   let resumable: RunState | null = null;
   const lines = ['Dry-run plan. Nothing was sent to Dune. Add --confirm to run it.'];
+  if (args.list === 'curve-only') {
+    lines.push(
+      'List: curve-only. The downloaded file is read as the curve-only list (a row with a graduation time is an error); no sample is written.',
+    );
+  }
   try {
     resumable = readState(stateFile(args.out));
   } catch (err) {
@@ -264,7 +291,9 @@ export function buildPlan(args: RunnerArgs): Plan {
   }
   if (csvExists) {
     lines.push(
-      `${discoveryFile(args.out)} exists: Dune is skipped, and the sizing table and sample.csv are written from it (no --confirm or --max-credits needed).`,
+      args.list === 'curve-only'
+        ? `${discoveryFile(args.out)} exists: Dune is skipped, and the counts by launch month and mayhem flag are printed from it (no --confirm or --max-credits needed).`
+        : `${discoveryFile(args.out)} exists: Dune is skipped, and the sizing table and sample.csv are written from it (no --confirm or --max-credits needed).`,
     );
   } else {
     lines.push(
@@ -724,11 +753,35 @@ async function runBody(
   return done('complete', null);
 }
 
+/**
+ * The curve-only list (issue #102), from `discovery.csv`: read with the curve-only reader, so a
+ * row with a graduation time is rejected. Prints the rows kept and rejected, the rows by launch
+ * month (UTC) and by mayhem flag. Writes no sample: there is no population to draw one from.
+ */
+async function countCurveOnly(args: RunnerArgs, log: (line: string) => void): Promise<void> {
+  const { rows, records, bad } = await readCurveOnlyFile(discoveryFile(args.out));
+  log(`Read ${records} rows: ${rows.length} kept, ${bad.count} rejected.`);
+  for (const b of bad.stored.slice(0, 10)) log(`  rejected, line ${b.line}: ${b.reason}`);
+  if (bad.count > 10) log(`  ...and ${bad.count - 10} more rejected rows`);
+  const byMonth = new Map<string, number>();
+  const byFlag = { true: 0, false: 0, empty: 0 };
+  for (const r of rows) {
+    const month = new Date(r.createdAtMs).toISOString().slice(0, 7);
+    byMonth.set(month, (byMonth.get(month) ?? 0) + 1);
+    byFlag[r.isMayhemMode === null ? 'empty' : r.isMayhemMode ? 'true' : 'false'] += 1;
+  }
+  log('Rows by launch month (UTC):');
+  for (const [month, n] of [...byMonth].sort()) log(`  ${month}: ${n}`);
+  log(`Mayhem flag: true ${byFlag.true}, false ${byFlag.false}, empty ${byFlag.empty}.`);
+  log('No sample is written for the curve-only list.');
+}
+
 /** Sizing table and sample, from `discovery.csv`. */
 export async function sizeAndSample(
   args: RunnerArgs,
   log: (line: string) => void = (l) => console.log(l),
 ): Promise<void> {
+  if (args.list === 'curve-only') return countCurveOnly(args, log);
   const { rows, records, bad } = await readGraduatesFile(discoveryFile(args.out));
   log(`Read ${records} rows: ${rows.length} kept, ${bad.count} rejected.`);
   for (const b of bad.stored.slice(0, 10)) log(`  rejected, line ${b.line}: ${b.reason}`);

@@ -17,6 +17,8 @@ import {
   acquirePipelineLock,
   countByRoughPeak,
   countCoinsNotDone,
+  countLeftOutBySource,
+  CURVE_ONLY_DISCOVERY_SOURCE,
   createDb,
   createRun,
   finishRun,
@@ -54,7 +56,12 @@ import { METADATA_FILE_STAGE_VERSION } from '../worker/stages/metadataFile.js';
 import { estimateMetadata } from '../worker/plan.js';
 import { startUsageReporting, syncUsageFrom } from '../shared/usageReport.js';
 import { UsageMeter } from '../worker/usage.js';
-import { CELL_EDGES, estimateBackfillUnits, type BackfillEstimate } from './cells.js';
+import {
+  CELL_EDGES,
+  estimateBackfillUnits,
+  estimateCurveOnlyUnits,
+  type BackfillEstimate,
+} from './cells.js';
 import {
   BACKFILL_BATCH_SIZE,
   BACKFILL_CANDLES_CONCURRENCY,
@@ -145,6 +152,8 @@ export interface BackfillPlan {
   /** Ready-to-run work, by stage: coins with the stage not done whose requirement is met. */
   ready: Partial<Record<StageName, number>>;
   freshRunning: number;
+  /** Coins of the curve-only list the selection's rule would take but its source leaves out. */
+  leftOutBySource: number;
   nothingToDo: boolean;
   /**
    * Failed stages of the asked-for stages inside the selection that `--retry-failed` puts back to
@@ -225,6 +234,7 @@ export async function planBackfill(
   retryFailed = false,
 ): Promise<BackfillPlan> {
   const selection = await resolveSelection(db, selectionSpec);
+  const leftOutBySource = await countLeftOutBySource(db, selectionSpec);
   if (refresh) {
     const all = await stageBreakdown(db, selection, breakdownStages(now));
     const candlesDone = all.find((b) => b.stage === 'candles')?.done ?? 0;
@@ -238,6 +248,7 @@ export async function planBackfill(
       },
       ready: {},
       freshRunning: 0,
+      leftOutBySource,
       nothingToDo: selection.size === 0,
       refresh: { coins: selection.size, candlesDone },
       ...(retryFailed ? { retryFailed: { stages: failedCount(all, stages) } } : {}),
@@ -257,10 +268,13 @@ export async function planBackfill(
     selection,
     stages: breakdown,
     estimate: stages.includes('candles')
-      ? estimateBackfillUnits(counts)
+      ? selectionSpec.source === CURVE_ONLY_DISCOVERY_SOURCE
+        ? estimateCurveOnlyUnits(counts)
+        : estimateBackfillUnits(counts)
       : { rows: [], coinsToDo: 0, units: 0 },
     ready,
     freshRunning,
+    leftOutBySource,
     nothingToDo: readyTotal === 0 && freshRunning === 0 && retry === 0,
     ...(retryFailed ? { retryFailed: { stages: retry } } : {}),
   };
@@ -296,8 +310,15 @@ export function formatBackfillPlan(
   lines.push(
     `Backfill plan: ${n(plan.selection.size)} coins selected ` +
       `(rough peak $${n(sp.minRoughPeakUsd)} or more${sp.includeNoPrice ? ', and no price' : ''}, ` +
+      `${sp.source ? `source ${sp.source}, ` : ''}` +
       `${sp.order} order${sp.limit ? `, limit ${n(sp.limit)}` : ''}).`,
   );
+  if (plan.leftOutBySource > 0) {
+    lines.push(
+      `${n(plan.leftOutBySource)} coins of the curve-only list were left out ` +
+        `(never graduated); --source ${CURVE_ONLY_DISCOVERY_SOURCE} selects them.`,
+    );
+  }
   lines.push('Coins per stage (done / failed / running / waiting):');
   for (const s of plan.stages) {
     const note =
@@ -343,6 +364,20 @@ export function formatBackfillPlan(
         `Codex.io estimate: one pool-list request a coin, about ${n(plan.estimate.units)} compute units ` +
           `(${REFRESH_UNITS_PER_COIN.toFixed(2)} a coin). Bars for pools the list adds cannot be known ` +
           'before the list is read: each adds about 4 units a request, and none is asked for a pool already held.',
+      );
+    } else if (plan.estimate.curveOnly) {
+      const c = plan.estimate.curveOnly;
+      lines.push(
+        `Codex.io estimate, curve-only list: ${n(plan.estimate.coinsToDo)} coins still to fetch. ` +
+          `Every coin costs ${c.screenUnitsPerCoin} units (launch record 4, pool list 4, daily screen on its curve 4): ` +
+          `${n(c.floorUnits)} units. A coin whose screen passes costs ${c.restUnitsPerCoin} more ` +
+          '(its first 1,500 minutes and one hourly request); the list holds coins whose hourly peak ' +
+          'was $100,000 or more, so most pass.',
+      );
+      lines.push(
+        `  Total: about ${n(plan.estimate.units)} compute units if every coin passes ` +
+          `(${n(c.screenUnitsPerCoin + c.restUnitsPerCoin)} a coin), ${n(c.floorUnits)} if none does. ` +
+          'Peak refinement and other pools are not counted; not measured on this list yet.',
       );
     } else {
       lines.push('Codex.io estimate, by rough-peak cell (coins still to fetch):');

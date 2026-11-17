@@ -12,6 +12,7 @@
  */
 import fs from 'node:fs';
 import {
+  CURVE_ONLY_DISCOVERY_SOURCE,
   SEED_CHUNK,
   seedBackfillChunk,
   type BackfillSeedResult,
@@ -19,12 +20,20 @@ import {
   type Database,
 } from '@memecoinipedia/db';
 import type { Kysely } from 'kysely';
-import { readGraduates, type GraduateRow } from '../discovery/index.js';
+import {
+  readCurveOnly,
+  readGraduates,
+  type CandidateList,
+  type CurveOnlyRow,
+  type GraduateRow,
+} from '../discovery/index.js';
 import { CELL_EDGES, CELL_LABELS } from './cells.js';
 
 export const SEED_CHAIN = 'solana';
 export const SEED_LAUNCHPAD = 'pump.fun';
 export const DEFAULT_DISCOVERY_SOURCE = 'dune-graduates';
+/** `coins.discovery_source` of the curve-only list (issue #102). Selections key on it. */
+export const CURVE_ONLY_SOURCE = CURVE_ONLY_DISCOVERY_SOURCE;
 
 export interface SeedFileReport {
   /** Data records in the file, valid or not. */
@@ -39,6 +48,10 @@ export interface SeedFileReport {
   noPrice: number;
   /** Rows by rough-peak cell, in the order of `CELL_LABELS`. */
   byCell: number[];
+  /** Rows by the creation event's mayhem flag (curve-only list only; zero for graduates). */
+  mayhem: { yes: number; no: number; unknown: number };
+  /** Which list was read. */
+  list: CandidateList;
   /** Totals of what the database did; absent for a dry run. */
   written: BackfillSeedResult | null;
   seconds: number;
@@ -46,6 +59,11 @@ export interface SeedFileReport {
 
 export interface SeedOptions {
   file: string;
+  /**
+   * Which candidate list the file is. Default `graduates`: a blank graduation time rejects the
+   * row. `curve-only`: a graduation time rejects the row, and the source is `dune-curve-only`.
+   */
+  list?: CandidateList;
   discoverySource?: string;
   /** Write to the database. Without it the file is only read and counted. */
   confirm: boolean;
@@ -54,14 +72,40 @@ export interface SeedOptions {
   onProgress?: (rowsWritten: number) => void;
 }
 
-export const toSeedRow = (r: GraduateRow): BackfillSeedRow => ({
+export const toSeedRow = (r: GraduateRow | CurveOnlyRow): BackfillSeedRow => ({
   address: r.mint,
   launchpad: SEED_LAUNCHPAD,
   launchedAt: new Date(r.createdAtMs),
   creatorWallet: r.creator,
-  graduatedAt: new Date(r.graduatedAtMs),
+  graduatedAt: r.graduatedAtMs === null ? null : new Date(r.graduatedAtMs),
   roughAthMarketCapUsd: r.roughPeakUsd,
+  ...('isMayhemMode' in r ? { isMayhemMode: r.isMayhemMode } : {}),
 });
+
+/** The discovery source of a list. The source of the curve-only list is what the selection keys on. */
+export const discoverySourceFor = (list: CandidateList): string =>
+  list === 'curve-only' ? CURVE_ONLY_SOURCE : DEFAULT_DISCOVERY_SOURCE;
+
+/**
+ * The selection leaves coins of `dune-curve-only` out by that name. A curve-only file seeded under
+ * another name would be reached by a plain `run`, and a graduates file seeded as `dune-curve-only`
+ * would never be. So the curve-only list takes no other name, and no other list takes that one.
+ */
+export function checkSeedSource(list: CandidateList, source: string | undefined): void {
+  if (source === undefined) return;
+  if (list === 'curve-only' && source !== CURVE_ONLY_SOURCE) {
+    throw new Error(
+      `A curve-only file is always seeded as ${CURVE_ONLY_SOURCE}: the selection leaves the list ` +
+        `out by that name, so under "${source}" a plain run would reach it and spend. Do not give a source.`,
+    );
+  }
+  if (list !== 'curve-only' && source === CURVE_ONLY_SOURCE) {
+    throw new Error(
+      `${CURVE_ONLY_SOURCE} is the source of the curve-only list only: a ${list} file seeded under it ` +
+        'would be left out of every plain selection. Seed it with --list curve-only, or use another source.',
+    );
+  }
+}
 
 export const cellOf = (rough: number): number => CELL_EDGES.filter((e) => e <= rough).length;
 
@@ -69,7 +113,9 @@ export async function seedFromCandidateFile(opts: SeedOptions): Promise<SeedFile
   const started = Date.now();
   const now = opts.now ?? (() => new Date());
   if (opts.confirm && !opts.db) throw new Error('Seeding needs a database');
-  const source = opts.discoverySource ?? DEFAULT_DISCOVERY_SOURCE;
+  const list = opts.list ?? 'graduates';
+  checkSeedSource(list, opts.discoverySource);
+  const source = opts.discoverySource ?? discoverySourceFor(list);
 
   const seen = new Set<string>();
   const report: SeedFileReport = {
@@ -81,6 +127,8 @@ export async function seedFromCandidateFile(opts: SeedOptions): Promise<SeedFile
     priced: 0,
     noPrice: 0,
     byCell: CELL_LABELS.map(() => 0),
+    mayhem: { yes: 0, no: 0, unknown: 0 },
+    list,
     written: null,
     seconds: 0,
   };
@@ -124,22 +172,30 @@ export async function seedFromCandidateFile(opts: SeedOptions): Promise<SeedFile
     }
   }
 
-  const read = await readGraduates(pieces(), {
-    onRow(r) {
-      if (seen.has(r.mint)) {
-        report.repeated++;
-        return;
-      }
-      seen.add(r.mint);
-      report.rows++;
-      if (r.roughPeakUsd === null) report.noPrice++;
-      else {
-        report.priced++;
-        report.byCell[cellOf(r.roughPeakUsd)]!++;
-      }
-      batch.push(toSeedRow(r));
-    },
-  });
+  const onRow = (r: GraduateRow | CurveOnlyRow): void => {
+    if (seen.has(r.mint)) {
+      report.repeated++;
+      return;
+    }
+    seen.add(r.mint);
+    report.rows++;
+    if (r.roughPeakUsd === null) report.noPrice++;
+    else {
+      report.priced++;
+      report.byCell[cellOf(r.roughPeakUsd)]!++;
+    }
+    if ('isMayhemMode' in r) {
+      if (r.isMayhemMode === true) report.mayhem.yes++;
+      else if (r.isMayhemMode === false) report.mayhem.no++;
+      else report.mayhem.unknown++;
+    }
+    batch.push(toSeedRow(r));
+  };
+  // The reader is chosen by the option, never by looking at the file.
+  const read =
+    list === 'curve-only'
+      ? await readCurveOnly(pieces(), { onRow })
+      : await readGraduates(pieces(), { onRow });
   await flush();
 
   report.records = read.records;
@@ -163,6 +219,11 @@ export function formatSeedReport(r: SeedFileReport, confirm: boolean): string {
   lines.push(`With a rough peak: ${n(r.priced)}; with none: ${n(r.noPrice)}.`);
   lines.push('By rough peak:');
   r.byCell.forEach((c, i) => lines.push(`  ${CELL_LABELS[i]!.padEnd(14)} ${n(c).padStart(9)}`));
+  if (r.list === 'curve-only') {
+    lines.push(
+      `Mayhem flag in the file: true ${n(r.mayhem.yes)}, false ${n(r.mayhem.no)}, empty ${n(r.mayhem.unknown)}.`,
+    );
+  }
   if (!confirm) {
     lines.push('Nothing written (no --confirm). Seeding makes no provider call and costs nothing.');
   } else if (r.written) {

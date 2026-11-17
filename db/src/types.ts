@@ -75,6 +75,8 @@ export interface CoinsTable {
   last_alive_at: Ts | null;
   /** Where `socials` came from: the coin's own metadata file or Jupiter (migration 0019). */
   socials_source: 'metadata_file' | 'jupiter' | null;
+  /** Mayhem mode (migration 0021). Null: not known. A true from any source stays true. */
+  is_mayhem_mode: boolean | null;
   /** Market cap when the live watch last queued this coin's candle fetch (migration 0015). */
   last_trigger_market_cap_usd: number | null;
   /** When the coin's pool list was last read from the provider; null before migration 0022 or never (migration 0022). */
@@ -310,6 +312,7 @@ export const databaseShape: { [T in keyof Database]: Record<keyof Database[T], t
     status_changed_at: true,
     last_alive_at: true,
     socials_source: true,
+    is_mayhem_mode: true,
     last_trigger_market_cap_usd: true,
     pools_listed_at: true,
     primary_narrative: true,

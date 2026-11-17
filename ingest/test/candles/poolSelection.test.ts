@@ -196,3 +196,59 @@ describe('selectPools', () => {
     expect(r.graduation?.address).toBe('GRAD');
   });
 });
+
+describe('selectPools for a coin with no sign of a graduation (issue #102)', () => {
+  const never = { migratedAt: null, migrated: false as boolean | null };
+
+  it('chooses no graduation pool: the curve is the curve, a stray pool is an ordinary other pool', () => {
+    const r = select(
+      [curve(), pool('STRAY', { createdAt: MIGRATED_AT + 90, liquidityUsd: 50_000 })],
+      never,
+    );
+    expect(r.curve?.address).toBe('CURVE');
+    expect(r.graduation).toBeNull();
+    // The stray pool follows the quote and liquidity rules of any other pool.
+    expect(r.others.map((p) => p.address)).toEqual(['STRAY']);
+    expect(r.issues).toEqual([]);
+  });
+
+  it('applies the quote and liquidity rules to the stray pool', () => {
+    const r = select(
+      [
+        curve(),
+        pool('DUST', { liquidityUsd: 12 }),
+        pool('OTHERQUOTE', { quoteTokenAddress: 'SomeOtherCoin', liquidityUsd: 90_000 }),
+      ],
+      never,
+    );
+    expect(r.graduation).toBeNull();
+    expect(r.others).toEqual([]);
+    expect(r.skippedOthers).toBe(1);
+    expect(r.otherQuotePools).toBe(1);
+  });
+
+  it('records no graduation_pool_not_found when the list is cut off at 250', () => {
+    const r = select([curve()], never, true);
+    expect(r.graduation).toBeNull();
+    expect(r.issues).toEqual([]);
+  });
+
+  it('a null migrated flag is the same as false', () => {
+    const r = select([curve(), pool('STRAY')], { migratedAt: null, migrated: null });
+    expect(r.graduation).toBeNull();
+  });
+
+  it('with any sign of a graduation the choice is exactly as before', () => {
+    const pools = [curve(), pool('GRAD')];
+    // The migration time alone.
+    expect(select(pools, { migrated: null }).graduation?.address).toBe('GRAD');
+    // `migrated` true alone, with no time: the earliest non-curve pool, as before.
+    expect(select(pools, { migratedAt: null, migrated: true }).graduation?.address).toBe('GRAD');
+    // A named pool alone.
+    const named = select(pools, { migratedAt: null, migrated: null, migratedPoolAddress: 'GRAD' });
+    expect(named.graduation).toMatchObject({ address: 'GRAD', source: 'migrated_pool_address' });
+    // A graduate whose pool cannot be found still gets the issue.
+    const none = select([curve()], { migratedAt: null, migrated: true });
+    expect(none.issues.map((i) => i.kind)).toEqual(['graduation_pool_not_found']);
+  });
+});
