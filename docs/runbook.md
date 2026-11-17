@@ -2,7 +2,7 @@
 
 For someone who has never seen the code. Each section starts with the situation, then the commands,
 then how to tell it worked. Where there is no command for something yet, the section says so and
-names the function that would do it; nothing here is invented.
+names the function that would do it; nothing here is invented. It describes the code in `main`.
 
 ## Before anything
 
@@ -62,21 +62,21 @@ usage in the last hour and in total, the failures by reason, and an estimate of 
 | `process` | heartbeat old | The process holds the lock but has stopped writing its usage samples (every 15 seconds): it is stuck, or cannot reach the database. Read its log; if it does not recover, stop it (section on stopping) and start it again. |
 | `process` (warn) | a backfill holds the lock | The live process is not running because a backfill is. Normal during a backfill. |
 | `discovery` | last pass older than six intervals (30 minutes) | Codex.io is down or limiting, or the process is stuck. A pass that was only paused at the daily unit ceiling is a warn: see `provider:codex:day`. The cursor is kept, so after any gap the next pass reads from the cursor and loses nothing. |
-| `watch` | the last watch pass ended more than 10 minutes ago (warn at 5) | The watch loop is not running: the process is stuck or down (see the `process` rows). The loop writes the end of every pass, even one with nothing due, so a quiet watched set does not raise this. With no record at all (a first start on a database) or only an earlier process's, the age is counted from the start of the run, so `no watch pass recorded, run started ... ago` is `ok` for 5 minutes, then `warn`, then `alert` at 10: a watch pass that throws every time never writes its record and shows up this way. A `watch:prices` line is not shown until the run's first pass. |
-| `watch:prices` | no pass without a failed price request for six intervals of the fastest watched tier (60 minutes with a coin under 3 days old; 6 hours otherwise; warn at three) | The loop runs but Jupiter is not answering. The log says `watch: price request failed`. Nothing to do if Jupiter is down; the coins are read again as soon as it answers. If it is a 429, see "A provider is down or limiting". |
+| `watch` | the last watch pass ended more than 10 minutes ago (warn at 5) | The watch loop is not running: the process is stuck or down (see the `process` rows). The loop writes the end of every pass, even one with nothing due, so a quiet watched set does not raise this. With no record at all (a first start on a database) or only an earlier process's, the age is counted from the start of the run, so `no watch pass recorded, run started ... ago` is `ok` for 5 minutes, then `warn`, then `alert` at 10: a watch pass that throws every time never writes its record and shows up this way. A `watch:prices` line is not shown until the run's first pass. A pass can also be old because the loop is waiting out a Jupiter rate limit: a request that meets HTTP 429 waits inside the Jupiter client through up to four pauses of up to 5 minutes each (20 minutes at the longest; 60 seconds each when Jupiter names no time) before the fifth 429 in a row ends it with an error. That is longer than these limits, so a `watch` warn or alert with a live process can mean "waiting", not "stuck": look at the `provider:jupiter:pauses` line of the same report (its count rises with each pause, and the usage is flushed every few seconds) and at `live.ts status` (`paused N times after HTTP 429`). If pauses are being counted, wait; if not, treat it as the stuck loop above. |
+| `watch:prices` | no clean pass for six intervals of the fastest watched tier (60 minutes with a coin under 3 days old; 6 hours otherwise; warn at three). A clean pass is one that read its prices to the end: a pass with a failed price request, or one that ended early because Jupiter had asked every request to wait (`paused`), is not clean | The loop runs but no price is being read: Jupiter is not answering or is rate limiting. The log says `watch: price request failed` for a failure; a paused pass logs nothing and shows in the pause count. Nothing to do if Jupiter is down; the coins are read again as soon as it answers. If it is rate limiting, see "A provider is down or limiting". |
 | `queue:STAGE:running` | a stage `running` for twice its timeout | A worker died holding it, or nothing is taking over. A running process takes such rows over after the timeout; if it has not, the process is stuck: restart it. |
 | `queue:STAGE:waiting` | watched coins waiting for a stage while nothing finishes it for an hour | Candles hold at the daily unit ceiling (check `provider:codex:day`); otherwise a provider is down. The process queues waiting coins again every 10 minutes. |
 | `failures:STAGE:REASON` | 20 or more failures of one reason in 24 hours, and a quarter of the stage's finished rows | Look at the reason: `price_error`, `metadata_unreachable` and so on. A provider outage ends by itself; see the provider section, then retry the failed stages. |
 | `provider:codex:day` | 95% of the day's unit ceiling (warn at 80%) | The process pauses discovery and candle fetches itself at 100% until the next UTC day. To allow more, restart it with a higher `--max-codex-units-per-day` (see the cost section first). |
 | `provider:codex:month` | 95% of the allowance you gave (warn at 80%) | Spend is near the month's plan; decide before the next run. |
-| `provider:jupiter:pauses` | many pauses today | Jupiter is rate limiting. The check reads the provider name `jupiter_pause`, which comes with issue #93; until that is merged there is no such row and the line is not printed. |
+| `provider:jupiter:pauses` | 24 or more pauses today (warn at 5) | Jupiter is rate limiting. Every 429 pauses all Jupiter requests of the process (the watch loop, the daily refresh, the metadata stage) for the time Jupiter names, up to 5 minutes, else 60 seconds. A few a day are normal without a key; set `JUPITER_API_KEY` in `.env` and restart the live process for a higher rate (see "A provider is down or limiting"). The check reads the usage row `jupiter_pause` (`requests` is the number of pauses, `units` the seconds paused). The line is printed once any run has recorded a pause on this database, and counts today's; before the first pause ever recorded it is not shown. |
 | `refresh:yesterday` | yesterday's daily refresh did not finish | Nothing. Today's refresh covers every listed coin, so what yesterday's missed is read again today. It means the process was down for part of yesterday (see the `process` rows if it is down now). Only the latest day is kept, so this shows only until today's refresh starts. |
 | `refresh:today` | today's refresh has not started by 01:00 UTC | It starts at the first tick of the UTC day. The process is down or its ticks are failing. |
 
 What the checks read: the lock itself (`pg_locks`); the newest usage sample of the latest live run
 as the heartbeat; `live_state` keys `last_discovery` and `refresh_state`; the watch loop's own record, the
 `live_state` key `last_watch` (when the last pass ended, and when the last pass without a failed
-price request ended); `coin_stages` rows for the queue and the failures; the usage tally for the
+price request and without ending paused); `coin_stages` rows for the queue and the failures; the usage tally for the
 providers. A `last_watch` left by an earlier process counts from the start of the current run.
 
 If `health` answers that the database schema is behind and names the `migrate` command, migrations
@@ -123,8 +123,16 @@ that is the ceiling working. The price watch and the stages that cost Codex.io n
 the paused work resumes at the next UTC midnight (the log says so). Nothing to restart.
 
 **The log says `watch: price request failed`**: Jupiter did not answer. The coins are due again on
-the next pass, so nothing is lost. In this version there is no separate "Jupiter rate limit" stop;
-the client slows itself down after a 429. A recorded pause (`jupiter_pause`) arrives with issue #93.
+the next pass, so nothing is lost.
+
+**Jupiter answers HTTP 429.** The client does not fail the coins. It pauses every Jupiter request of
+the process until the time Jupiter names (`Retry-After`, at most 5 minutes; 60 seconds when it names
+none), then sends the waiting request again. While it is paused, the watch loop and the daily
+refresh end their passes early (the refresh carries on from the same place at the next pass) and the
+metadata stage takes no coins. Five 429s in a row with no answer between them give up: the refresh
+logs `refresh: Jupiter kept answering HTTP 429 ...; the next pass goes on from the same place`, the
+watch pass records the failure, and the metadata stage is held for 60 seconds. Each pause is counted
+(`live.ts status` and the `provider:jupiter:pauses` line). Nothing to restart.
 
 ## The backfill
 
@@ -156,16 +164,52 @@ twice.
   number. Coins already done are skipped.
 - `Backfill run finished.` Nothing is waiting in the stages you named. A line below lists coins
   still waiting, if any.
-- A Jupiter rate limit does not stop the backfill, and it does hit it: the `metadata` stage asks
-  Jupiter for prices, 100 coins a request. On this version a 429 fails every coin of that batch
-  with the reason `price_error` after the client's quick retries (the coins then show in
-  `backfill-status.ts` under failures, and a stage that used its attempts stays `failed`). What to
-  do: run the `metadata` stage with `--metadata-concurrency 1`; if 429s persist, stop the run
-  (Ctrl-C) and wait; retry the failed coins later with `--retry-failed`:
+- `Stopped: Jupiter kept answering HTTP 429: 5 pauses in a row, N seconds paused; stopping. Try again later, or set JUPITER_API_KEY for a higher rate. The coins of the batch are left to be retried by the next run: ...`
+  The `metadata` stage asks Jupiter for prices, 100 coins a request. A single 429 does not stop
+  the run: every Jupiter request waits for the time Jupiter names (up to 5 minutes; 60 seconds when
+  it names none) and the request is sent again, silently. Five 429s in a row with no answer between
+  them stop the run with this line. The coins of the batch that met it show in `backfill-status.ts`
+  under failures with the reason `jupiter_rate_limited`; no attempt was spent on them, so the next
+  run takes them with no flag (`--retry-failed` is not needed). What to do: wait (minutes to an
+  hour), or set `JUPITER_API_KEY` in `.env` for a higher rate, then run the same command again:
 
 ```
-pnpm -C ingest exec tsx --env-file=../.env scripts/backfill.ts run --stages metadata --metadata-concurrency 1 --confirm
-pnpm -C ingest exec tsx --env-file=../.env scripts/backfill.ts run --stages metadata --metadata-concurrency 1 --retry-failed --confirm
+pnpm -C ingest exec tsx --env-file=../.env scripts/backfill.ts run --stages metadata --confirm
+```
+
+  The run's final status and `backfill-status.ts` print the pauses (`Jupiter paused N times after HTTP 429`).
+
+### The metadata stages: social links and the metadata file
+
+`metadata` (a default stage) reads the coin's on-chain asset from Helius, then its price and links
+from Jupiter. `metadata_file` is a stage of its own and not in the default stages: it fetches the
+creator's metadata file from the public gateways (no key, no cost) for the social links, the
+creator's description and the image.
+
+**Where a coin's social links come from.** Two sources, the file trusted most. The metadata file is
+the record of what the creator published at launch: once it was read, the coin keeps the file's links
+(also when the file held none) and Jupiter never overwrites them. Until then Jupiter's token answer
+fills the links (website, Twitter, Telegram), marked as from Jupiter; they say where the coin is
+today, since an owner can edit them after launch. A file read later replaces Jupiter's links. A file
+stage that ends done without reading the file (not found, invalid, too large, unsupported address)
+changes neither the links nor their source. A link that does not clean up to a proper URL is dropped
+and recorded as a data issue (`social_links_dropped`).
+
+**A rerun of the `metadata` stage is free** of Codex.io units and gateway requests, and nearly so for
+Helius: over finished coins (after a version bump, say) it makes one Jupiter request per 100 coins
+and one Helius request per 1,000 coins (10 credits each).
+
+**Coins in flight.** `metadata_file` runs `--file-concurrency` coins at once, default 3. More makes
+the gateways time out and rate-limit each other: with about 37 in flight, over half the first tries
+failed in three minutes; with 3 and 1.5 requests a second to each gateway the stage did about 86
+coins a minute with no failure. `--metadata-concurrency` (default 40) applies to the `metadata` stage
+only and no longer to the file stage. `--gateway-rps` (default 1 request a second to each gateway)
+is what paces the file stage. If every gateway attempt for a coin was a rate limit or a timeout (at
+least one a rate limit), the setting is too hot, not the coin bad: the first such failure of a coin
+in a run costs an attempt, later ones in the same run are given back, and the next run tries again.
+
+```
+pnpm -C ingest exec tsx --env-file=../.env scripts/backfill.ts run --stages metadata_file --file-concurrency 3 --confirm
 ```
 
 ## Another process holds the lock
@@ -209,42 +253,131 @@ process is running; ending the session of a live one makes it stop with "The pip
 **Stages failed and you want them tried again with a fresh set of attempts.**
 
 A stage that used up its attempts stays `failed` on later runs. `--retry-failed` on a backfill run
-puts failed stages back to `pending` with zero attempts before the run starts. Its scope: every
-coin's failed rows of the stages the run names with `--stages`, not only the coins of the current
-selection. Name the stages you mean:
+puts failed stages back to `pending` with zero attempts before the run starts. Its scope: the failed
+rows of the stages the run names with `--stages`, for the coins inside the run's selection (the
+rough-peak floor, `--limit` and the rest of the selection), not every coin in the database. A failed
+row of a coin outside the selection, or of a stage you did not name, stays failed. Name the stages
+you mean:
 
 ```
 pnpm -C ingest exec tsx --env-file=../.env scripts/backfill.ts run --stages metadata_file --retry-failed --confirm
 pnpm -C ingest exec tsx --env-file=../.env scripts/backfill.ts run --stages candles,metrics --retry-failed --max-codex-units N --confirm
 ```
 
+The dry run (the same command without `--confirm`) prints one line, `Failed stages to retry
+(--retry-failed): N; they are put back to pending with a full set of attempts.`, and writes
+nothing. When failed stages are the only work left, the run counts them as work and goes ahead; it
+does not answer "Nothing to do".
+
 How to tell it worked: `backfill-status.ts` shows the failed count for the stage drop and the done
 count rise. A backfill run needs the lock, so stop the live process first.
 
-The live process retries failed candles of coins it is watching by itself, once a UTC day (the
-sweep; `live status` shows `failed candles retried`). It does not retry the rest.
+A stage that failed with the reason `jupiter_rate_limited` did not use an attempt and needs no flag:
+the next run takes it (see "What the backfill's last lines mean").
+
+The live process retries failed candles and failed metrics of coins it is watching by itself, once
+a UTC day (the sweep; `live status` shows `failed candles retried`). It does not retry the other
+stages.
 
 The failures table of `backfill-status.ts` groups by reason (the text of the error up to its first
 colon), so you can see whether a failure is a provider outage (retry once it is back) or a coin the
 provider does not know (retrying will not help).
 
-## Refreshing the pools of chosen coins, and ingesting one coin again
+## Refreshing the pools of chosen coins
 
-**There is no command for either on this version.** What exists:
+**A coin was fetched with a short or wrong list of pools, and you want its pools listed again.**
+Typical causes: its graduation pool was named wrongly (a pool created long after the migration, or
+a pool of another coin), or the first fetch met a pool clash. The refresh asks Codex.io for each
+chosen coin's pool list once, stores the pools it did not hold (side pools only when quoted in SOL,
+USDC or USDT; nothing stored is deleted), fetches bars for the added pools only (no bar already
+held is asked for again), and puts the metrics of a coin that gained a pool, or whose graduation
+pool moved, back to pending so they are recomputed (ATH, status and so on may change). It runs
+through the backfill's own stage, queue, unit ceiling, retries and run record.
+
+It spends Codex.io units: about 4 a coin for the list request (the dry run prints the figure), plus
+about 4 units a request for the bars of each pool it adds, which cannot be known before the list is
+read. Check the month's allowance first (see "The cost traps").
+
+Choose the coins in one of two ways. The option refuses to run without one of them, and refuses both
+together.
+
+*From a file.* One coin id or mint address a line; blank lines and lines starting with `#` are
+ignored, and anything after the first space or comma on a line is ignored (a CSV with the coin in
+its first column works). A line that is neither an id nor an address, or a coin that is not in the
+database, stops the run before anything is written.
+
+*By a rule.* `--rule late-graduation-pool` picks coins from the database alone, asking no provider:
+a graduation pool created more than 3,600 seconds before or after the coin's graduation time; a
+graduation pool with no creation time whose first stored bar starts more than a day after the
+graduation, or that holds no bar on a coin whose candles are done; or no graduation pool on a coin
+whose candles are done. A coin whose pool list was already read under this rule and still shows no
+pool at the migration (it carries an open data issue `graduation_pool_late` or
+`graduation_pool_not_found` marked with this distance) is left out, so the rule is not repeated at
+one request a coin. To see or edit the list before spending, print it (no provider, no write; the
+count goes to stderr):
+
+```
+pnpm -C ingest exec tsx --env-file=../.env scripts/backfill.ts select --rule late-graduation-pool > coins.txt
+```
+
+Look first (the default is a dry run: the coins, how many have candles done and will be put back to
+pending, and the estimate; nothing is sent or written):
+
+```
+pnpm -C ingest exec tsx --env-file=../.env scripts/backfill.ts run --refresh-pools --coins coins.txt
+pnpm -C ingest exec tsx --env-file=../.env scripts/backfill.ts run --refresh-pools --rule late-graduation-pool
+```
+
+Then run it. `--max-codex-units N` is required with `--confirm` (there is no default). The stages
+default to `candles,metrics` with this option. Stop the live process first (one pipeline process per
+database):
+
+```
+pnpm -C ingest exec tsx --env-file=../.env scripts/backfill.ts run --refresh-pools --coins coins.txt --max-codex-units N --confirm
+pnpm -C ingest exec tsx --env-file=../.env scripts/backfill.ts run --refresh-pools --rule late-graduation-pool --max-codex-units N --confirm
+```
+
+**A refresh that was stopped, or stopped at the ceiling.** Run the same command again. A run
+recognises a continuation from the run records: earlier refreshes of exactly the same coin list, back
+to the last one that ended `done`. The log says `refresh continued (first started ...)`, and a coin
+finished since the first start is not put back again, so no coin's list is asked for twice. A
+refresh that ended `done` is over: the same file given later is a new refresh and lists every coin
+again. With `--rule` the list is worked out again at each start; coins the first run refreshed usually
+drop out of it, so the second run is a new, shorter refresh.
+
+**What the two data issues mean.** They are rows of the `data_issues` table, one open one a coin,
+replaced by each run that lists the pools and cleared when a run no longer finds the problem. The
+status reports do not print them; read the table.
+
+- `graduation_pool_late`: no pool in the list was created within 3,600 seconds of the migration, so
+  the closest one was kept as the graduation pool. The detail has the distance, the limit, the venue
+  and the source of the choice. Nothing to do; this coin's list holds nothing better.
+- `graduation_pool_not_found`: the coin graduated but no pool in the list serves as its graduation
+  pool. Nothing to do either; the row marks the coin as examined, so the rule skips it next time.
+
+If a refresh moves the graduation role to a pool that another coin holds as its own, the stage
+fails with the reason `pool_claimed_by_two_coins` and is not retried; the failure names both coins.
+That is a data question for the lead, not a rerun.
+
+**How to tell it worked:** the summary at the end says how many candles stages were put back and
+finished; `backfill-status.ts` shows no new failures for `candles` and `metrics`; the same rule's
+dry run afterwards picks fewer coins.
+
+## Ingesting one coin again
+
+**There is no command for this.** What exists:
 
 - `reopenStages(db, coinId, stages, now)` in `db/src/stages.ts` puts the given stages of one coin
   back to `pending` with zero attempts (only rows that are `done` or `skipped` change), so the next
-  run does them again. Re-ingesting a coin from the start is `reopenStages` with the stages
-  `candles`, `metrics`, `metadata` and `metadata_file`, then a backfill run over those stages.
-- `requeueFailed(db, stages, { addresses, now })` in the same file does the same for failed rows of
-  the coins whose addresses are given. The backfill's `--retry-failed` calls it without addresses,
-  which is why it covers every coin.
+  run does them again. A reopened `candles` stage does not read the pool list again and does not
+  start from scratch: with pools already stored it fetches only the bars after what is held. The
+  pool list is read again only by a pool refresh (above).
+- `requeueFailed(db, stages, { addresses, now })` in the same file puts failed rows back for the
+  coins whose addresses are given (the live sweep calls it). `--retry-failed` uses
+  `requeueFailedInSelection` in `db/src/backfill.ts`, which is scoped to the run's selection.
 
 A command that would do it: `backfill.ts reopen --address MINT [--address MINT]... [--stages LIST]`,
-calling those two functions inside the pipeline lock. Not built; this runbook does not pretend it is.
-Whether a reopened candles stage reads a coin's pool list again, rather than only the bars after
-what is held, has not been checked here; check `ingest/src/candles/fetch.ts` before relying on it
-to refresh pools.
+calling `reopenStages` inside the pipeline lock. Not built; this runbook does not pretend it is.
 
 ## A provider is down or limiting
 
@@ -257,13 +390,15 @@ cost section.
 
 **Jupiter (prices: the live watch loop, the daily refresh, and the backfill's `metadata` stage).**
 In the live process the `watch:prices` check ages and the log says `watch: price request failed`.
-The watch loop goes first on the shared limiter and the refresh yields to it. Without a key
-Jupiter allows about one request every two seconds. Nothing to do while it limits; set
-`JUPITER_API_KEY` in `.env` and restart the live process for a higher rate. In a backfill, a 429 on
-the `metadata` stage fails the coins of the batch with `price_error` after quick retries (on this
-version there is no pause and resume): run that stage with `--metadata-concurrency 1`, stop the
-run if 429s persist, and retry later with `--retry-failed` (the two commands are in "What the
-backfill's last lines mean").
+The watch loop goes first on the shared limiter and the refresh yields to it. The client keeps to
+80% of Jupiter's documented rate (one request every two seconds without a key, one a second with
+one), because the documented rate itself drew 429s in practice. A 429 pauses every Jupiter request
+of the process (up to 5 minutes, 60 seconds when Jupiter names no time) and the request is sent
+again; after five in a row the client gives up. Nothing to do while it limits; set `JUPITER_API_KEY`
+in `.env` and restart the live process for a higher rate. In a backfill, the `metadata` stage stops
+with the "Jupiter kept answering HTTP 429" line, its coins show as failed with
+`jupiter_rate_limited`, and the next run takes them with no flag (see "What the backfill's last
+lines mean").
 
 **Helius (token launch information in the metadata stage).** Failures show as stage failures with
 the reason code of the metadata stage. Retry them when Helius is back:
@@ -317,7 +452,7 @@ A backup predates migrations applied after it; run `migrate` on the restored dat
 ## The cost traps
 
 - **Which commands spend provider units.** `backfill.ts run --confirm` (Codex.io units for the
-  `candles` stage; Helius credits for `metadata`), `live.ts run --confirm` (Codex.io units, always
+  `candles` stage, including `--refresh-pools`; Helius credits for `metadata`), `live.ts run --confirm` (Codex.io units, always
   under the daily ceiling), `ingest-sample.ts --confirm`, `check-candles.ts --confirm`,
   `dune-discovery.ts --confirm` (Dune credits). Everything else reads the database or sends
   nothing.
@@ -327,18 +462,19 @@ A backup predates migrations applied after it; run `migrate` on the restored dat
   `--max-codex-units N` (there is no default) and stops cleanly when it is used up. The live
   process always has a daily ceiling (40,000 units by default), and pauses discovery and candle
   fetches at it until the next UTC day.
-- **The command that starts part 2 of the backfill by accident.** A plain `backfill.ts run
-  --confirm --max-codex-units N`, with the default stages (which include `candles`) and the default
-  selection (rough peak of $30,000 and up, every candidate not yet done), fetches candles for every
-  candidate that part 1 did not reach: part 2, the smallest candidates, last estimated at about 1.36
-  million Codex.io units. Whether and when to run it is a decision in `PLAN.md`, not an operator's.
-  For anything else, name the stages (`--stages metrics`, `--stages metadata`,
-  `--stages metadata_file`), as in the examples above.
+- **The command that fetches candles by accident.** A plain `backfill.ts run --confirm
+  --max-codex-units N`, with the default stages (which include `candles`) and the default selection
+  (rough peak of $30,000 and up, every candidate not yet done), fetches candles for every candidate
+  in that selection that is not done. Both parts of the backfill have run (`PLAN.md`, E3), so on that
+  database nothing is waiting there; but a lower `--min-rough-peak`, or candidates added with
+  `backfill.ts seed`, make it select unfetched coins again, and every Codex.io unit is overage until
+  the plan month renews (about 2026-12-14, per `PLAN.md`). Read the dry run's estimate; whether to
+  spend is a decision in `PLAN.md`, not an operator's. For anything else, name the stages
+  (`--stages metrics`, `--stages metadata`, `--stages metadata_file`), as in the examples above.
 
 ## What has no command yet
 
-- Re-ingesting one coin from the start, and refreshing the pools of chosen coins: no command (see
-  above); `reopenStages` and `requeueFailed` in `db/src/stages.ts` are the functions.
-- A recorded Jupiter pause (`jupiter_pause`): comes with issue #93.
+- Ingesting one coin again from the start: no command (see "Ingesting one coin again");
+  `reopenStages` and `requeueFailed` in `db/src/stages.ts` are the functions.
 - Delivery of alerts: `live health` prints and sets an exit code; where its alert goes is decided
   with hosting (Q6 in `PLAN.md`).

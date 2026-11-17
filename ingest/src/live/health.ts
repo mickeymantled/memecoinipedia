@@ -53,9 +53,9 @@ import { startOfUtcDay, watchSpec } from './util.js';
 // ----------------------------------------------------------------------------- limits
 
 /**
- * The provider name under which Jupiter pauses are counted in the usage tally. It comes with
- * issue #93; until that is merged no such row exists and the check is left out. A plain string
- * here, so this module does not depend on that branch.
+ * The provider name under which Jupiter pauses are counted in the usage tally (the same string as
+ * `JUPITER_PAUSE_PROVIDER` in the Jupiter client). Until a run has recorded a first pause no such
+ * row exists, and the check is left out.
  */
 export const JUPITER_PAUSE_PROVIDER = 'jupiter_pause';
 
