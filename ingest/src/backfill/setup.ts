@@ -133,8 +133,8 @@ export interface BackfillRegistryOptions {
   meter: UsageMeter;
   stages: readonly BackfillStageName[];
   maxAttempts: number;
-  /** Coin ids most recently queued for metadata, for the loaders to prefetch with. */
-  metadataCandidateIds: () => readonly number[];
+  /** The coin ids the worker takes next for metadata (the first `limit`), for the loaders to prefetch with. */
+  metadataCandidateIds: (limit: number) => readonly number[] | Promise<readonly number[]>;
   /**
    * An extra condition on the candles stage taking a coin, asked before the stage's own (the live
    * process closes it while the day's unit ceiling is reached). Absent: the stage as it is.
