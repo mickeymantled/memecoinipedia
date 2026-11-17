@@ -186,6 +186,12 @@ pnpm -C ingest exec tsx --env-file=../.env scripts/backfill.ts run --stages metr
 pnpm -C ingest exec tsx --env-file=../.env scripts/backfill.ts run --stages candles,metrics,metadata --max-codex-units N --confirm
 ```
 
+The stages can be named in one run or run one after another. The `metadata` stage asks Helius and
+Jupiter for the coins at the head of its queue, in batches (1,000 and 100 coins a request), so the
+dry run's request counts hold whether it runs alone or behind a faster stage such as `metrics`. A
+checkout from before pull request #119 does not do this: there, run `--stages metrics` and
+`--stages metadata` as two runs, or the metadata stage asks Jupiter about once per coin.
+
 **You want to stop it.** Ctrl-C or SIGTERM: no new coin is taken, the ones in flight finish, the
 summary is printed, the exit code is 0. Run the same command again to continue; nothing is fetched
 twice.
