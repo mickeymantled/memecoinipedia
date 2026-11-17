@@ -174,7 +174,6 @@ export async function runLive(opts: LiveOptions): Promise<LiveReport> {
     });
 
     const poolLists = createPoolListQueue(gate);
-    const metadataRing = new Set<number>();
     const stopFlush = startUsageReporting({
       db,
       runId,
@@ -194,7 +193,7 @@ export async function runLive(opts: LiveOptions): Promise<LiveReport> {
         meter,
         stages: BACKFILL_STAGES,
         maxAttempts,
-        metadataCandidateIds: () => [...metadataRing],
+        metadataCandidateIds: (limit) => worker?.queuedCoinIds('metadata', limit) ?? [],
         candlesAdmit: () => gate.admit(),
         topUpPools: (id) => poolLists.take(id),
         metadataStopHoldMs: JUPITER_PAUSE_DEFAULT_MS,
@@ -217,12 +216,6 @@ export async function runLive(opts: LiveOptions): Promise<LiveReport> {
         maxAttempts,
         queuePoolSize: LIVE_QUEUE_POOL,
         now,
-        onEnqueued: (stage, ids) => {
-          if (stage !== 'metadata') return;
-          for (const id of ids) metadataRing.add(id);
-          while (metadataRing.size > 5000)
-            metadataRing.delete(metadataRing.values().next().value as number);
-        },
         ...opts.worker,
       });
       // Queued jobs of an earlier process are left: they are this process's work too.

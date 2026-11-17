@@ -69,8 +69,6 @@ export interface PipelineWorkerOptions {
   stageTimeoutSeconds?: number;
   /** Connections in pg-boss's own pool. Default pg-boss's own (10). */
   queuePoolSize?: number;
-  /** Called after jobs are queued, with the stage and the coin ids. */
-  onEnqueued?: (stage: StageName, coinIds: readonly number[]) => void;
   pollingIntervalSeconds?: number;
   monitorIntervalSeconds?: number;
   schema?: string;
@@ -137,7 +135,13 @@ export class PipelineWorker {
     return this.stages;
   }
 
-  async start(): Promise<void> {
+  /**
+   * `clearQueued`: delete the jobs an earlier process left waiting before any handler is
+   * registered. Calling `clearQueued()` after `start()` is too late: the handlers have already
+   * taken jobs of the earlier run, for coins this run may not even select, and (for metadata)
+   * with no coin named to prefetch for.
+   */
+  async start(opts: { clearQueued?: boolean } = {}): Promise<void> {
     if (this.started) return;
     await this.boss.start();
     const maxAttempts = this.opts.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
@@ -155,6 +159,7 @@ export class PipelineWorker {
         deleteAfterSeconds: 3600,
       });
     }
+    if (opts.clearQueued) await this.clearQueued();
     for (const stage of this.stages) {
       const slots = this.opts.stageConcurrency?.[stage] ?? this.opts.concurrency ?? 5;
       const batchSize = Math.max(1, Math.min(this.opts.stageBatchSize?.[stage] ?? 1, slots));
@@ -289,7 +294,6 @@ export class PipelineWorker {
   }
 
   private async enqueue(stage: StageName, coinIds: readonly number[]): Promise<void> {
-    if (coinIds.length > 0) this.opts.onEnqueued?.(stage, coinIds);
     for (let i = 0; i < coinIds.length; i += PAGE) {
       await this.boss.insert(
         queueName(stage),
@@ -351,6 +355,36 @@ export class PipelineWorker {
    */
   async clearQueued(): Promise<void> {
     for (const stage of this.stages) await this.boss.deleteQueuedJobs(queueName(stage));
+  }
+
+  /**
+   * The coins a prefetching loader should ask the provider about together: those of the stage's
+   * jobs that are running (they are asking now, and no longer in the queue), then those of the
+   * next jobs the queue will hand out, in its own fetch order (priority, then the time queued; a
+   * job in retry backoff counts once its delay is over). At most `limit` coins.
+   *
+   * It reads pg-boss's job table with the conditions of the fetch itself, so the head of a queue
+   * of 150,000 jobs costs no more than `limit` rows. Jobs of one insert share a time, so inside one
+   * insert the order is the queue's to settle.
+   */
+  async queuedCoinIds(stage: StageName, limit: number): Promise<number[]> {
+    if (limit <= 0) return [];
+    const name = queueName(stage);
+    const job = sql.id(this.schema, 'job');
+    const res = await sql<{ coin_id: string }>`
+      select coin_id from (
+        (select data->>'coinId' as coin_id, 0 as part, 0 as priority, created_on
+          from ${job} where name = ${name} and state = 'active' limit ${limit})
+        union all
+        (select data->>'coinId', 1, priority, created_on
+          from ${job}
+          where name = ${name} and state < 'active' and not blocked and start_after <= now()
+          order by priority desc, created_on limit ${limit})
+      ) c
+      order by part, priority desc, created_on
+      limit ${limit}
+    `.execute(this.opts.db);
+    return res.rows.map((r) => Number(r.coin_id));
   }
 
   /** Jobs of this worker's queues that are waiting, being retried or running. */

@@ -295,10 +295,11 @@ export interface MetadataLoadersOptions {
   /** Prefetch only coins with an ATH at or above this (the backfill's listed coins). */
   minAthMarketCapUsd?: number;
   /**
-   * Prefetch only these coins, asked for when a batch is built: the coins most recently queued
-   * for the stage. Without it, any coin that needs metadata (in id order) is a candidate.
+   * Prefetch only these coins, asked for when a batch is built: the coins the worker takes next
+   * (the head of the stage's queue, `PipelineWorker.queuedCoinIds`), the first `limit` of them.
+   * Without it, any coin that needs metadata (in id order) is a candidate.
    */
-  candidateIds?: () => readonly number[];
+  candidateIds?: (limit: number) => readonly number[] | Promise<readonly number[]>;
 }
 
 const notFoundAsset = (mint: string): AssetInfo => ({
@@ -343,7 +344,7 @@ const notFoundToken = (mint: string): JupiterToken => ({
  */
 export function createMetadataLoaders(o: MetadataLoadersOptions) {
   const candidates = async (_first: string, limit: number): Promise<string[]> => {
-    const ids = o.candidateIds?.();
+    const ids = await o.candidateIds?.(limit);
     const rows = await listCoinsNotDone(o.db, 'metadata', {
       version: METADATA_STAGE_VERSION,
       requires: o.requires ?? 'discovered',
@@ -353,6 +354,12 @@ export function createMetadataLoaders(o: MetadataLoadersOptions) {
       maxAttempts: o.maxAttempts ?? 3,
       limit,
     });
+    // The query answers in id order; the loader takes the first of what it is given, so the
+    // coins named by `candidateIds` keep the order they were named in (the order the worker takes them).
+    if (ids) {
+      const rank = new Map(ids.map((id, i) => [id, i]));
+      rows.sort((a, b) => (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0));
+    }
     return rows.map((r) => r.address);
   };
   const cooldown = o.errorCooldownMs === undefined ? {} : { errorCooldownMs: o.errorCooldownMs };

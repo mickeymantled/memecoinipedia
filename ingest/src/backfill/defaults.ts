@@ -53,6 +53,12 @@ export const MAX_CONNECTIONS = 40;
 
 /** Coins the feeder keeps waiting or running, as a multiple of the candles concurrency. */
 export const OUTSTANDING_PER_SLOT = 2;
+/**
+ * Jobs the feeder keeps outstanding when `metadata` is the first stage named: two Helius batches
+ * (1,000 coins each) and a page. With fewer, a batch is built from a queue shorter than it and
+ * goes out half full (448 coins a request on the dev database, where the estimate says 1,000).
+ */
+export const METADATA_GATE_OUTSTANDING = 2 * 1000 + 500;
 /** Coins read from the selection and queued at a time. */
 export const FEED_PAGE = 500;
 

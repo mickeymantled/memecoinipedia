@@ -73,6 +73,7 @@ import {
   DEFAULT_QUEUE_POOL,
   FEED_PAGE,
   MAX_CONNECTIONS,
+  METADATA_GATE_OUTSTANDING,
   OUTSTANDING_PER_SLOT,
 } from './defaults.js';
 import { Feeder } from './feeder.js';
@@ -562,10 +563,6 @@ export async function runBackfill(opts: BackfillOptions): Promise<BackfillReport
     await startRun(db, runId, now());
     opts.log.info(`run ${runId} started`, { selected: plan.selection.size, stages: [...stages] });
 
-    // Coins most recently queued for metadata, so the loaders prefetch the coins about to need it.
-    const metadataRing = new Set<number>();
-    const ringIds = (): number[] => [...metadataRing];
-
     let status: 'done' | 'stopped' | 'failed' = 'done';
     let worker: PipelineWorker | undefined;
     let candlesStopped = false;
@@ -605,7 +602,8 @@ export async function runBackfill(opts: BackfillOptions): Promise<BackfillReport
         meter,
         stages,
         maxAttempts,
-        metadataCandidateIds: ringIds,
+        // The loaders prefetch the coins the worker takes next: the head of the metadata queue.
+        metadataCandidateIds: (limit) => worker?.queuedCoinIds('metadata', limit) ?? [],
       });
       worker = new PipelineWorker({
         connectionString,
@@ -625,25 +623,22 @@ export async function runBackfill(opts: BackfillOptions): Promise<BackfillReport
         maxAttempts,
         queuePoolSize: queuePool,
         now,
-        onEnqueued: (stage, ids) => {
-          if (stage !== 'metadata') return;
-          for (const id of ids) metadataRing.add(id);
-          // Keep the ring bounded: the oldest ids go first.
-          while (metadataRing.size > 5000)
-            metadataRing.delete(metadataRing.values().next().value as number);
-        },
         ...opts.worker,
       });
-      await worker.start();
-      await worker.clearQueued();
+      // Jobs an earlier run left are removed before any handler takes one.
+      await worker.start({ clearQueued: true });
 
+      const gateStage = BACKFILL_STAGES.find((x) => stages.includes(x));
       const feeder = new Feeder({
         db,
         worker,
         selection: plan.selection,
         maxOutstanding:
-          opts.maxQueued ?? Math.max(FEED_PAGE * 2, candlesConcurrency * OUTSTANDING_PER_SLOT),
-        gateStage: BACKFILL_STAGES.find((x) => stages.includes(x)),
+          opts.maxQueued ??
+          (gateStage === 'metadata'
+            ? METADATA_GATE_OUTSTANDING
+            : Math.max(FEED_PAGE * 2, candlesConcurrency * OUTSTANDING_PER_SLOT)),
+        gateStage,
         pageSize: opts.feedPage ?? FEED_PAGE,
         log: opts.log,
         signal: stopCtl.signal,
